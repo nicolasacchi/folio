@@ -313,6 +313,54 @@ mark {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+/* ---------- Library toolbar, chips, pager ---------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: -0.6rem 0 1.2rem;
+}
+.toolbar-form { display: flex; gap: .5rem; align-items: center; }
+.toolbar-form select {
+  width: auto;
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: .06em;
+  padding: .4rem .5rem;
+}
+.toolbar-stats { margin-left: auto; font-family: var(--mono); font-size: .66rem; letter-spacing: .08em; }
+
+.chips { margin: 0 0 1rem; }
+.chip { text-decoration: none; margin-right: .4rem; }
+.chip:hover { border-color: var(--accent); }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+/* ---------- Series list ---------- */
+
+.series-row {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  padding: .65rem 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+}
+.series-row .grow { flex: 1; }
+
+/* ---------- Duplicates ---------- */
+
+.duplicate-cover { width: 3.4rem; flex: none; }
+.duplicate-cover .cover { width: 3.4rem; }
+
 /* ---------- Cover grid ---------- */
 
 .shelf {

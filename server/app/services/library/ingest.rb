@@ -1,7 +1,10 @@
-# Takes one uploaded/converted file and folds it into the library:
-# dedupe by checksum, read metadata through Calibre, place the file in the
-# storage layout, extract a cover, then queue search indexing and an
-# automatic Kindle-format conversion when needed.
+# Takes one uploaded/converted/scanned file and folds it into the library:
+# dedupe by checksum, read metadata through Calibre (or take it pre-parsed,
+# e.g. from a Calibre metadata.opf), place the file in the storage layout —
+# or reference it where it lies (mode: :reference, used by the folder
+# scanner; nothing is copied and the file is never deleted) — extract a
+# cover, then queue search indexing and an automatic Kindle-format
+# conversion when needed.
 class Library::Ingest
   class UnsupportedFormat < StandardError; end
 
@@ -12,16 +15,25 @@ class Library::Ingest
   # source_path: readable file on disk (tempfile from an upload is fine).
   # original_filename: used for format detection and metadata fallback.
   # book: attach the file to an existing book instead of creating one.
-  def self.call(source_path, original_filename:, book: nil, source: "upload", enqueue_followups: true)
-    new(source_path, original_filename, book, source, enqueue_followups).call
+  # mode: :copy stores the file under Library.root; :reference records the
+  #   absolute path in place.
+  # metadata: pre-parsed metadata hash (skips the ebook-meta shell-out).
+  # cover_source: path to a ready-made cover image (e.g. Calibre's
+  #   cover.jpg) used instead of extracting one from the book file.
+  def self.call(source_path, original_filename:, book: nil, source: "upload", enqueue_followups: true,
+                mode: :copy, metadata: nil, cover_source: nil)
+    new(source_path, original_filename, book, source, enqueue_followups, mode, metadata, cover_source).call
   end
 
-  def initialize(source_path, original_filename, book, source, enqueue_followups)
+  def initialize(source_path, original_filename, book, source, enqueue_followups, mode, metadata, cover_source)
     @source_path = Pathname.new(source_path)
     @original_filename = original_filename
     @book = book
     @source = source
     @enqueue_followups = enqueue_followups
+    @mode = mode
+    @metadata = metadata
+    @cover_source = cover_source
   end
 
   def call
@@ -35,23 +47,29 @@ class Library::Ingest
     book = @book || build_book(format)
     raise UnsupportedFormat, "book already has a #{format} file" if book.persisted? && book.file_for(format)
 
-    destination = Library.file_path(book, format)
-    FileUtils.mkdir_p(destination.dirname)
-    FileUtils.cp(@source_path, destination)
+    destination = nil
+    if @mode == :reference
+      stored_path = @source_path.to_s
+    else
+      destination = Library.file_path(book, format)
+      FileUtils.mkdir_p(destination.dirname)
+      FileUtils.cp(@source_path, destination)
+      stored_path = destination.relative_path_from(Library.root).to_s
+    end
 
     book_file = nil
     Book.transaction do
       book.save!
       book_file = book.book_files.create!(
         format: format,
-        path: destination.relative_path_from(Library.root).to_s,
-        size: File.size(destination),
+        path: stored_path,
+        size: File.size(@mode == :reference ? @source_path : destination),
         sha256: sha,
         source: @source
       )
     end
 
-    extract_cover(book, destination)
+    extract_cover(book, @mode == :reference ? @source_path : destination)
     enqueue_followups(book) if @enqueue_followups
 
     Result.new(book, book_file, false)
@@ -71,7 +89,7 @@ class Library::Ingest
   end
 
   def build_book(format)
-    meta = calibre_metadata
+    meta = @metadata || calibre_metadata
     title = meta[:title].presence
     author = meta[:author].presence
     fallback_title, fallback_author = split_stem(File.basename(@original_filename.to_s, ".*").strip)
@@ -118,7 +136,11 @@ class Library::Ingest
   def extract_cover(book, file_path)
     return if book.cover?
     FileUtils.mkdir_p(Library.covers_root)
-    Calibre.extract_cover(file_path, Library.cover_path(book))
+    if @cover_source && File.exist?(@cover_source)
+      FileUtils.cp(@cover_source, Library.cover_path(book))
+    else
+      Calibre.extract_cover(file_path, Library.cover_path(book))
+    end
   end
 
   def enqueue_followups(book)

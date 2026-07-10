@@ -4,7 +4,7 @@ class IndexBookJob < ApplicationJob
   queue_as :default
 
   # Formats ranked by how clean their extracted text is.
-  TEXT_SOURCE_PREFERENCE = %w[txt epub azw3 mobi azw fb2 docx html htmlz odt rtf lit pdf].freeze
+  TEXT_SOURCE_PREFERENCE = %w[txt epub azw3 mobi azw prc fb2 docx html htmlz odt rtf lit pdf].freeze
 
   def perform(book_id)
     book = Book.find_by(id: book_id)

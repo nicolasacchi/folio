@@ -1,12 +1,40 @@
 class BooksController < ApplicationController
-  before_action :set_book, only: [ :show, :edit, :update, :destroy, :cover, :download ]
+  before_action :set_book, only: [ :show, :edit, :update, :destroy, :cover, :download, :reindex ]
+
+  PER_PAGE = 48
+  SORTS = %w[recent title author].freeze
 
   def index
     @query = params[:q].to_s.strip
     if @query.present?
       @hits = Book.search(@query)
     else
-      @books = Book.includes(:book_files).order(created_at: :desc)
+      @author = params[:author].presence
+      @series = params[:series].presence
+      @format = params[:format].presence
+      @sort = SORTS.include?(params[:sort]) ? params[:sort] : "recent"
+
+      scope = Book.all
+      scope = scope.where(author: @author) if @author
+      scope = scope.where(series: @series) if @series
+      scope = scope.where(id: BookFile.where(format: @format).select(:book_id)) if @format
+      scope = case @sort
+              when "title" then scope.order(Arel.sql("lower(title)"), :id)
+              when "author" then scope.order(Arel.sql("lower(coalesce(author, ''))"), Arel.sql("lower(title)"), :id)
+              else
+                # Inside a series, reading order beats recency.
+                @series ? scope.order(:series_index, :id) : scope.order(created_at: :desc, id: :desc)
+              end
+
+      @total = scope.count
+      @page = [ params[:page].to_i, 1 ].max
+      @last_page = [ (@total / PER_PAGE.to_f).ceil, 1 ].max
+      @page = @last_page if @page > @last_page
+      @books = scope.includes(:book_files).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
+
+      @stats = Rails.cache.fetch("library_stats", expires_in: 10.minutes) do
+        { books: Book.count, files: BookFile.count, bytes: BookFile.sum(:size) }
+      end
     end
   end
 
@@ -49,6 +77,14 @@ class BooksController < ApplicationController
     end
 
     send_file file.absolute_path, filename: file.filename, type: "application/octet-stream"
+  end
+
+  # Full-text extraction is deliberately not part of folder scans (Calibre-
+  # converting thousands of books up front would take days); this queues it
+  # for one book on demand.
+  def reindex
+    IndexBookJob.perform_later(@book.id)
+    redirect_to @book, notice: "Full-text indexing queued."
   end
 
   private

@@ -1,0 +1,21 @@
+<% content_for :title, "Folio — series" %>
+
+<p class="kicker">Card catalog</p>
+<h1 class="page-title">Series</h1>
+
+<% if @series.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No series in the library yet.
+  </div>
+<% else %>
+  <p class="muted small"><%= pluralize(@series.size, "series") %></p>
+  <div class="series-list">
+    <% @series.each do |name, count| %>
+      <%= link_to root_path(series: name), class: "series-row" do %>
+        <span class="grow"><%= name %></span>
+        <span class="stamp"><%= count %></span>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>

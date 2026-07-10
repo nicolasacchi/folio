@@ -4,9 +4,22 @@
   <%= render "cover", book: @book %>
 
   <div>
-    <p class="kicker"><%= @book.series.present? ? "#{@book.series} #{@book.series_index&.round == @book.series_index ? @book.series_index&.to_i : @book.series_index}" : "In the library" %></p>
+    <% if @book.series.present? %>
+      <p class="kicker">
+        <%= link_to @book.series, root_path(series: @book.series) %>
+        <%= @book.series_index&.round == @book.series_index ? @book.series_index&.to_i : @book.series_index %>
+      </p>
+    <% else %>
+      <p class="kicker">In the library</p>
+    <% end %>
     <h1 class="page-title"><%= @book.title %></h1>
-    <p class="book-author"><%= @book.display_author %></p>
+    <p class="book-author">
+      <% if @book.author.present? %>
+        <%= link_to @book.author, root_path(author: @book.author, sort: "title") %>
+      <% else %>
+        <%= @book.display_author %>
+      <% end %>
+    </p>
 
     <p class="meta-list small">
       <% if @book.language.present? %><b><%= @book.language %></b> · <% end %>
@@ -20,6 +33,8 @@
               download_book_path(@book, fmt: kindle_file.format), class: "btn btn--primary" %>
       <% end %>
       <%= link_to "Edit", edit_book_path(@book), class: "btn btn--quiet" %>
+      <%= button_to "Index full text", reindex_book_path(@book), class: "btn btn--quiet",
+            title: "Extract the book's text with Calibre so search can look inside it" %>
       <%= button_to "Delete", book_path(@book), method: :delete, class: "btn btn--danger",
             form: { data: { turbo_confirm: "Delete “#{@book.title}” and all its files?" } } %>
     </div>
@@ -42,9 +57,14 @@
   <% @book.book_files.order(:format).each do |file| %>
     <div class="file-row">
       <span class="stamp <%= "stamp--ready" if file.kindle_ready? %>"><%= file.format %></span>
+      <% unless file.available? %>
+        <span class="stamp stamp--failed" title="The scanned source file is no longer at <%= file.path %>">missing</span>
+      <% end %>
       <span class="grow small muted"><%= format_size(file.size) %> · <%= file.source %></span>
-      <%= link_to "Download", download_book_path(@book, fmt: file.format),
-            class: "btn btn--quiet", data: { turbo: false } %>
+      <% if file.available? %>
+        <%= link_to "Download", download_book_path(@book, fmt: file.format),
+              class: "btn btn--quiet", data: { turbo: false } %>
+      <% end %>
     </div>
   <% end %>
 

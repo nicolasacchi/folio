@@ -1,0 +1,74 @@
+<% content_for :title, "Folio — import" %>
+
+<p class="kicker">Accessions</p>
+<h1 class="page-title">Library folder import</h1>
+
+<% if @roots.empty? %>
+  <p class="muted">No scan roots configured. Set <code>SCAN_ROOTS</code> to a comma-separated
+  list of folders and restart the server.</p>
+<% else %>
+  <p class="muted small">
+    Watching <% @roots.each do |root| %><code><%= root %></code> <% end %>—
+    books are referenced in place (never copied or deleted), deduplicated by checksum,
+    and rescanned nightly. Metadata comes from Calibre sidecars where present.
+  </p>
+
+  <%= turbo_frame_tag "library_scan_status" do %>
+  <div class="actions">
+    <% scanning = @progress && @progress[:state] == "running" %>
+    <%= button_to scanning ? "Scan running…" : "Scan now", library_scan_path,
+          class: "btn btn--primary", disabled: scanning, form: { data: { turbo_frame: "_top" } } %>
+    <% if (@counts["missing"] || 0).positive? %>
+      <%= button_to "Prune missing files", prune_library_scan_path, class: "btn btn--danger",
+            form: { data: { turbo_frame: "_top", turbo_confirm: "Remove all missing files (and emptied books) from the library? The source files stay untouched." } } %>
+    <% end %>
+  </div>
+
+  <% if @progress %>
+    <p class="section-label">Last scan</p>
+    <p class="meta-list small">
+      <b><%= @progress[:state] %></b>
+      <% if @progress[:state] == "running" && (@progress[:total] || 0).positive? %>
+        · <%= @progress[:done] %> / <%= @progress[:total] %> new files processed
+      <% end %>
+      <% if @progress[:started_at] %>
+        · started <%= time_ago_in_words(Time.zone.at(@progress[:started_at])) %> ago
+      <% end %>
+      <% if @progress[:finished_at] %>
+        · finished <%= time_ago_in_words(Time.zone.at(@progress[:finished_at])) %> ago
+      <% end %>
+      <% if @progress[:error] %>
+        · <span class="stamp stamp--failed">error</span> <code class="small"><%= @progress[:error] %></code>
+      <% end %>
+    </p>
+    <% if @progress[:state] == "running" %>
+      <div data-controller="poll" data-poll-interval-value="5000"></div>
+    <% end %>
+  <% end %>
+
+  <p class="section-label">Ledger</p>
+  <% if @total.zero? %>
+    <p class="muted small">Nothing scanned yet.</p>
+  <% else %>
+    <p class="meta-list small">
+      <% ImportFile::STATUSES.each do |status| %>
+        <% next unless @counts[status] %>
+        <span class="stamp <%= "stamp--ready" if status == "imported" %> <%= "stamp--failed" if %w[failed missing].include?(status) %>"><%= status %> <%= number_with_delimiter(@counts[status]) %></span>
+      <% end %>
+    </p>
+  <% end %>
+
+  <% if @problems.any? %>
+    <p class="section-label">Needs attention</p>
+    <% @problems.each do |entry| %>
+      <div class="file-row">
+        <span class="stamp stamp--failed"><%= entry.status %></span>
+        <span class="grow small mono" style="word-break: break-all;"><%= entry.path %></span>
+        <% if entry.message.present? %>
+          <span class="small muted"><%= truncate(entry.message, length: 120) %></span>
+        <% end %>
+      </div>
+    <% end %>
+  <% end %>
+  <% end %>
+<% end %>

@@ -1,0 +1,41 @@
+<% content_for :title, "Folio — duplicates" %>
+
+<p class="kicker">Housekeeping</p>
+<h1 class="page-title">Duplicate editions</h1>
+
+<p class="muted small">
+  Exact copies (same checksum) never enter the library twice. These are different
+  files sharing a title and author — merge them to gather all formats on one book,
+  or delete the surplus edition from its page.
+</p>
+
+<% if @groups.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No duplicate editions found.
+  </div>
+<% else %>
+  <p class="muted small"><%= pluralize(@groups.size, "group") %></p>
+
+  <% @groups.each do |group| %>
+    <p class="section-label"><%= group.first.title %> — <%= group.first.display_author %></p>
+    <% group.each do |book| %>
+      <div class="file-row">
+        <%= link_to book_path(book), class: "duplicate-cover" do %>
+          <%= render "books/cover", book: book %>
+        <% end %>
+        <span class="grow small">
+          <%= link_to book.title, book_path(book) %><br>
+          <span class="muted mono small">
+            <%= book.formats.map(&:upcase).join(" · ") %> ·
+            <%= format_size(book.book_files.sum(&:size)) %> ·
+            added <%= l book.created_at.to_date %>
+          </span>
+        </span>
+        <%= button_to "Merge others into this", merge_duplicates_path(target_id: book.id, source_ids: (group - [ book ]).map(&:id)),
+              class: "btn btn--quiet",
+              form: { data: { turbo_confirm: "Merge #{group.size - 1} other edition(s) into “#{book.title}”? Non-conflicting formats move over; emptied books are deleted." } } %>
+      </div>
+    <% end %>
+  <% end %>
+<% end %>

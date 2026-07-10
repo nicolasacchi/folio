@@ -8,11 +8,22 @@ Rails.application.routes.draw do
     member do
       get :cover
       get :download # ?fmt=azw3, defaults to the Kindle-ready file
+      post :reindex # queue full-text extraction + reindex
     end
     resources :conversions, only: [ :create ]
   end
   resources :uploads, only: [ :new, :create ]
   resources :devices, only: [ :index, :create, :destroy ]
+
+  get "series", to: "series#index", as: :series_index
+
+  get "duplicates", to: "duplicates#index"
+  post "duplicates/merge", to: "duplicates#merge", as: :merge_duplicates
+
+  # Folder scanning (Komga-style: reference books in place from SCAN_ROOTS).
+  resource :library_scan, only: [ :show, :create ] do
+    post :prune
+  end
 
   namespace :api do
     namespace :v1 do
