@@ -16,6 +16,15 @@ RSpec.describe Library::Enrich do
     expect(book.enriched_at).to be_present
   end
 
+  it "rejects implausible publication years from providers" do
+    allow(Library::Enrich::OpenLibrary).to receive(:lookup).and_return({ description: "Text.", published_year: 101 })
+
+    described_class.call(book)
+
+    expect(book.reload.published_year).to be_nil
+    expect(book.description).to eq("Text.")
+  end
+
   it "does not overwrite an existing description" do
     book.update!(description: "Original text.")
     allow(Library::Enrich::OpenLibrary).to receive(:lookup).and_return({ description: "Provider text.", published_year: 2011 })
