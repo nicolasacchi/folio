@@ -1,0 +1,46 @@
+{
+    "items": [
+        {
+            "name": "Folio",
+            "priority": -900,
+            "items": [
+                {
+                    "name": "Sync now",
+                    "priority": 1,
+                    "action": "bin/kindled.sh",
+                    "params": "sync",
+                    "exitmenu": false,
+                    "refresh": true,
+                    "internal": "status Folio: syncing"
+                },
+                {
+                    "name": "Start background sync",
+                    "priority": 2,
+                    "action": "bin/kindled.sh",
+                    "params": "start",
+                    "exitmenu": false,
+                    "refresh": false,
+                    "internal": "status Folio: starting daemon"
+                },
+                {
+                    "name": "Stop background sync",
+                    "priority": 3,
+                    "action": "bin/kindled.sh",
+                    "params": "stop",
+                    "exitmenu": false,
+                    "refresh": false,
+                    "internal": "status Folio: stopping daemon"
+                },
+                {
+                    "name": "Refresh Kindle library",
+                    "priority": 4,
+                    "action": "bin/kindled.sh",
+                    "params": "refresh",
+                    "exitmenu": false,
+                    "refresh": true,
+                    "internal": "status Folio: refreshing library"
+                }
+            ]
+        }
+    ]
+}
