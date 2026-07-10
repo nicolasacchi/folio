@@ -35,6 +35,13 @@ gem "thruster", require: false
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"
 
+# Book-level semantic search: local ONNX sentence embeddings (no external
+# services) stored in SQLite via the sqlite-vec extension. sqlite-vec only
+# ships prerelease platform gems, hence the explicit constraint (and the
+# trimmed PLATFORMS list in Gemfile.lock — it has no aarch64/musl builds).
+gem "informers"
+gem "sqlite-vec", ">= 0.1.10.alpha"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

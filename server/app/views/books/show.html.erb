@@ -46,6 +46,21 @@
   <p class="book-description"><%= simple_format(@book.description) %></p>
 <% end %>
 
+<% if @similar.any? %>
+  <p class="section-label">Similar books</p>
+  <div class="shelf shelf--similar">
+    <% @similar.each do |book| %>
+      <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
+        <%= render "cover", book: book %>
+        <span class="shelf-caption">
+          <span class="t"><%= book.title %></span>
+          <span class="a"><%= book.display_author %></span>
+        </span>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>
+
 <% reading_states = @book.reading_states.includes(:device).order(content_mtime: :desc) %>
 <% if reading_states.any? %>
   <p class="section-label">Reading</p>

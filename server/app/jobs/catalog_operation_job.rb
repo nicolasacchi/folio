@@ -17,6 +17,8 @@ class CatalogOperationJob < ApplicationJob
     when "convert_all" then convert_all
     when "index_fulltext" then index_fulltext
     when "merge_duplicates" then merge_duplicates
+    when "enrich_all" then enrich_all
+    when "embed_all" then embed_all
     else raise ArgumentError, "unknown catalog operation: #{operation}"
     end
   end
@@ -73,6 +75,36 @@ class CatalogOperationJob < ApplicationJob
       write_progress(operation: "merge_duplicates", state: "running", merged: merged, groups: groups.size) if (index % 50).zero?
     end
     write_progress(operation: "merge_duplicates", state: "done", merged: merged, finished_at: Time.current.to_i)
+  end
+
+  # Queue an external-catalog lookup for every book still missing
+  # metadata that hasn't already come back empty-handed.
+  def enrich_all
+    queued = 0
+    write_progress(operation: "enrich_all", state: "running", queued: 0)
+    Book.where(description: [ nil, "" ]).where(enriched_at: nil).find_each do |book|
+      EnrichBookJob.perform_later(book.id)
+      queued += 1
+      write_progress(operation: "enrich_all", state: "running", queued: queued) if (queued % 500).zero?
+    end
+    write_progress(operation: "enrich_all", state: "done", queued: queued, finished_at: Time.current.to_i)
+  end
+
+  # (Re)builds the semantic vector for every book, in batches — the whole
+  # catalog takes minutes, so no per-book fan-out.
+  def embed_all
+    unless Library::Embeddings.available?
+      write_progress(operation: "embed_all", state: "failed", error: "embedding model not available")
+      return
+    end
+
+    embedded = 0
+    write_progress(operation: "embed_all", state: "running", embedded: 0)
+    Book.find_in_batches(batch_size: 64) do |batch|
+      embedded += Library::Embeddings.index_books!(batch)
+      write_progress(operation: "embed_all", state: "running", embedded: embedded) if (embedded % 640).zero?
+    end
+    write_progress(operation: "embed_all", state: "done", embedded: embedded, finished_at: Time.current.to_i)
   end
 
   def write_progress(**attributes)

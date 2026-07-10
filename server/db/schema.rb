@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_10_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_10_230000) do
   create_table "book_files", force: :cascade do |t|
     t.boolean "available", default: true, null: false
     t.integer "book_id", null: false
@@ -31,6 +31,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_210000) do
     t.string "author"
     t.datetime "created_at", null: false
     t.text "description"
+    t.datetime "enriched_at"
+    t.string "enrichment_source"
     t.string "language"
     t.string "public_id", null: false
     t.integer "published_year"

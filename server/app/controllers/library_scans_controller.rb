@@ -9,9 +9,12 @@ class LibraryScansController < ApplicationController
     @catalog = Rails.cache.fetch("catalog_counts", expires_in: 1.minute) do
       deliverable = BookFile.available.where(format: Book::KINDLE_FORMATS).distinct.count(:book_id)
       {
+        books: Book.count,
         to_convert: Book.count - deliverable,
         fulltext_missing: Book.count - BookSearch.book_ids_with_fulltext.size,
         duplicate_groups: Library::DuplicateGroups.count,
+        to_enrich: Book.where(description: [ nil, "" ]).where(enriched_at: nil).count,
+        embedded: Library::Embeddings.available? ? Library::Embeddings.count : nil,
         queued: SolidQueue::Job.where(class_name: CatalogController::BATCH_JOB_CLASSES, finished_at: nil).count,
         failed_conversions: Conversion.where(status: "failed").count
       }
