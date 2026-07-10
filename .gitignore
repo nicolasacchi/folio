@@ -10,10 +10,11 @@ privatecloud/__pycache__/
 *.sqlite
 *.sqlite3
 
-# Local book libraries and generated downloads.
-books/
-documents/
-PrivateCloud/
+# Local book libraries and generated downloads (repo root only — the
+# Rails app has legitimate books/ view and controller directories).
+/books/
+/documents/
+/PrivateCloud/
 
 # Editor/OS noise.
 .DS_Store

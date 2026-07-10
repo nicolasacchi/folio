@@ -1,0 +1,76 @@
+<% content_for :title, "#{@book.title} — Folio" %>
+
+<div class="book-sheet">
+  <%= render "cover", book: @book %>
+
+  <div>
+    <p class="kicker"><%= @book.series.present? ? "#{@book.series} #{@book.series_index&.round == @book.series_index ? @book.series_index&.to_i : @book.series_index}" : "In the library" %></p>
+    <h1 class="page-title"><%= @book.title %></h1>
+    <p class="book-author"><%= @book.display_author %></p>
+
+    <p class="meta-list small">
+      <% if @book.language.present? %><b><%= @book.language %></b> · <% end %>
+      <% if @book.published_year.present? %><%= @book.published_year %> · <% end %>
+      added <%= l @book.created_at.to_date, format: :long %>
+    </p>
+
+    <div class="actions">
+      <% if (kindle_file = @book.kindle_file) %>
+        <%= link_to "Send to device ↓ #{kindle_file.format.upcase}",
+              download_book_path(@book, fmt: kindle_file.format), class: "btn btn--primary" %>
+      <% end %>
+      <%= link_to "Edit", edit_book_path(@book), class: "btn btn--quiet" %>
+      <%= button_to "Delete", book_path(@book), method: :delete, class: "btn btn--danger",
+            form: { data: { turbo_confirm: "Delete “#{@book.title}” and all its files?" } } %>
+    </div>
+  </div>
+</div>
+
+<% if @book.description.present? %>
+  <p class="section-label">About</p>
+  <p class="book-description"><%= simple_format(@book.description) %></p>
+<% end %>
+
+<%= turbo_frame_tag "book_files" do %>
+  <% if @conversions.any?(&:pending?) || @conversions.any?(&:running?) %>
+    <%# Reloads this frame while work is in flight; the attribute disappears
+        with the next render once every conversion settles. %>
+    <div data-controller="poll" data-poll-interval-value="4000"></div>
+  <% end %>
+
+  <p class="section-label">Files</p>
+  <% @book.book_files.order(:format).each do |file| %>
+    <div class="file-row">
+      <span class="stamp <%= "stamp--ready" if file.kindle_ready? %>"><%= file.format %></span>
+      <span class="grow small muted"><%= format_size(file.size) %> · <%= file.source %></span>
+      <%= link_to "Download", download_book_path(@book, fmt: file.format),
+            class: "btn btn--quiet", data: { turbo: false } %>
+    </div>
+  <% end %>
+
+  <% convertible = Conversion::TARGET_FORMATS - @book.formats %>
+  <% if convertible.any? && @book.book_files.any? %>
+    <p class="section-label">Convert to</p>
+    <div class="actions">
+      <% convertible.each do |target| %>
+        <%= button_to target.upcase, book_conversions_path(@book, target_format: target), class: "btn" %>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if @conversions.any? %>
+    <p class="section-label">Conversion log</p>
+    <% @conversions.each do |conversion| %>
+      <div class="conversion-row">
+        <span class="<%= conversion_stamp_class(conversion) %>"><%= conversion.status %></span>
+        <span class="grow small">
+          <%= conversion.book_file.format.upcase %> → <%= conversion.target_format.upcase %>
+          <% if conversion.failed? && conversion.error.present? %>
+            <span class="muted mono small"> — <%= truncate(conversion.error, length: 160) %></span>
+          <% end %>
+        </span>
+        <span class="small muted"><%= time_ago_in_words(conversion.created_at) %> ago</span>
+      </div>
+    <% end %>
+  <% end %>
+<% end %>

@@ -1,0 +1,10 @@
+<% if book.cover? %>
+  <span class="cover">
+    <%= image_tag cover_book_path(book), alt: "", loading: "lazy" %>
+  </span>
+<% else %>
+  <span class="cover cover--generated" style="--h: <%= cover_hue(book) %>">
+    <span class="gen-title"><%= book.title %></span>
+    <span class="gen-author"><%= book.display_author %></span>
+  </span>
+<% end %>

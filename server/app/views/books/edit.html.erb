@@ -1,0 +1,36 @@
+<% content_for :title, "Edit — #{@book.title}" %>
+
+<p class="kicker">Catalog card</p>
+<h1 class="page-title">Edit book</h1>
+
+<%= form_with model: @book do |form| %>
+  <% if @book.errors.any? %>
+    <p class="flash flash--alert"><%= @book.errors.full_messages.to_sentence %></p>
+  <% end %>
+
+  <%= form.label :title %>
+  <%= form.text_field :title %>
+
+  <%= form.label :author %>
+  <%= form.text_field :author %>
+
+  <%= form.label :series %>
+  <%= form.text_field :series %>
+
+  <%= form.label :series_index, "Series number" %>
+  <%= form.number_field :series_index, step: :any %>
+
+  <%= form.label :language %>
+  <%= form.text_field :language %>
+
+  <%= form.label :published_year %>
+  <%= form.number_field :published_year %>
+
+  <%= form.label :description %>
+  <%= form.text_area :description, rows: 6 %>
+
+  <div class="actions">
+    <%= form.submit "Save", class: "btn btn--primary" %>
+    <%= link_to "Cancel", book_path(@book), class: "btn btn--quiet" %>
+  </div>
+<% end %>
