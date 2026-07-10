@@ -1,0 +1,46 @@
+{
+    "items": [
+        {
+            "name": "PrivateCloud",
+            "priority": -900,
+            "items": [
+                {
+                    "name": "Sync manifest",
+                    "priority": 1,
+                    "action": "bin/privatecloud.sh",
+                    "params": "sync",
+                    "exitmenu": false,
+                    "refresh": false,
+                    "internal": "status PrivateCloud: syncing manifest"
+                },
+                {
+                    "name": "Download next",
+                    "priority": 2,
+                    "action": "bin/privatecloud.sh",
+                    "params": "download-next",
+                    "exitmenu": true,
+                    "refresh": true,
+                    "internal": "status PrivateCloud: downloading next item"
+                },
+                {
+                    "name": "Write library list",
+                    "priority": 3,
+                    "action": "bin/privatecloud.sh",
+                    "params": "write-list",
+                    "exitmenu": false,
+                    "refresh": true,
+                    "internal": "status PrivateCloud: writing list document"
+                },
+                {
+                    "name": "Refresh Kindle library",
+                    "priority": 4,
+                    "action": "bin/privatecloud.sh",
+                    "params": "refresh",
+                    "exitmenu": false,
+                    "refresh": true,
+                    "internal": "status PrivateCloud: refreshing library"
+                }
+            ]
+        }
+    ]
+}

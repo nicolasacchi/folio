@@ -1,0 +1,3 @@
+Selfhost smoke test
+
+Added locally after a sync to observe Kindle library ingestion.

@@ -1,0 +1,2 @@
+This fixture is intentionally left undownloaded before the catalog import test.
+It lets us verify the stock Library behavior for a private remote-only row.
