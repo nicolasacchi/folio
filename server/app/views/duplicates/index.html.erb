@@ -15,7 +15,7 @@
     No duplicate editions found.
   </div>
 <% else %>
-  <p class="muted small"><%= pluralize(@groups.size, "group") %></p>
+  <p class="muted small"><%= number_with_delimiter(@total_groups) %> groups</p>
 
   <% @groups.each do |group| %>
     <p class="section-label"><%= group.first.title %> — <%= group.first.display_author %></p>
@@ -37,5 +37,17 @@
               form: { data: { turbo_confirm: "Merge #{group.size - 1} other edition(s) into “#{book.title}”? Non-conflicting formats move over; emptied books are deleted." } } %>
       </div>
     <% end %>
+  <% end %>
+
+  <% if @last_page > 1 %>
+    <nav class="pager" aria-label="Pagination">
+      <% if @page > 1 %>
+        <%= link_to "← Prev", url_for(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
+      <% end %>
+      <span class="muted small">page <%= @page %> of <%= number_with_delimiter(@last_page) %></span>
+      <% if @page < @last_page %>
+        <%= link_to "Next →", url_for(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
+      <% end %>
+    </nav>
   <% end %>
 <% end %>

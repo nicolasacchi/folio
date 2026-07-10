@@ -4,16 +4,24 @@
 # title+author, different files. This page surfaces those groups and lets
 # them be merged onto one book.
 class DuplicatesController < ApplicationController
+  PER_PAGE = 40
+
   def index
     tuples = Book.pluck(:id, :title, :author)
     grouped = tuples.group_by { |_, title, author| [ normalize(title), normalize(author) ] }
                     .values
                     .select { |rows| rows.size > 1 }
+                    .sort_by { |rows| normalize(rows.first[1]) }
 
-    books = Book.includes(:book_files).where(id: grouped.flatten(1).map(&:first)).index_by(&:id)
-    @groups = grouped.map { |rows| rows.map { |id, _, _| books[id] }.compact.sort_by(&:created_at) }
-                     .select { |group| group.size > 1 }
-                     .sort_by { |group| normalize(group.first.title) }
+    @total_groups = grouped.size
+    @page = [ params[:page].to_i, 1 ].max
+    @last_page = [ (@total_groups / PER_PAGE.to_f).ceil, 1 ].max
+    @page = @last_page if @page > @last_page
+    page_groups = grouped[(@page - 1) * PER_PAGE, PER_PAGE] || []
+
+    books = Book.includes(:book_files).where(id: page_groups.flatten(1).map(&:first)).index_by(&:id)
+    @groups = page_groups.map { |rows| rows.map { |id, _, _| books[id] }.compact.sort_by(&:created_at) }
+                         .select { |group| group.size > 1 }
   end
 
   def merge
