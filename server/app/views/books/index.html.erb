@@ -1,0 +1,52 @@
+<% content_for :title, "Folio — library" %>
+
+<%= form_with url: root_path, method: :get, class: "search-bar", role: "search" do %>
+  <%= search_field_tag :q, @query, placeholder: "Search titles, authors, full text…",
+        autocomplete: "off", "aria-label": "Search the library" %>
+  <button class="btn" type="submit">Search</button>
+<% end %>
+
+<% if @query.present? %>
+  <p class="kicker">Results for “<%= @query %>”</p>
+
+  <% if @hits.empty? %>
+    <div class="empty-state">
+      <span class="fleuron">❧</span>
+      Nothing in the library matches that.<br>
+      <%= link_to "Back to all books", root_path %>
+    </div>
+  <% else %>
+    <% @hits.each do |hit| %>
+      <%= link_to book_path(hit.book), class: "search-hit" do %>
+        <%= render "cover", book: hit.book %>
+        <span class="grow">
+          <span class="search-hit-title"><%= hit.book.title %></span>
+          <span class="book-author"> — <%= hit.book.display_author %></span>
+          <% if hit.snippet.present? %>
+            <span class="search-hit-snippet"><%= sanitize(hit.snippet, tags: %w[mark]) %></span>
+          <% end %>
+        </span>
+      <% end %>
+    <% end %>
+  <% end %>
+<% else %>
+  <% if @books.empty? %>
+    <div class="empty-state">
+      <span class="fleuron">❧</span>
+      The shelves are empty.<br>
+      <%= link_to "Add your first book", new_upload_path %>
+    </div>
+  <% else %>
+    <div class="shelf">
+      <% @books.each do |book| %>
+        <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
+          <%= render "cover", book: book %>
+          <span class="shelf-caption">
+            <span class="t"><%= book.title %></span>
+            <span class="a"><%= book.display_author %></span>
+          </span>
+        <% end %>
+      <% end %>
+    </div>
+  <% end %>
+<% end %>

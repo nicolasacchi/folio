@@ -72,11 +72,24 @@ class Library::Ingest
 
   def build_book(format)
     meta = calibre_metadata
-    fallback_title, fallback_author = title_author_from_filename
+    title = meta[:title].presence
+    author = meta[:author].presence
+    fallback_title, fallback_author = split_stem(File.basename(@original_filename.to_s, ".*").strip)
+
+    # Formats without embedded metadata make ebook-meta echo the file stem
+    # back as the title — worthless for uploads (Rack tempfile names).
+    title = nil if title == @source_path.basename(".*").to_s
+
+    # For bare formats (txt, pdf without metadata) ebook-meta reports the
+    # filename stem as the title; split "Title -- Author" out of it.
+    if title && author.nil?
+      split_title, split_author = split_stem(title)
+      title, author = split_title, split_author if split_author
+    end
 
     Book.new(
-      title: meta[:title].presence || fallback_title,
-      author: meta[:author].presence || fallback_author,
+      title: title || fallback_title.presence || "Untitled",
+      author: author || fallback_author,
       series: meta[:series],
       series_index: meta[:series_index],
       language: meta[:language],
@@ -91,16 +104,15 @@ class Library::Ingest
     {}
   end
 
-  # "Title -- Author.ext" or "Title - Author.ext", as used by the existing
+  # "Title -- Author" or "Title - Author", as used by the existing
   # sideload convention.
-  def title_author_from_filename
-    stem = File.basename(@original_filename.to_s, ".*").strip
+  def split_stem(stem)
     [ " -- ", " - " ].each do |separator|
       next unless stem.include?(separator)
       title, author = stem.split(separator, 2)
-      return [ title.strip.presence || stem, author.strip ]
+      return [ title.strip.presence || stem, author.strip.presence ]
     end
-    [ stem.presence || "Untitled", nil ]
+    [ stem, nil ]
   end
 
   def extract_cover(book, file_path)

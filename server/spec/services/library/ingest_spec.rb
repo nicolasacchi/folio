@@ -56,6 +56,19 @@ RSpec.describe Library::Ingest do
       end
     end
 
+    it "ignores a Calibre title that merely echoes the source file name" do
+      tmp = Rails.root.join("tmp", "RackMultipart-xyz123.txt")
+      FileUtils.cp(source, tmp)
+      allow(Calibre).to receive(:metadata).and_return({ title: "RackMultipart-xyz123" })
+
+      result = described_class.call(tmp, original_filename: "Winter Logbooks -- Nora Keel.txt")
+
+      expect(result.book.title).to eq("Winter Logbooks")
+      expect(result.book.author).to eq("Nora Keel")
+    ensure
+      FileUtils.rm_f(tmp)
+    end
+
     it "rejects unsupported extensions" do
       expect { described_class.call(source, original_filename: "notes.xyz") }
         .to raise_error(Library::Ingest::UnsupportedFormat, /xyz/)

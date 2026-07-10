@@ -1,0 +1,34 @@
+<% content_for :title, "Devices — Folio" %>
+
+<p class="kicker">Reading room</p>
+<h1 class="page-title">Devices</h1>
+<p class="muted small">
+  Each Kindle running <code>kindled</code> authenticates with its own token
+  (<code>X-Api-Token</code>). Revoke a device by deleting it.
+</p>
+
+<% @devices.each do |device| %>
+  <div class="device-row">
+    <span class="grow">
+      <b><%= device.name %></b><br>
+      <span class="small muted">
+        <%= device.last_seen_at ? "seen #{time_ago_in_words(device.last_seen_at)} ago" : "never seen" %>
+      </span>
+    </span>
+    <span class="token-box" data-controller="clipboard" data-clipboard-text-value="<%= device.token %>">
+      <%= device.token %>
+      <button type="button" class="top-link" data-action="clipboard#copy" title="Copy token">copy</button>
+    </span>
+    <%= button_to "Remove", device_path(device), method: :delete, class: "btn btn--danger",
+          form: { data: { turbo_confirm: "Remove #{device.name}? Its token stops working immediately." } } %>
+  </div>
+<% end %>
+
+<p class="section-label">New device</p>
+<%= form_with model: @device, url: devices_path do |form| %>
+  <%= form.label :name, "Device name" %>
+  <%= form.text_field :name, placeholder: "kindle-paperwhite" %>
+  <div class="actions">
+    <%= form.submit "Create token", class: "btn btn--primary" %>
+  </div>
+<% end %>
