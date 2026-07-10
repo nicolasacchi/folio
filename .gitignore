@@ -20,3 +20,6 @@ privatecloud/__pycache__/
 .DS_Store
 *~
 *.swp
+
+# Rust build output.
+kindled/target/
