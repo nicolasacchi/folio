@@ -1,47 +1,75 @@
 # Kindle Private Cloud
 
-Tools and notes for building a privacy-preserving, self-hosted Kindle workflow
-on a jailbroken Kindle.
+A privacy-preserving, self-hosted library for a jailbroken Kindle.
 
-The current working design avoids pretending to be Amazon's backend. Instead,
-a private server publishes a manifest and book files, while a Kindle-side agent
-downloads supported files into `/mnt/us/documents/PrivateCloud`. The stock
-Kindle scanner/catalog then indexes those files so they appear in the existing
-Library UI.
+The design (validated by the capture research in `observer/`) avoids
+pretending to be Amazon's backend. A private server publishes a manifest
+and book files; a Kindle-side daemon downloads them into
+`/mnt/us/documents/PrivateCloud`, where the stock scanner/catalog indexes
+them into the normal Library UI. Reading progress syncs between Kindles
+through `.sdr` sidecar bundles on the private server, not WhisperSync.
 
-## Current Status
+## Components
 
-- Working self-hosted file/manifest server: `privatecloud/server.py`
-- Working Kindle-side shell agent: `privatecloud/kindle-agent.sh`
-- Working KUAL extension scaffold: `privatecloud/kual/`
-- Working local-library ingestion through Kindle scanner/catalog
-- Experimental catalog-row tooling for research only
-- Planned daemon: Rust for the long-lived Kindle process, shell retained for
-  deployment and simple KUAL entry points
+- **`server/` — Folio, the backend + web UI** (Rails 8, SQLite only).
+  Multi-format library with Calibre-powered conversion (auto-AZW3 so
+  everything is Kindle-deliverable), FTS5 full-text search with snippet
+  highlighting, and a phone-first, installable web UI. Exposes the
+  token-authenticated device API the daemon consumes.
+- **`kindled/` — the Kindle daemon** (Rust, single static ARMv7 binary,
+  ~650 KB). Mirrors the manifest with SHA-256 verification and atomic
+  writes, triggers the capture-proven LIPC ingestion hooks, and syncs
+  reading state latest-mtime-wins with local backups. Ships with a KUAL
+  extension.
+- **`observer/` — research tooling.** Read-only SSH capture scripts and
+  the findings that shaped the design (see its README).
+- **`privatecloud/` — first prototypes** (Python manifest server, shell
+  agent, catalog-row experiments). Superseded by `server/` + `kindled/`,
+  kept for reference; the raw remote-row injection path remains
+  intentionally unsupported (tapping such rows crashes KPP — see the
+  research notes).
 
-The intentionally unsupported path is raw fake remote-row injection. It can
-make private books visible/searchable before download, but tapping those rows
-currently crashes the Kindle UI path because the deeper KPP/KSDK download
-contract is not satisfied.
+## Quick start
 
-## Documentation
+```sh
+# Server (on your LAN box)
+cd server
+bundle install
+bin/rails db:prepare db:schema:load:queue db:seed   # prints login + device token
+bin/rails server -b 0.0.0.0
 
-- Main report: `docs/kindle-private-cloud-report.html`
-- Observation notes: `observer/README.md`
-- Private cloud prototype notes: `privatecloud/README.md`
+# Kindle daemon
+cd kindled
+./build-kindle.sh
+scp target/armv7-unknown-linux-musleabihf/release/kindled root@KINDLE:/mnt/us/privatecloud/
+ssh root@KINDLE /mnt/us/privatecloud/kindled init http://SERVER_IP:3000 DEVICE_TOKEN
+ssh root@KINDLE /mnt/us/privatecloud/kindled sync
+```
+
+Add books from your phone at `http://SERVER_IP:3000` (installable PWA).
+
+## Architecture rationale
+
+Rails for the backend, Rust on the device. All heavy ebook work
+(conversion, metadata, covers, text extraction) shells out to Calibre in
+either language, so the backend is orchestration + search + a good web
+UI — Rails 8 with SQLite covers that with zero external services. The
+Kindle has no runtime to spare, so the daemon is a dependency-free
+static Rust binary.
 
 ## Repository Hygiene
 
 Raw captures, temporary Kindle databases, copied certificates, and copied
-Kindle binaries are ignored. They may contain account/device information or
-proprietary Amazon material and should stay local unless they are manually
-redacted first.
+Kindle binaries are ignored. They may contain account/device information
+or proprietary Amazon material and should stay local unless they are
+manually redacted first.
 
 ## Safe Direction
 
-1. Keep private content as local/sideloaded files from the Kindle point of view.
-2. Use the private daemon for manifest sync, downloads, checksum verification,
+1. Keep private content as local/sideloaded files from the Kindle's point
+   of view.
+2. Use the daemon for manifest sync, downloads, checksum verification,
    scanner refresh, and progress sidecar sync.
 3. Block Amazon sync/upload paths only after mapping them precisely.
-4. Revisit KPP/KSDK hooks later only if exact stock remote tap-to-download is
-   still worth the firmware-specific risk.
+4. Revisit KPP/KSDK hooks later only if exact stock remote
+   tap-to-download is still worth the firmware-specific risk.
