@@ -17,8 +17,16 @@ Rails.application.routes.draw do
 
   get "series", to: "series#index", as: :series_index
 
+  get "reading", to: "reading#index", as: :reading
+
   get "duplicates", to: "duplicates#index"
   post "duplicates/merge", to: "duplicates#merge", as: :merge_duplicates
+
+  # Whole-catalog batch operations (buttons on the Catalog page).
+  post "catalog/convert_all", to: "catalog#convert_all", as: :catalog_convert_all
+  post "catalog/index_fulltext", to: "catalog#index_fulltext", as: :catalog_index_fulltext
+  post "catalog/merge_duplicates", to: "catalog#merge_duplicates", as: :catalog_merge_duplicates
+  post "catalog/cancel_queued", to: "catalog#cancel_queued", as: :catalog_cancel_queued
 
   # Folder scanning (Komga-style: reference books in place from SCAN_ROOTS).
   resource :library_scan, only: [ :show, :create ] do

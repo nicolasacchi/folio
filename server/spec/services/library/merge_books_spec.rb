@@ -16,7 +16,7 @@ RSpec.describe Library::MergeBooks do
     expect(moving.book_id).to eq(target.id)
   end
 
-  it "keeps the source book when a conflicting format cannot move" do
+  it "keeps the source book when a conflicting managed file cannot move" do
     target = create(:book, title: "Dune")
     source = create(:book, title: "Dune")
     create(:book_file, :on_disk, book: target, format: "epub")
@@ -26,6 +26,22 @@ RSpec.describe Library::MergeBooks do
 
     expect(Book.exists?(source.id)).to be(true)
     expect(source.reload.formats).to eq(%w[epub])
+  end
+
+  it "drops a conflicting external reference without touching the source file" do
+    target = create(:book, title: "Dune")
+    source = create(:book, title: "Dune")
+    create(:book_file, :on_disk, book: target, format: "epub")
+    external = Rails.root.join("tmp", "external-dune-dupe.epub")
+    File.write(external, "different epub bytes")
+    create(:book_file, book: source, format: "epub", path: external.to_s, source: "scan")
+
+    described_class.call(source, target)
+
+    expect(Book.exists?(source.id)).to be(false) # emptied and removed
+    expect(File).to exist(external)              # scan-root file untouched
+  ensure
+    FileUtils.rm_f(external)
   end
 
   it "re-points external files without touching the disk" do

@@ -68,6 +68,14 @@ module BookSearch
     end.join(" ")
   end
 
+  # Book ids whose index row already carries extracted text (used to size
+  # and target the fulltext backfill).
+  def book_ids_with_fulltext
+    connection.exec_query(
+      "SELECT book_id FROM book_search WHERE length(fulltext) > 0", "BookSearch Fulltext Ids"
+    ).rows.flatten
+  end
+
   def stored_fulltext(book_id)
     row = connection.exec_query(
       "SELECT fulltext FROM book_search WHERE book_id = ?", "BookSearch Fulltext", [ book_id ]

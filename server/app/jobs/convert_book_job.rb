@@ -26,7 +26,10 @@ class ConvertBookJob < ApplicationJob
     end
 
     conversion.mark_completed!
-    IndexBookJob.perform_later(book.id) unless had_fulltext
+    # Keep Calibre-heavy work serialized on this queue: at batch-convert
+    # scale, fulltext extraction on the 3-thread default queue would run
+    # three ebook-converts in parallel on top of conversions.
+    IndexBookJob.set(queue: :conversion).perform_later(book.id) unless had_fulltext
   rescue Calibre::Error, Library::Ingest::UnsupportedFormat => error
     conversion.mark_failed!(error.message)
   end

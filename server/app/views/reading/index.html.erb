@@ -1,0 +1,38 @@
+<% content_for :title, "Folio — reading" %>
+
+<p class="kicker">From the devices</p>
+<h1 class="page-title">Reading</h1>
+
+<% if @by_book.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No reading activity synced yet.<br>
+    <span class="small">This page fills up once a Kindle runs <code>kindled sync</code> —
+    every book it has opened shows here with its last-read time, and
+    positions/annotations where the sidecar format allows.</span>
+  </div>
+<% else %>
+  <p class="muted small"><%= pluralize(@by_book.size, "book") %> with reading activity</p>
+
+  <% @by_book.each do |book, states| %>
+    <div class="file-row">
+      <%= link_to book_path(book), class: "duplicate-cover" do %>
+        <%= render "books/cover", book: book %>
+      <% end %>
+      <span class="grow small">
+        <%= link_to book.title, book_path(book) %>
+        <span class="book-author"> — <%= book.display_author %></span><br>
+        <% states.each do |state| %>
+          <span class="muted mono small reading-device-line">
+            <%= state.device.name %> · read <%= time_ago_in_words(state.content_mtime) %> ago
+            <% if state.annotation_count.to_i.positive? %> · <%= pluralize(state.annotation_count, "bookmark") %><% end %>
+            <% if state.progress_percent %>
+              <span class="progress-track" role="img" aria-label="approximately <%= state.progress_percent.round %> percent read"><span class="progress-fill" style="width: <%= state.progress_percent.clamp(2, 100) %>%"></span></span>
+              ~<%= state.progress_percent.round %>%
+            <% elsif state.last_position %> · position <%= number_with_delimiter(state.last_position) %><% end %>
+          </span><br>
+        <% end %>
+      </span>
+    </div>
+  <% end %>
+<% end %>

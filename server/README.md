@@ -49,6 +49,18 @@ with `LIBRARY_ROOT`).
   highlighted snippets. The table is created idempotently (see
   `config/initializers/book_search.rb`) because schema.rb cannot
   represent virtual tables.
+- **Catalog operations** (`CatalogOperationJob`, buttons on the Catalog
+  page): batch-convert everything to a Kindle format, batch full-text
+  indexing, and merge-all-duplicates (each group folds into its best
+  edition — most formats, then cover, then oldest; a conflicting external
+  reference is dropped, ledger-remembered, and its file never touched).
+  Fan-out runs on the scan queue, per-book work serializes on the
+  conversion queue, and queued work is cancellable.
+- **Reading activity** (`/reading` + per-book section): populated from
+  the `.sdr` bundles devices sync. `Library::SidecarProgress` inventories
+  each bundle and best-effort parses MBP sidecars (last position,
+  bookmarks, approximate percent); the bundle mtime is always a reliable
+  last-read signal even when positions aren't parseable.
 - **Device API** (`/api/v1`, token per device): manifest with
   reading-state summaries, file download by format, `.sdr` bundle
   GET/PUT with latest-mtime-wins. Consumed by `../kindled`. Only

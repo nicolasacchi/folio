@@ -36,6 +36,8 @@
                 aria: { current: current_page?(root_path) ? "page" : nil } %>
           <%= link_to "Series", series_index_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(series_index_path) ? "page" : nil } %>
+          <%= link_to "Reading", reading_path, class: "top-link top-link--nav",
+                aria: { current: current_page?(reading_path) ? "page" : nil } %>
           <%= link_to "Upload", new_upload_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
           <%= link_to "Import", library_scan_path, class: "top-link top-link--nav",
@@ -59,8 +61,8 @@
       <nav class="bottom-nav" aria-label="Primary">
         <%= link_to "Library", root_path, aria: { current: current_page?(root_path) ? "page" : nil } %>
         <%= link_to "Series", series_index_path, aria: { current: current_page?(series_index_path) ? "page" : nil } %>
+        <%= link_to "Reading", reading_path, aria: { current: current_page?(reading_path) ? "page" : nil } %>
         <%= link_to "Upload", new_upload_path, aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
-        <%= link_to "Devices", devices_path, aria: { current: current_page?(devices_path) ? "page" : nil } %>
       </nav>
     <% end %>
   </body>
