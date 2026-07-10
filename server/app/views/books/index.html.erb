@@ -30,11 +30,50 @@
     <% end %>
   <% end %>
 <% else %>
+  <div class="toolbar">
+    <%= form_with url: root_path, method: :get, class: "toolbar-form" do %>
+      <%= hidden_field_tag :author, @author if @author %>
+      <%= hidden_field_tag :series, @series if @series %>
+      <%= select_tag :sort,
+            options_for_select([ [ "Recently added", "recent" ], [ "By title", "title" ], [ "By author", "author" ] ], @sort),
+            onchange: "this.form.requestSubmit()", "aria-label": "Sort order" %>
+      <%= select_tag :format,
+            options_for_select([ [ "All formats", "" ] ] + BookFile.distinct.pluck(:format).sort.map { |f| [ f.upcase, f ] }, @format),
+            onchange: "this.form.requestSubmit()", "aria-label": "Filter by format" %>
+      <noscript><button class="btn btn--quiet" type="submit">Apply</button></noscript>
+    <% end %>
+    <% if @stats %>
+      <span class="muted small toolbar-stats">
+        <%= number_with_delimiter(@stats[:books]) %> books ·
+        <%= number_with_delimiter(@stats[:files]) %> files ·
+        <%= format_size(@stats[:bytes]) %>
+      </span>
+    <% end %>
+  </div>
+
+  <% active_filters = { author: @author, series: @series, format: @format }.compact %>
+  <% if active_filters.any? %>
+    <p class="chips">
+      <% active_filters.each do |key, value| %>
+        <%= link_to url_for(request.query_parameters.except(key.to_s, "page")), class: "stamp stamp--ready chip",
+              title: "Remove #{key} filter" do %>
+          <%= key %>: <%= value %> ✕
+        <% end %>
+      <% end %>
+    </p>
+  <% end %>
+
   <% if @books.empty? %>
     <div class="empty-state">
       <span class="fleuron">❧</span>
-      The shelves are empty.<br>
-      <%= link_to "Add your first book", new_upload_path %>
+      <% if active_filters.any? %>
+        No books match these filters.<br>
+        <%= link_to "Clear filters", root_path %>
+      <% else %>
+        The shelves are empty.<br>
+        <%= link_to "Add your first book", new_upload_path %>
+        or <%= link_to "scan the library folder", library_scan_path %>
+      <% end %>
     </div>
   <% else %>
     <div class="shelf">
@@ -48,5 +87,17 @@
         <% end %>
       <% end %>
     </div>
+
+    <% if @last_page > 1 %>
+      <nav class="pager" aria-label="Pagination">
+        <% if @page > 1 %>
+          <%= link_to "← Prev", url_for(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
+        <% end %>
+        <span class="muted small">page <%= @page %> of <%= number_with_delimiter(@last_page) %></span>
+        <% if @page < @last_page %>
+          <%= link_to "Next →", url_for(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
+        <% end %>
+      </nav>
+    <% end %>
   <% end %>
 <% end %>

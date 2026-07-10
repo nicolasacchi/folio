@@ -1,7 +1,7 @@
 class Book < ApplicationRecord
   # Formats the stock Kindle reader opens directly, in delivery preference
   # order. EPUB is not on this list on purpose: firmware 5.x cannot open it.
-  KINDLE_FORMATS = %w[azw3 kfx azw mobi txt pdf].freeze
+  KINDLE_FORMATS = %w[azw3 kfx azw mobi prc txt pdf].freeze
 
   has_many :book_files, dependent: :destroy
   has_many :conversions, dependent: :destroy
@@ -30,7 +30,7 @@ class Book < ApplicationRecord
   end
 
   def kindle_file
-    by_format = book_files.index_by(&:format)
+    by_format = book_files.select(&:available?).index_by(&:format)
     KINDLE_FORMATS.each do |format|
       file = by_format[format]
       return file if file

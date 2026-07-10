@@ -34,8 +34,14 @@
         <nav>
           <%= link_to "Library", root_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(root_path) ? "page" : nil } %>
+          <%= link_to "Series", series_index_path, class: "top-link top-link--nav",
+                aria: { current: current_page?(series_index_path) ? "page" : nil } %>
           <%= link_to "Upload", new_upload_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
+          <%= link_to "Import", library_scan_path, class: "top-link top-link--nav",
+                aria: { current: current_page?(library_scan_path) ? "page" : nil } %>
+          <%= link_to "Duplicates", duplicates_path, class: "top-link top-link--nav",
+                aria: { current: current_page?(duplicates_path) ? "page" : nil } %>
           <%= link_to "Devices", devices_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(devices_path) ? "page" : nil } %>
           <%= button_to "Sign out", session_path, method: :delete, class: "top-link" %>
@@ -52,6 +58,7 @@
     <% if authenticated? %>
       <nav class="bottom-nav" aria-label="Primary">
         <%= link_to "Library", root_path, aria: { current: current_page?(root_path) ? "page" : nil } %>
+        <%= link_to "Series", series_index_path, aria: { current: current_page?(series_index_path) ? "page" : nil } %>
         <%= link_to "Upload", new_upload_path, aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
         <%= link_to "Devices", devices_path, aria: { current: current_page?(devices_path) ? "page" : nil } %>
       </nav>
