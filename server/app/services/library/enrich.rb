@@ -37,7 +37,10 @@ module Library::Enrich
   def apply(book, data, provider)
     updates = {}
     updates[:description] = data[:description].to_s.strip.byteslice(0, 5000).scrub("") if book.description.blank? && data[:description].present?
-    updates[:published_year] = data[:published_year] if book.published_year.blank? && data[:published_year].present?
+    # Catalog records sometimes carry junk dates (Open Library will happily
+    # report year 101); only accept plausible publication years.
+    year = data[:published_year].to_i
+    updates[:published_year] = year if book.published_year.blank? && year.between?(1000, Date.current.year + 1)
     book.update!(**updates) if updates.any?
     book.update_columns(enriched_at: Time.current, enrichment_source: provider.key)
 
