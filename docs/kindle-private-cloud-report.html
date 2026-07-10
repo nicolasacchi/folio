@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kindle Private Cloud Notes</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #202124;
+      --muted: #5f6368;
+      --line: #d8dadd;
+      --soft: #f6f7f8;
+      --accent: #0b57d0;
+      --warn: #9b4d00;
+      --bad: #b3261e;
+      --good: #137333;
+    }
+    body {
+      margin: 0;
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: white;
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0;
+    }
+    h1 {
+      font-size: 34px;
+      margin-bottom: 8px;
+    }
+    h2 {
+      font-size: 24px;
+      margin-top: 34px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+    }
+    h3 {
+      font-size: 18px;
+      margin-top: 22px;
+    }
+    p {
+      margin: 10px 0;
+    }
+    ul, ol {
+      margin: 10px 0 10px 24px;
+      padding: 0;
+    }
+    li {
+      margin: 5px 0;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: var(--soft);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    pre {
+      overflow: auto;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      padding: 12px;
+      border-radius: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+    }
+    th {
+      background: var(--soft);
+    }
+    .summary {
+      color: var(--muted);
+      font-size: 18px;
+      margin-bottom: 24px;
+    }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: #f3f7ff;
+      padding: 12px 14px;
+      margin: 16px 0;
+    }
+    .warning {
+      border-left-color: var(--warn);
+      background: #fff7ed;
+    }
+    .danger {
+      border-left-color: var(--bad);
+      background: #fff1f1;
+    }
+    .ok {
+      border-left-color: var(--good);
+      background: #eef8f0;
+    }
+    .muted {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kindle Private Cloud Notes</h1>
+  <p class="summary">Status report for replacing Amazon-side Kindle behavior with a self-hosted, privacy-preserving workflow on a jailbroken Kindle.</p>
+
+  <div class="callout ok">
+    <strong>Short answer:</strong> the safe working path is available now: a self-hosted server plus a Kindle-side agent downloads books into <code>/mnt/us/documents/PrivateCloud</code>, then the normal Kindle Library indexes and opens them. Full stock “remote book appears in Library, searchable, tap to download” is not safely working yet.
+  </div>
+
+  <h2>Current State</h2>
+  <table>
+    <tr>
+      <th>Goal</th>
+      <th>Status</th>
+      <th>Notes</th>
+    </tr>
+    <tr>
+      <td>Self-hosted server publishes books</td>
+      <td>Working prototype</td>
+      <td><code>privatecloud/server.py</code> serves <code>/manifest.tsv</code>, <code>/manifest.json</code>, and book files.</td>
+    </tr>
+    <tr>
+      <td>Kindle downloads from private server</td>
+      <td>Working</td>
+      <td><code>/mnt/us/privatecloud/kindle-agent.sh</code> can sync, list, download, verify SHA-256, and refresh the Kindle Library.</td>
+    </tr>
+    <tr>
+      <td>KUAL UI entry</td>
+      <td>Working</td>
+      <td>Installed at <code>/mnt/us/extensions/privatecloud</code> with actions for sync, download-next, list document, and library refresh.</td>
+    </tr>
+    <tr>
+      <td>Downloaded private books appear in stock Kindle Library</td>
+      <td>Working</td>
+      <td>Files downloaded into <code>/mnt/us/documents/PrivateCloud</code> get normal <code>.sdr</code> sidecars and catalog rows.</td>
+    </tr>
+    <tr>
+      <td>Stock Library search for downloaded private books</td>
+      <td>Working after download</td>
+      <td>Once local, the Kindle scanner/catalog indexes them like normal sideloaded content.</td>
+    </tr>
+    <tr>
+      <td>Stock Library shows all remote private books before download</td>
+      <td>Partially works, unsafe</td>
+      <td>Injected remote catalog rows appear/search, but tapping them triggers fatal Kindle app dialogs and white-screen states.</td>
+    </tr>
+    <tr>
+      <td>Stock tap-to-download for fake remote private rows</td>
+      <td>Not working</td>
+      <td>Even adding matching <code>ksdk.asset.db</code> rows did not satisfy KPP’s internal download/action contract.</td>
+    </tr>
+  </table>
+
+  <h2>What We Learned</h2>
+  <h3>Normal local content path</h3>
+  <p>When a supported file is copied or downloaded into <code>/mnt/us/documents</code>, Kindle services do the expected local ingestion:</p>
+  <ol>
+    <li><code>scanner</code> recognizes the file.</li>
+    <li><code>ccat</code> updates <code>/var/local/cc.db</code>.</li>
+    <li>KPP receives catalog update events.</li>
+    <li>The Library displays the local item.</li>
+    <li>A normal sidecar directory appears next to the book.</li>
+  </ol>
+  <p>This is the stable path the current prototype uses.</p>
+
+  <h3>Stock Amazon cloud/download path</h3>
+  <p>For Amazon-style downloads, the stock UI does more than look at <code>cc.db</code>. A real download involves KPP, CVM/framework services, <code>archive</code>, <code>todo</code>, <code>tmd</code>, content manifests, and <code>KindleContentDownloadManagerApplication</code>.</p>
+  <p>The captured flow for a real Amazon/cloud item showed manifest downloads, staged files under <code>/mnt/us/documents/Downloads/Items01</code>, and post-processing before the reader opens the book.</p>
+
+  <h3>Fake remote rows</h3>
+  <p>We tested two fake remote-row approaches:</p>
+  <ol>
+    <li>Add only a private archived row to <code>cc.db Entries</code>.</li>
+    <li>Add both the <code>cc.db</code> row and a matching <code>ksdk.asset.db Nodes</code> row.</li>
+  </ol>
+  <p>Both approaches made the private item visible/searchable in the stock Library, but tapping the item still failed.</p>
+  <div class="callout danger">
+    <strong>Important:</strong> raw fake remote rows are not a safe UX right now. They can trigger Kindle’s fatal application dialog and leave the display on a blank/white surface until UI services are restarted.
+  </div>
+
+  <h2>Why Remote Search Is Not “Available” Yet</h2>
+  <p>There are two different kinds of “available”:</p>
+  <table>
+    <tr>
+      <th>Behavior</th>
+      <th>Status</th>
+    </tr>
+    <tr>
+      <td>Downloaded books searchable in stock Library</td>
+      <td>Yes. This works through the local scanner/catalog path.</td>
+    </tr>
+    <tr>
+      <td>Undownloaded private books searchable as stock cloud items</td>
+      <td>Only experimentally. They can appear, but tapping them is unsafe.</td>
+    </tr>
+    <tr>
+      <td>Undownloaded private books tap-to-download through stock Amazon UI</td>
+      <td>No. The missing KPP/CMM/download-manager contract is not solved.</td>
+    </tr>
+  </table>
+
+  <h2>Current Files</h2>
+  <h3>Host-side</h3>
+  <ul>
+    <li><code>privatecloud/server.py</code> - simple self-hosted manifest/file server.</li>
+    <li><code>privatecloud/catalog_import.py</code> - experimental <code>cc.db</code> remote-row builder.</li>
+    <li><code>privatecloud/ksdk_asset_import.py</code> - experimental <code>ksdk.asset.db</code> row builder.</li>
+    <li><code>privatecloud/deploy-catalog-test.sh</code> - guarded raw catalog experiment.</li>
+    <li><code>privatecloud/deploy-ksdk-catalog-test.sh</code> - guarded raw catalog+KSDK experiment.</li>
+    <li><code>privatecloud/restore-catalog-test.sh</code> and <code>privatecloud/restore-ksdk-catalog-test.sh</code> - restore helpers.</li>
+  </ul>
+
+  <h3>Kindle-side</h3>
+  <ul>
+    <li><code>/mnt/us/privatecloud/kindle-agent.sh</code> - private sync/list/download agent.</li>
+    <li><code>/mnt/us/extensions/privatecloud</code> - KUAL extension.</li>
+    <li><code>/mnt/us/documents/PrivateCloud</code> - downloaded private books and generated private library list.</li>
+  </ul>
+
+  <h2>Proxy / Intercepting Amazon Traffic</h2>
+  <p>The proxy idea is useful for learning, but it is not the shortest path to a full replacement.</p>
+
+  <h3>Certificate checks performed</h3>
+  <p>No certificate changes were made. Read-only checks found these trust stores:</p>
+  <ul>
+    <li><code>/etc/ssl/certs/ca-certificates-prod.crt</code> and <code>/etc/ssl/certs/ca-certificates.crt</code> for OpenSSL-style clients.</li>
+    <li><code>/usr/java/lib/security/cacerts</code> for Java/CVM clients.</li>
+    <li><code>/var/local/system/certstore.db</code>, which is not really a SQLite DB here; it is a small text marker for installed certificates.</li>
+  </ul>
+  <p>The OpenSSL bundle is a plain certificate bundle, but it lives on the read-only root filesystem. The Java store is a Java KeyStore. The usual passwords checked locally (<code>changeit</code>, <code>amazon</code>, <code>kindle</code>, <code>password</code>) did not verify it. Listing without a password only gives an integrity warning, so modifying it safely would need more care.</p>
+  <div class="callout warning">
+    <strong>Practical implication:</strong> adding a proxy CA is probably possible, but should be done as a reversible overlay or bind-mount, not by permanently rewriting root filesystem files. It still may not help if KPP/framework code pins certificates or uses a separate trust path.
+  </div>
+
+  <h3>What a proxy can help with</h3>
+  <ul>
+    <li>Observe which hostnames the Kindle contacts during Sync, Library refresh, and download.</li>
+    <li>Measure what actions cause network traffic.</li>
+    <li>Block Amazon endpoints to prevent reading-progress/library uploads.</li>
+    <li>Identify which services need local replacements.</li>
+  </ul>
+
+  <h3>Where a proxy likely fails</h3>
+  <ul>
+    <li>Most traffic is HTTPS, so a plain proxy only sees destination hostnames, not request bodies.</li>
+    <li>Installing a custom CA for TLS inspection may not be enough if apps pin certificates or use custom trust stores.</li>
+    <li>Even if TLS interception works, requests may contain auth tokens and personal account identifiers. Those should not be logged broadly or stored casually.</li>
+    <li>Amazon content download can involve entitlement checks, signed URLs, manifests, staged files, and DRM. Recreating that exactly is brittle and may cross legal/terms boundaries depending on what is emulated.</li>
+    <li>Replacing Amazon endpoints can break registration, sync, Store, archive metadata, thumbnails, and reader services in non-obvious ways.</li>
+  </ul>
+
+  <h3>Safe proxy scope</h3>
+  <p>A defensible proxy setup for this project should stay inside these boundaries:</p>
+  <ol>
+    <li>Only route your own Kindle through it.</li>
+    <li>Start with DNS and connection logging, not TLS body capture.</li>
+    <li>Redact or avoid storing auth headers, cookies, tokens, device serials, and account IDs.</li>
+    <li>Use blocking and allow/deny lists to stop privacy-sensitive uploads.</li>
+    <li>Do not attempt to bypass DRM or impersonate Amazon entitlements for Amazon-purchased books.</li>
+    <li>Use the proxy to map behavior, then implement private flows through our own server and Kindle agent.</li>
+  </ol>
+
+  <h3>Recommended proxy experiment</h3>
+  <p>The first useful proxy experiment is not full MITM. It is a local network observer:</p>
+  <ol>
+    <li>Put the Kindle on a Wi-Fi network whose DNS points to your host.</li>
+    <li>Run a DNS logger such as <code>dnsmasq</code> or a small Python DNS logger.</li>
+    <li>Optionally route through a transparent firewall/proxy and log destination IP/port/SNI if available.</li>
+    <li>Perform one action at a time: manual Sync, open book, change progress, download book.</li>
+    <li>Compare network activity with the on-device log captures already collected.</li>
+  </ol>
+  <p>This tells us what to block for privacy and where Amazon dependencies live, without trying to clone the entire Amazon backend first.</p>
+
+  <h2>Possible Implementation Options</h2>
+  <table>
+    <tr>
+      <th>Option</th>
+      <th>Pros</th>
+      <th>Cons</th>
+      <th>Recommendation</th>
+    </tr>
+    <tr>
+      <td>KUAL + private agent</td>
+      <td>Already works, reversible, does not fight KPP internals.</td>
+      <td>Not the exact stock cloud UX; user opens KUAL action to download.</td>
+      <td>Use this as the base.</td>
+    </tr>
+    <tr>
+      <td>Generated local “PrivateCloud Library” document</td>
+      <td>Searchable/readable in stock Library; simple and safe.</td>
+      <td>Not interactive; IDs must be used through KUAL/agent or “download next”.</td>
+      <td>Useful index and smoke-test mechanism.</td>
+    </tr>
+    <tr>
+      <td>KUAL dynamic menu per book</td>
+      <td>Could show undownloaded private books as menu actions.</td>
+      <td>KUAL menus may get unwieldy for large libraries; search is not stock Library search.</td>
+      <td>Good next step for usability.</td>
+    </tr>
+    <tr>
+      <td>KOReader OPDS/private library</td>
+      <td>KOReader already supports network library workflows better than stock Kindle.</td>
+      <td>Not stock Kindle reader UI.</td>
+      <td>Good parallel path if stock UI is not mandatory.</td>
+    </tr>
+    <tr>
+      <td>Raw stock remote-row injection</td>
+      <td>Rows can appear/search in stock Library.</td>
+      <td>Tapping causes fatal dialog/white screen; deeper missing contract unknown.</td>
+      <td>Avoid for now.</td>
+    </tr>
+    <tr>
+      <td>Patch/hook KPP/KSDK action path</td>
+      <td>Could eventually provide true stock tap-to-download UX.</td>
+      <td>Hermes bytecode, native services, brittle across firmware, high brick/UI risk.</td>
+      <td>Research only after the agent UX is solid.</td>
+    </tr>
+    <tr>
+      <td>Proxy and recreate Amazon backend</td>
+      <td>Can reveal endpoint behavior and support privacy blocking.</td>
+      <td>TLS, tokens, certificate pinning, signed URLs, DRM, and account coupling make full recreation hard.</td>
+      <td>Use for observation/blocking, not as the primary replacement.</td>
+    </tr>
+  </table>
+
+  <h2>Local Daemon Architecture</h2>
+  <p>The best next design is a Kindle-side daemon controlled by the self-hosted server and by KUAL. It should avoid raw fake cloud rows and treat the stock Kindle Library as a local-file reader/catalog, not as the remote-download engine.</p>
+
+  <h3>Daemon responsibilities</h3>
+  <ol>
+    <li>Poll or receive a private manifest from the self-hosted server.</li>
+    <li>Maintain local state: available, downloading, downloaded, failed, deleted, read-state-pending.</li>
+    <li>Download selected books into <code>/mnt/us/documents/PrivateCloud</code>.</li>
+    <li>Call <code>com.lab126.scanner reScanFile</code> and <code>com.lab126.ccat triggerUpdate</code> after each download.</li>
+    <li>Generate a readable/searchable local index document, for example <code>PrivateCloud Library.txt</code>.</li>
+    <li>Watch sidecar folders under <code>/mnt/us/documents/PrivateCloud/*.sdr</code> for progress/annotation changes.</li>
+    <li>Sync those private sidecar/progress changes to the self-hosted server.</li>
+    <li>Optionally enforce privacy policy: block or pause selected Amazon sync/upload paths while private books are active.</li>
+  </ol>
+
+  <h3>How it resolves the sync issue</h3>
+  <p>The daemon makes sync explicit and private:</p>
+  <ul>
+    <li>Book availability comes from the self-hosted manifest, not Amazon archive sync.</li>
+    <li>Book download comes from the private server, not Kindle's Amazon content manager.</li>
+    <li>Library ingestion is local Kindle scanner/catalog behavior, which already works.</li>
+    <li>Progress sync is copied from local sidecar files to the private server.</li>
+    <li>Amazon upload paths can be blocked or disabled separately after we map them precisely.</li>
+  </ul>
+
+  <h3>Daemon control model</h3>
+  <table>
+    <tr>
+      <th>Controller</th>
+      <th>What it does</th>
+    </tr>
+    <tr>
+      <td>KUAL</td>
+      <td>User-facing actions: sync manifest, download next, download selected item, refresh Library, show status.</td>
+    </tr>
+    <tr>
+      <td>Self-hosted server</td>
+      <td>Provides manifest, book files, progress API, delete/archive decisions, and possibly remote commands.</td>
+    </tr>
+    <tr>
+      <td>Kindle daemon</td>
+      <td>Executes local operations safely: download, checksum, scanner refresh, sidecar sync, policy enforcement.</td>
+    </tr>
+    <tr>
+      <td>Stock Kindle Library</td>
+      <td>Only sees normal local files and generated local index documents.</td>
+    </tr>
+  </table>
+
+  <h3>Daemon implementation language</h3>
+  <p>The current shell agent is the right prototype, but the long-lived Kindle daemon should be written in Rust.</p>
+  <table>
+    <tr>
+      <th>Language</th>
+      <th>Fit</th>
+      <th>Reason</th>
+    </tr>
+    <tr>
+      <td>Shell</td>
+      <td>Prototype and KUAL glue</td>
+      <td>Already works for sync, download, checksums, and LIPC calls. It becomes fragile for a persistent daemon with retries, state, and concurrent file changes.</td>
+    </tr>
+    <tr>
+      <td>Rust</td>
+      <td>Recommended daemon</td>
+      <td>Can ship as a small ARMv7 binary, has strong error handling, good file/network primitives, and does not require a runtime on the Kindle.</td>
+    </tr>
+    <tr>
+      <td>Go</td>
+      <td>Possible but heavier</td>
+      <td>Simple deployment, but larger binaries and runtime behavior are less attractive on this device.</td>
+    </tr>
+    <tr>
+      <td>Python/Node</td>
+      <td>Not recommended on Kindle</td>
+      <td>Good on the server side, but relying on those runtimes on the Kindle adds avoidable footprint and dependency risk.</td>
+    </tr>
+    <tr>
+      <td>C</td>
+      <td>Possible but slower to make safe</td>
+      <td>Small binaries, but more manual memory/error handling than needed for this project.</td>
+    </tr>
+  </table>
+  <p>The practical split is: Rust for the daemon, Python for the self-hosted server prototype, shell for install scripts, KUAL entry points, and recovery commands.</p>
+  <p>The Rust daemon should start small: manifest polling, local state file, book download, checksum verification, atomic publish into <code>/mnt/us/documents/PrivateCloud</code>, scanner/catalog refresh, sidecar polling, sidecar upload/download, and optional network block-rule management.</p>
+
+  <h3>What not to do</h3>
+  <ul>
+    <li>Do not inject tappable fake remote rows as the normal UX.</li>
+    <li>Do not blindly disable all <code>todo</code> processing; it may break unrelated device behavior.</li>
+    <li>Do not depend on TLS MITM as the main replacement strategy.</li>
+    <li>Do not log auth tokens or full Amazon request bodies unless there is a narrow, temporary, redacted debugging reason.</li>
+  </ul>
+
+  <h2>Progress And Reading State</h2>
+  <p>Read-only checks found the relevant pieces:</p>
+  <ul>
+    <li>Private/local books create sidecar folders such as <code>remote-only-test.sdr</code>.</li>
+    <li>Progress-related files include <code>.mbp1</code> and sometimes <code>.mbs</code>.</li>
+    <li><code>/var/local/wsync.db</code> has <code>DataSetProperties</code>, <code>SyncRecords</code>, and <code>DirectoryInfo</code>.</li>
+    <li>Manual Sync triggers <code>BookReadStates</code>, <code>legacy.UPLOAD.MESG</code>, <code>legacy.UPLOAD.SNAP</code>, and <code>whispersync.upload</code>.</li>
+    <li>For local private documents, logs repeatedly said <code>ContentReadStateWhispersyncController: Not putting record to whispersync db</code>, which is encouraging, but manual Sync still schedules generic uploads.</li>
+  </ul>
+
+  <h3>Recommended progress plan</h3>
+  <ol>
+    <li>For private books, treat <code>.sdr</code> sidecar files as the source of truth.</li>
+    <li>Have the daemon detect sidecar changes with polling first; inotify can come later if available/reliable.</li>
+    <li>Upload sidecar deltas or whole small sidecar files to the private server.</li>
+    <li>On another Kindle, download the book first, then restore the matching sidecar before opening.</li>
+    <li>Use network/proxy blocking to prevent Amazon reading-state uploads if needed, but avoid disabling broad services until the exact effect is tested.</li>
+  </ol>
+
+  <h3>Cross-device private progress sync</h3>
+  <p>To sync position from one jailbroken Kindle to another, the daemon should copy private sidecar state through the self-hosted server instead of using Amazon WhisperSync.</p>
+  <ol>
+    <li>The server manifest gives every private book a stable <code>book_id</code>.</li>
+    <li>Kindle A downloads the book into <code>/mnt/us/documents/PrivateCloud</code> and reads normally.</li>
+    <li>The reader writes progress/annotation state into <code>/mnt/us/documents/PrivateCloud/&lt;book&gt;.sdr/</code>.</li>
+    <li>The daemon detects changed sidecar files, initially by polling mtimes and sizes.</li>
+    <li>The daemon uploads a compact sidecar bundle to the private server under <code>book_id</code> plus a device/profile id.</li>
+    <li>Kindle B downloads the same book, lets the reader/scanner create the normal local entry, then restores the latest sidecar bundle before opening the book.</li>
+    <li>The daemon keeps a local backup before overwriting any sidecar, so bad sync can be rolled back.</li>
+  </ol>
+  <p>The first conflict rule can be simple: latest modified sidecar wins. A later version should keep per-device versions on the server and expose conflicts when two Kindles read the same book offline.</p>
+  <p>This design preserves the stock reading interface while moving the private read-state protocol entirely to the self-hosted server.</p>
+
+  <h3>Amazon sync blocking options</h3>
+  <table>
+    <tr>
+      <th>Option</th>
+      <th>Risk</th>
+      <th>Use</th>
+    </tr>
+    <tr>
+      <td>Airplane mode while reading private books</td>
+      <td>Low</td>
+      <td>Immediate privacy baseline, but no network downloads while enabled.</td>
+    </tr>
+    <tr>
+      <td>DNS/firewall block for sync/upload endpoints</td>
+      <td>Medium</td>
+      <td>Good target after DNS/SNI observation maps endpoints.</td>
+    </tr>
+    <tr>
+      <td><code>todo disableToDo</code></td>
+      <td>High</td>
+      <td>Exists as a LIPC control, but too broad until tested in isolation.</td>
+    </tr>
+    <tr>
+      <td>Patch framework/KPP Whispersync code</td>
+      <td>High</td>
+      <td>Possible research path, not needed for first daemon implementation.</td>
+    </tr>
+  </table>
+
+  <h2>Where Amazon Calls Can Be Blocked Or Replaced</h2>
+  <p>Yes: blocking can happen at multiple layers. The right design is usually layered, not a single global block. The daemon should replace the user-facing behavior, while lower layers prevent privacy leaks.</p>
+
+  <table>
+    <tr>
+      <th>Layer</th>
+      <th>Examples on this Kindle</th>
+      <th>What it can do</th>
+      <th>Risk</th>
+    </tr>
+    <tr>
+      <td>Network routing/firewall</td>
+      <td><code>iptables</code>, default route, DNS server in <code>/etc/resolv.conf</code></td>
+      <td>Block or redirect outbound Amazon connections. Good for privacy enforcement and endpoint discovery.</td>
+      <td>Medium. Can break registration, Store, archive sync, covers, time, weblabs, and metrics if too broad.</td>
+    </tr>
+    <tr>
+      <td>DNS</td>
+      <td>Kindle currently uses LAN DNS <code>192.168.1.1</code></td>
+      <td>Resolve selected Amazon hostnames to a local server or NXDOMAIN. Good for coarse blocking.</td>
+      <td>Medium. Hostnames may be shared across multiple services, and HTTPS cert validation still applies.</td>
+    </tr>
+    <tr>
+      <td>TLS trust/certs</td>
+      <td><code>/etc/ssl/certs/ca-certificates-prod.crt</code>, <code>/usr/java/lib/security/cacerts</code></td>
+      <td>Can allow a local TLS proxy to inspect/serve traffic if the client trusts the CA and does not pin certs.</td>
+      <td>High. Java store password is not known yet, root FS is read-only, and certificate pinning may still block it.</td>
+    </tr>
+    <tr>
+      <td>LIPC/DBus service controls</td>
+      <td><code>com.lab126.todo</code>, <code>com.lab126.archive</code>, <code>com.amazon.kindlecontentdownloadmanager</code></td>
+      <td>Pause/schedule some sync tasks or invoke local refresh/download operations.</td>
+      <td>Medium to high. Some controls are broad; disabling <code>todo</code> can affect unrelated jobs.</td>
+    </tr>
+    <tr>
+      <td>ToDo topic handling</td>
+      <td><code>legacy.UPLOAD.MESG</code>, <code>legacy.UPLOAD.SNAP</code>, <code>whispersync.upload</code>, <code>archive.sync</code></td>
+      <td>Most precise conceptual place to block upload/sync work before network transfer.</td>
+      <td>High until mapped. Handlers are registered through Amazon framework/KAF registries and may be brittle to patch.</td>
+    </tr>
+    <tr>
+      <td>Registry/service routing</td>
+      <td><code>/var/local/reg/*.db</code>, <code>/var/local/root/sysreg.db</code>, prereg DBs</td>
+      <td>In theory, rebind handlers or app associations to local replacements.</td>
+      <td>High. Wrong entries can break app launch and framework behavior.</td>
+    </tr>
+    <tr>
+      <td>Catalog/local file layer</td>
+      <td><code>/mnt/us/documents/PrivateCloud</code>, <code>scanner</code>, <code>ccat</code>, <code>cc.db</code></td>
+      <td>Safe replacement path: private daemon downloads locally, then stock Library sees local files.</td>
+      <td>Low. This is the path already proven to work.</td>
+    </tr>
+  </table>
+
+  <h3>Recommended layered blocking model</h3>
+  <ol>
+    <li><strong>Replacement layer:</strong> the local daemon handles private library sync, downloads, and progress upload to your server.</li>
+    <li><strong>Catalog layer:</strong> Kindle only receives normal local files and local generated index documents. No fake tappable remote rows.</li>
+    <li><strong>Progress layer:</strong> daemon watches <code>.sdr</code> sidecars and syncs them privately.</li>
+    <li><strong>Network layer:</strong> DNS/firewall blocks known Amazon upload/sync endpoints once mapped.</li>
+    <li><strong>Service layer:</strong> only if needed, selectively pause or suppress <code>todo</code> topics related to upload/sync. Avoid broad permanent <code>disableToDo</code> unless tested.</li>
+  </ol>
+
+  <h3>Why not only redirect Amazon calls?</h3>
+  <p>Redirecting Amazon calls to our server sounds clean, but the Kindle expects Amazon-specific authentication, endpoint schemas, signed URLs, service-specific response formats, and sometimes content-manager side effects. A custom server would have to mimic a large moving target. A local daemon is simpler: it owns the private protocol and uses stable local Kindle mechanisms to refresh the Library.</p>
+
+  <h3>Concrete next checks before blocking</h3>
+  <ol>
+    <li>Run DNS/SNI observation during manual Sync and private reading sessions.</li>
+    <li>Classify endpoints into: required for device basics, store/archive, progress upload, metrics, covers/thumbnails.</li>
+    <li>Test blocking one category at a time with quick rollback.</li>
+    <li>Confirm whether local private documents really avoid <code>wsync.db</code> records, since logs showed <code>Not putting record to whispersync db</code> for local content.</li>
+    <li>Only then add persistent block rules or daemon-managed temporary block rules.</li>
+  </ol>
+
+  <h2>Recommended Next Plan</h2>
+  <ol>
+    <li>Keep the Kindle clean of fake remote rows.</li>
+    <li>Turn the current shell agent into a lightweight Rust daemon with a local state file.</li>
+    <li>Improve the KUAL extension so it lists all undownloaded books and downloads by selected title, not just “next”.</li>
+    <li>Regenerate the local <code>PrivateCloud Library.txt</code> index after every sync/download.</li>
+    <li>Add sidecar/progress sync to the daemon for <code>/mnt/us/documents/PrivateCloud/*.sdr</code>.</li>
+    <li>Run a DNS/SNI observation proxy to map Amazon traffic without capturing tokens.</li>
+    <li>Add optional block rules for Amazon sync/upload endpoints once identified, especially progress/WhisperSync traffic.</li>
+    <li>Only later revisit KPP/KSDK hooking if exact stock remote tap-to-download remains worth the risk.</li>
+  </ol>
+
+  <h2>Recovery Commands</h2>
+  <p>If a future catalog experiment causes a blank/white screen, restore first, then clear reader/UI surfaces:</p>
+  <pre><code>sh privatecloud/restore-ksdk-catalog-test.sh /mnt/us/selfhost-catalog-backups/&lt;stamp&gt;</code></pre>
+  <p>Or manually over SSH:</p>
+  <pre><code>stop kppmainapp 2&gt;/dev/null || true
+stop kfxreader 2&gt;/dev/null || true
+stop kfxview 2&gt;/dev/null || true
+stop pillow 2&gt;/dev/null || true
+start pillow 2&gt;/dev/null || true
+start kppmainapp 2&gt;/dev/null || true
+lipc-set-prop com.lab126.appmgrd clearAllContext 1 2&gt;/dev/null || true
+lipc-set-prop com.lab126.appmgrd startdefault 1 2&gt;/dev/null || true</code></pre>
+
+  <p class="muted">Generated from the current investigation state on 2026-07-09.</p>
+</main>
+</body>
+</html>

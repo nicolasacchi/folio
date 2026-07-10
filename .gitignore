@@ -1,0 +1,21 @@
+# Local capture output can contain device/account data.
+observer/captures/
+observer/tmp/
+
+# Kindle-derived proprietary or sensitive temporary material.
+privatecloud/tmp/
+privatecloud/__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+*.sqlite3
+
+# Local book libraries and generated downloads.
+books/
+documents/
+PrivateCloud/
+
+# Editor/OS noise.
+.DS_Store
+*~
+*.swp
