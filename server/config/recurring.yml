@@ -18,3 +18,10 @@ production:
   nightly_library_scan:
     class: ScanLibraryJob
     schedule: every day at 3:30am
+
+  # Refresh semantic vectors after the scan (covers books added/edited
+  # during the day; a full re-embed of the catalog takes a few minutes).
+  nightly_embeddings:
+    class: CatalogOperationJob
+    args: [ "embed_all" ]
+    schedule: every day at 4:45am

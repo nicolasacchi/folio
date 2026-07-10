@@ -70,6 +70,7 @@ class Book < ApplicationRecord
 
   def remove_artifacts
     BookSearch.remove_book!(id)
+    Library::Embeddings.remove_book!(id)
     Library.remove_book_artifacts(self)
   end
 end

@@ -7,12 +7,43 @@
 <% end %>
 
 <% if @query.present? %>
-  <p class="kicker">Results for “<%= @query %>”</p>
+  <p class="kicker">
+    Results for “<%= @query %>”
+    <% if @semantic_available %>
+      <span class="mode-toggle">
+        · <%= @mode == "text" ? tag.b("text") : link_to("text", root_path(q: @query)) %>
+        / <%= @mode == "semantic" ? tag.b("meaning") : link_to("meaning", root_path(q: @query, mode: "semantic")) %>
+      </span>
+    <% end %>
+  </p>
 
-  <% if @hits.empty? %>
+  <% if @mode == "semantic" %>
+    <% if @semantic_books.empty? %>
+      <div class="empty-state">
+        <span class="fleuron">❧</span>
+        Nothing similar enough in the library.<br>
+        <%= link_to "Back to all books", root_path %>
+      </div>
+    <% else %>
+      <div class="shelf">
+        <% @semantic_books.each do |book| %>
+          <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
+            <%= render "cover", book: book %>
+            <span class="shelf-caption">
+              <span class="t"><%= book.title %></span>
+              <span class="a"><%= book.display_author %></span>
+            </span>
+          <% end %>
+        <% end %>
+      </div>
+    <% end %>
+  <% elsif @hits.empty? %>
     <div class="empty-state">
       <span class="fleuron">❧</span>
       Nothing in the library matches that.<br>
+      <% if @semantic_available %>
+        <%= link_to "Try searching by meaning", root_path(q: @query, mode: "semantic") %> ·
+      <% end %>
       <%= link_to "Back to all books", root_path %>
     </div>
   <% else %>

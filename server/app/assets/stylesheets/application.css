@@ -361,6 +361,17 @@ mark {
 .duplicate-cover { width: 3.4rem; flex: none; }
 .duplicate-cover .cover { width: 3.4rem; }
 
+/* ---------- Semantic search & similar books ---------- */
+
+.mode-toggle { text-transform: none; letter-spacing: .08em; }
+.mode-toggle a { color: var(--ink-soft); }
+.mode-toggle b { color: var(--accent); }
+
+.shelf--similar { grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 1rem .8rem; }
+@media (min-width: 721px) {
+  .shelf--similar { grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); }
+}
+
 /* ---------- Reading progress ---------- */
 
 .reading-device-line { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }

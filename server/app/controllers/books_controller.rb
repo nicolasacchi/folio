@@ -7,7 +7,15 @@ class BooksController < ApplicationController
   def index
     @query = params[:q].to_s.strip
     if @query.present?
-      @hits = Book.search(@query)
+      @semantic_available = Library::Embeddings.available? && Library::Embeddings.count.positive?
+      @mode = params[:mode] == "semantic" && @semantic_available ? "semantic" : "text"
+      if @mode == "semantic"
+        hits = Library::Embeddings.nearest(text: @query, limit: 24)
+        books = Book.includes(:book_files).where(id: hits.map(&:first)).index_by(&:id)
+        @semantic_books = hits.filter_map { |id, _| books[id] }
+      else
+        @hits = Book.search(@query)
+      end
     else
       @author = params[:author].presence
       @series = params[:series].presence
@@ -40,6 +48,7 @@ class BooksController < ApplicationController
 
   def show
     @conversions = @book.conversions.order(created_at: :desc).limit(10)
+    @similar = similar_books
   end
 
   def edit
@@ -47,8 +56,9 @@ class BooksController < ApplicationController
 
   def update
     if @book.update(book_params)
-      # Metadata lives in the search index too; keep it in sync.
+      # Metadata lives in the search index and semantic vectors too.
       IndexBookJob.perform_later(@book.id)
+      EmbedBookJob.perform_later(@book.id) if Library::Embeddings.available?
       redirect_to @book, notice: "Book updated."
     else
       render :edit, status: :unprocessable_entity
@@ -88,6 +98,16 @@ class BooksController < ApplicationController
   end
 
   private
+
+  def similar_books
+    return [] unless Library::Embeddings.available? && Library::Embeddings.count.positive?
+
+    hits = Library::Embeddings.nearest(book: @book, limit: 6)
+    books = Book.where(id: hits.map(&:first)).index_by(&:id)
+    hits.filter_map { |id, _| books[id] }
+  rescue StandardError
+    []
+  end
 
   def set_book
     @book = Book.find(params[:id])

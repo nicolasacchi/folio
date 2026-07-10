@@ -56,6 +56,15 @@ with `LIBRARY_ROOT`).
   reference is dropped, ledger-remembered, and its file never touched).
   Fan-out runs on the scan queue, per-book work serializes on the
   conversion queue, and queued work is cancellable.
+- **Enrichment** (`Library::Enrich`): fills only-blank descriptions,
+  years and covers from Open Library (primary) and Google Books
+  (fallback) behind a title/author plausibility check, throttled to
+  ~1 lookup/s on its own queue; misses are remembered and never retried.
+- **Semantic search** (`Library::Embeddings`): one vector per book
+  (multilingual MiniLM ONNX via informers, model baked into the image;
+  sqlite-vec store in `storage/embeddings.sqlite3`). Powers the
+  "meaning" search toggle and the Similar-books shelf; vectors follow
+  ingest/edit/enrich/destroy and a nightly batch re-embed.
 - **Reading activity** (`/reading` + per-book section): populated from
   the `.sdr` bundles devices sync. `Library::SidecarProgress` inventories
   each bundle and best-effort parses MBP sidecars (last position,

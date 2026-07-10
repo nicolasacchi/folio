@@ -2,7 +2,7 @@
 # per-book work runs on the conversion queue). The buttons live on the
 # Catalog (library scan) page.
 class CatalogController < ApplicationController
-  BATCH_JOB_CLASSES = %w[ConvertBookJob EnsureKindleFormatJob IndexBookJob CatalogOperationJob].freeze
+  BATCH_JOB_CLASSES = %w[ConvertBookJob EnsureKindleFormatJob IndexBookJob EnrichBookJob CatalogOperationJob].freeze
 
   def convert_all
     CatalogOperationJob.perform_later("convert_all")
@@ -17,6 +17,16 @@ class CatalogController < ApplicationController
   def merge_duplicates
     CatalogOperationJob.perform_later("merge_duplicates")
     redirect_to library_scan_path, notice: "Merging every duplicate-editions group into its best edition."
+  end
+
+  def enrich_all
+    CatalogOperationJob.perform_later("enrich_all")
+    redirect_to library_scan_path, notice: "Queuing metadata enrichment (Open Library / Google Books) for books missing a description."
+  end
+
+  def embed_all
+    CatalogOperationJob.perform_later("embed_all")
+    redirect_to library_scan_path, notice: "Rebuilding semantic vectors for the whole catalog."
   end
 
   # Safety valve for the multi-day queues the buttons above can create.

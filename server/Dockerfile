@@ -35,6 +35,12 @@ RUN bundle install && \
     rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
     bundle exec bootsnap precompile --gemfile
 
+# Bake the multilingual embedding model (see Library::Embeddings) into the
+# image so runtime needs no network. Cached under XDG_CACHE_HOME/informers.
+ENV XDG_CACHE_HOME="/rails/.cache"
+RUN bundle exec ruby -r informers -e 'Informers.pipeline("embedding", "Xenova/paraphrase-multilingual-MiniLM-L12-v2").("warmup")' && \
+    du -sh /rails/.cache
+
 COPY . .
 
 RUN bundle exec bootsnap precompile app/ lib/
@@ -43,6 +49,8 @@ RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
 FROM base
 
+ENV XDG_CACHE_HOME="/rails/.cache"
+
 COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --from=build /rails /rails
 
@@ -50,7 +58,7 @@ COPY --from=build /rails /rails
 # the read-only library share.
 RUN groupadd --system --gid 1000 rails && \
     useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
-    chown -R rails:rails db log storage tmp
+    chown -R rails:rails db log storage tmp .cache
 USER 1000:1000
 
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]

@@ -145,6 +145,7 @@ class Library::Ingest
 
   def enqueue_followups(book)
     IndexBookJob.perform_later(book.id)
+    EmbedBookJob.perform_later(book.id) if Library::Embeddings.available?
     EnsureKindleFormatJob.perform_later(book.id) unless book.kindle_file
   end
 end
