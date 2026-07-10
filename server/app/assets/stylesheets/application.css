@@ -361,6 +361,19 @@ mark {
 .duplicate-cover { width: 3.4rem; flex: none; }
 .duplicate-cover .cover { width: 3.4rem; }
 
+/* ---------- Reading progress ---------- */
+
+.reading-device-line { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.progress-track {
+  display: inline-block;
+  width: 7rem;
+  height: .45rem;
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+  vertical-align: middle;
+}
+.progress-fill { display: block; height: 100%; background: var(--accent); }
+
 /* ---------- Cover grid ---------- */
 
 .shelf {

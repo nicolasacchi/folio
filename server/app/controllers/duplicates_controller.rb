@@ -7,12 +7,7 @@ class DuplicatesController < ApplicationController
   PER_PAGE = 40
 
   def index
-    tuples = Book.pluck(:id, :title, :author)
-    grouped = tuples.group_by { |_, title, author| [ normalize(title), normalize(author) ] }
-                    .values
-                    .select { |rows| rows.size > 1 }
-                    .sort_by { |rows| normalize(rows.first[1]) }
-
+    grouped = Library::DuplicateGroups.tuples
     @total_groups = grouped.size
     @page = [ params[:page].to_i, 1 ].max
     @last_page = [ (@total_groups / PER_PAGE.to_f).ceil, 1 ].max
@@ -36,6 +31,6 @@ class DuplicatesController < ApplicationController
   private
 
   def normalize(value)
-    value.to_s.strip.downcase.squeeze(" ")
+    Library::DuplicateGroups.normalize(value)
   end
 end

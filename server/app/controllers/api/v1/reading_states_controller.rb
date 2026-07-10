@@ -44,6 +44,7 @@ class Api::V1::ReadingStatesController < Api::V1::BaseController
       size: body.bytesize,
       sha256: Digest::SHA256.hexdigest(body)
     )
+    ParseSidecarJob.perform_later(state.id)
 
     render json: { ok: true, mtime: state.content_mtime.to_i, sha256: state.sha256 }
   end

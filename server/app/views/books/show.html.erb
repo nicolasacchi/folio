@@ -46,6 +46,21 @@
   <p class="book-description"><%= simple_format(@book.description) %></p>
 <% end %>
 
+<% reading_states = @book.reading_states.includes(:device).order(content_mtime: :desc) %>
+<% if reading_states.any? %>
+  <p class="section-label">Reading</p>
+  <% reading_states.each do |state| %>
+    <div class="file-row">
+      <span class="stamp stamp--ready"><%= state.device.name %></span>
+      <span class="grow small muted">
+        read <%= time_ago_in_words(state.content_mtime) %> ago
+        <% if state.annotation_count.to_i.positive? %> · <%= pluralize(state.annotation_count, "bookmark") %><% end %>
+        <% if state.progress_percent %> · ~<%= state.progress_percent.round %>% read<% end %>
+      </span>
+    </div>
+  <% end %>
+<% end %>
+
 <%= turbo_frame_tag "book_files" do %>
   <% if @conversions.any?(&:pending?) || @conversions.any?(&:running?) %>
     <%# Reloads this frame while work is in flight; the attribute disappears

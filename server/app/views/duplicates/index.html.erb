@@ -15,7 +15,11 @@
     No duplicate editions found.
   </div>
 <% else %>
-  <p class="muted small"><%= number_with_delimiter(@total_groups) %> groups</p>
+  <div class="toolbar">
+    <p class="muted small" style="margin: 0;"><%= number_with_delimiter(@total_groups) %> groups</p>
+    <%= button_to "Merge all groups", catalog_merge_duplicates_path, class: "btn",
+          form: { data: { turbo_confirm: "Merge every duplicate-editions group into its best edition (most formats, then cover, then oldest)? Conflicting formats stay put; source-folder files are never touched." } } %>
+  </div>
 
   <% @groups.each do |group| %>
     <p class="section-label"><%= group.first.title %> — <%= group.first.display_author %></p>

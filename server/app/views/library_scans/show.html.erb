@@ -70,5 +70,42 @@
       </div>
     <% end %>
   <% end %>
+
+  <p class="section-label">Catalog operations</p>
+  <% if @catalog_progress %>
+    <p class="meta-list small">
+      last batch: <b><%= @catalog_progress[:operation] %></b> · <%= @catalog_progress[:state] %>
+      <% if @catalog_progress[:queued] %> · <%= number_with_delimiter(@catalog_progress[:queued]) %> queued<% end %>
+      <% if @catalog_progress[:merged] %> · <%= number_with_delimiter(@catalog_progress[:merged]) %> merged<% end %>
+    </p>
+  <% end %>
+  <p class="meta-list small">
+    <span class="stamp"><%= number_with_delimiter(@catalog[:queued]) %> jobs queued</span>
+    <% if @catalog[:failed_conversions].positive? %>
+      <span class="stamp stamp--failed"><%= number_with_delimiter(@catalog[:failed_conversions]) %> failed conversions</span>
+    <% end %>
+  </p>
+  <div class="actions">
+    <% if @catalog[:to_convert].positive? %>
+      <%= button_to "Convert all to Kindle (#{number_with_delimiter(@catalog[:to_convert])})", catalog_convert_all_path,
+            class: "btn btn--primary",
+            form: { data: { turbo_frame: "_top", turbo_confirm: "Queue an AZW3 conversion for #{number_with_delimiter(@catalog[:to_convert])} books? They convert one at a time in the background (roughly a day per 10k books); converted copies land in Folio's own storage. You can cancel queued work anytime." } } %>
+    <% end %>
+    <% if @catalog[:fulltext_missing].positive? %>
+      <%= button_to "Index full text (#{number_with_delimiter(@catalog[:fulltext_missing])})", catalog_index_fulltext_path,
+            class: "btn",
+            form: { data: { turbo_frame: "_top", turbo_confirm: "Queue Calibre text extraction for #{number_with_delimiter(@catalog[:fulltext_missing])} books so search can look inside them? Runs serially in the background; shares the conversion queue." } } %>
+    <% end %>
+    <% if @catalog[:duplicate_groups].positive? %>
+      <%= button_to "Merge all duplicates (#{number_with_delimiter(@catalog[:duplicate_groups])} groups)", catalog_merge_duplicates_path,
+            class: "btn",
+            form: { data: { turbo_frame: "_top", turbo_confirm: "Merge every duplicate-editions group into its best edition (most formats, then cover, then oldest)? Conflicting formats stay put; source-folder files are never touched." } } %>
+    <% end %>
+    <% if @catalog[:queued].positive? %>
+      <%= button_to "Cancel queued work (#{number_with_delimiter(@catalog[:queued])})", catalog_cancel_queued_path,
+            class: "btn btn--danger",
+            form: { data: { turbo_frame: "_top", turbo_confirm: "Cancel all queued batch jobs? Running work finishes; completed conversions keep their files." } } %>
+    <% end %>
+  </div>
   <% end %>
 <% end %>

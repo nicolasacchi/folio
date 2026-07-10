@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_10_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_10_210000) do
   create_table "book_files", force: :cascade do |t|
     t.boolean "available", default: true, null: false
     t.integer "book_id", null: false
@@ -85,12 +85,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_150000) do
   end
 
   create_table "reading_states", force: :cascade do |t|
+    t.integer "annotation_count", default: 0, null: false
     t.integer "book_id", null: false
     t.datetime "content_mtime", null: false
     t.datetime "created_at", null: false
     t.integer "device_id", null: false
+    t.integer "last_position"
+    t.datetime "parsed_at"
     t.string "path", null: false
+    t.float "progress_percent"
+    t.string "progress_source"
     t.string "sha256", null: false
+    t.text "sidecar_files"
     t.integer "size", null: false
     t.datetime "updated_at", null: false
     t.index ["book_id", "device_id"], name: "index_reading_states_on_book_id_and_device_id", unique: true
