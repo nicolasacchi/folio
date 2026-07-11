@@ -74,7 +74,8 @@ fn firmware_version() -> Option<String> {
 
 fn serial() -> Option<String> {
     let text = fs::read_to_string("/proc/usid").ok()?;
-    let trimmed = text.trim();
+    // /proc/usid pads with NULs on some firmware.
+    let trimmed = text.trim_matches(|c: char| c.is_whitespace() || c == '\0');
     if trimmed.is_empty() {
         None
     } else {
