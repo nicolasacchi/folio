@@ -40,12 +40,13 @@ RSpec.configure do |config|
   config.include ActiveJob::TestHelper
 
   config.before(:suite) do
-    # The FTS5 virtual table is not part of schema.rb (see
-    # config/initializers/book_search.rb), so create it after the test
-    # schema is loaded.
     BookSearch.ensure_schema!
     FileUtils.rm_rf(ENV.fetch('LIBRARY_ROOT'))
   end
+
+  # The search index lives in its own SQLite file, outside the
+  # transactional test database — clean it like a transaction would have.
+  config.before(:each) { BookSearch.clear! }
 
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
   config.fixture_paths = [

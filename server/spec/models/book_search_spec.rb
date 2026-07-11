@@ -42,4 +42,34 @@ RSpec.describe BookSearch do
       expect(described_class.search("renamed").map { |hit| hit[:book_id] }).to eq([ book.id ])
     end
   end
+
+  describe ".migrate_from_primary!" do
+    let(:primary) { ActiveRecord::Base.connection }
+
+    before do
+      primary.execute(BookSearch::SCHEMA_SQL)
+      primary.execute(<<~SQL)
+        INSERT INTO book_search (book_id, title, author, series, description, fulltext)
+        VALUES (1, 'Legacy One', '', '', '', 'old crawling text'),
+               (2, 'Legacy Two', '', '', '', '')
+      SQL
+    end
+
+    it "moves legacy rows over in batches, skips duplicates, drops the table" do
+      described_class.index_book!(Book.new(id: 2, title: "Already Here"), fulltext: "fresh")
+
+      moved = described_class.migrate_from_primary!(batch_size: 1)
+
+      expect(moved).to eq(1)
+      expect(described_class.search("crawling").map { |hit| hit[:book_id] }).to eq([ 1 ])
+      # The row indexed after the split is authoritative, not the legacy copy.
+      expect(described_class.search("fresh").map { |hit| hit[:book_id] }).to eq([ 2 ])
+      expect(primary.select_value("SELECT 1 FROM sqlite_master WHERE name = 'book_search'")).to be_nil
+    end
+
+    it "is a no-op without a legacy table" do
+      primary.execute("DROP TABLE book_search")
+      expect(described_class.migrate_from_primary!).to eq(0)
+    end
+  end
 end

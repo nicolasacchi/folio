@@ -11,6 +11,8 @@ class Device < ApplicationRecord
   def touch_last_seen!
     # Avoid a write on every API call.
     update_column(:last_seen_at, Time.current) if last_seen_at.nil? || last_seen_at < 1.minute.ago
+  rescue ActiveRecord::StatementTimeout
+    # Telemetry only — never fail a request because this write was locked out.
   end
 
   private
