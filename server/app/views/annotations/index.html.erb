@@ -1,0 +1,66 @@
+<% content_for :title, "Notes — Folio" %>
+
+<p class="kicker">From the margins</p>
+<h1 class="page-title">Highlights &amp; notes</h1>
+
+<%= form_with url: annotations_path, method: :get, class: "search-bar", role: "search" do %>
+  <%= hidden_field_tag :kind, @kind if @kind %>
+  <%= search_field_tag :q, @query, placeholder: "Search highlights and notes…",
+        autocomplete: "off", "aria-label": "Search annotations" %>
+  <button class="btn" type="submit">Search</button>
+<% end %>
+
+<p class="chips">
+  <% total = @counts.values.sum %>
+  <%= link_to "all #{total}", annotations_path(q: @query.presence),
+        class: "stamp chip #{"stamp--ready" if @kind.nil?}" %>
+  <% Annotation::KINDS.each do |kind| %>
+    <% count = @counts[kind].to_i %>
+    <% next if count.zero? && @kind != kind %>
+    <%= link_to "#{kind.pluralize} #{count}", annotations_path(kind: kind, q: @query.presence),
+          class: "stamp chip #{"stamp--ready" if @kind == kind}" %>
+  <% end %>
+</p>
+
+<% if @annotations.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    <% if @query.present? || @kind %>
+      Nothing matches.<br><%= link_to "All notes", annotations_path %>
+    <% else %>
+      No highlights synced yet.<br>
+      <span class="small">Highlight something on the Kindle — the next
+      <code>kindled sync</code> brings it here from My&nbsp;Clippings.txt.</span>
+    <% end %>
+  </div>
+<% else %>
+  <% @annotations.each do |annotation| %>
+    <blockquote class="annotation">
+      <p class="annotation-content"><%= annotation.content %></p>
+      <footer class="small muted">
+        <span class="stamp <%= annotation.kind == "note" ? "stamp--pending" : "stamp--ready" %>"><%= annotation.kind %></span>
+        <% if annotation.book %>
+          <%= link_to annotation.book.title, book_path(annotation.book) %>
+        <% else %>
+          <span title="Not matched to a catalog book"><%= annotation.raw_title %></span>
+        <% end %>
+        <% if annotation.location_label %> · <%= annotation.location_label %><% end %>
+        <% if annotation.added_at %> · <%= l annotation.added_at.to_date, format: :long %><% end %>
+        · <%= annotation.device.name %>
+      </footer>
+    </blockquote>
+  <% end %>
+
+  <% last_page = [ (@total / AnnotationsController::PER_PAGE.to_f).ceil, 1 ].max %>
+  <% if last_page > 1 %>
+    <nav class="pager" aria-label="Pagination">
+      <% if @page > 1 %>
+        <%= link_to "← Prev", annotations_path(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
+      <% end %>
+      <span class="muted small">page <%= @page %> of <%= last_page %></span>
+      <% if @page < last_page %>
+        <%= link_to "Next →", annotations_path(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
+      <% end %>
+    </nav>
+  <% end %>
+<% end %>

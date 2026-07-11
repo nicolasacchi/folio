@@ -11,6 +11,9 @@
     <meta name="theme-color" content="#171310" media="(prefers-color-scheme: dark)">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
+    <%# Live updates: pages that turbo_stream_from a channel reload
+        in place (DOM morph, scroll kept) when the server broadcasts. %>
+    <%= turbo_refreshes_with method: :morph, scroll: :preserve %>
 
     <%= yield :head %>
 
@@ -38,6 +41,11 @@
                 aria: { current: current_page?(series_index_path) ? "page" : nil } %>
           <%= link_to "Reading", reading_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(reading_path) ? "page" : nil } %>
+          <%= link_to "Notes", annotations_path, class: "top-link top-link--nav",
+                aria: { current: current_page?(annotations_path) ? "page" : nil } %>
+          <% queued = Delivery.pending.count %>
+          <%= link_to queued.positive? ? "Queue (#{queued})" : "Queue", queue_path, class: "top-link top-link--nav",
+                aria: { current: current_page?(queue_path) ? "page" : nil } %>
           <%= link_to "Upload", new_upload_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
           <%= link_to "Catalog", library_scan_path, class: "top-link top-link--nav",
@@ -60,8 +68,9 @@
     <% if authenticated? %>
       <nav class="bottom-nav" aria-label="Primary">
         <%= link_to "Library", root_path, aria: { current: current_page?(root_path) ? "page" : nil } %>
-        <%= link_to "Series", series_index_path, aria: { current: current_page?(series_index_path) ? "page" : nil } %>
         <%= link_to "Reading", reading_path, aria: { current: current_page?(reading_path) ? "page" : nil } %>
+        <%= link_to "Notes", annotations_path, aria: { current: current_page?(annotations_path) ? "page" : nil } %>
+        <%= link_to "Queue", queue_path, aria: { current: current_page?(queue_path) ? "page" : nil } %>
         <%= link_to "Upload", new_upload_path, aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
       </nav>
     <% end %>

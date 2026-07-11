@@ -1,0 +1,76 @@
+<% content_for :title, "Queue — Folio" %>
+<%= turbo_stream_from "deliveries" %>
+<%= turbo_stream_from "devices" %>
+
+<p class="kicker">Deliveries</p>
+<h1 class="page-title">Queue</h1>
+<p class="muted small">
+  What each Kindle will download or delete on its next sync. This page
+  updates by itself as devices check in.
+</p>
+
+<% @devices.each do |device| %>
+  <% pending = device.deliveries.select { |d| d.removed_at.nil? && d.delivered_at.nil? && d.evict_requested_at.nil? } %>
+  <% removing = device.deliveries.select { |d| d.removed_at.nil? && d.evict_requested_at.present? } %>
+
+  <p class="section-label">
+    <%= link_to device.name, device_path(device) %>
+    <span class="muted small">
+      — <%= device.last_seen_at ? "seen #{time_ago_in_words(device.last_seen_at)} ago" : "never seen" %><%
+      %><% if device.storage_known? %> · <%= format_size(device.free_bytes) %> free<% end %>
+    </span>
+  </p>
+
+  <% if pending.empty? && removing.empty? %>
+    <p class="muted small">Queue is empty.</p>
+  <% end %>
+
+  <% pending.sort_by(&:created_at).each do |delivery| %>
+    <div class="file-row">
+      <span class="stamp stamp--pending">queued</span>
+      <span class="grow small">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        <span class="book-author"> — <%= delivery.book.display_author %></span>
+        <% if (file = delivery.book.kindle_file) %>
+          <span class="muted">· <%= file.format.upcase %> · <%= format_size(file.size) %></span>
+        <% else %>
+          <span class="stamp stamp--failed" title="No Kindle-readable file yet — conversion in progress">converting…</span>
+        <% end %>
+        <span class="muted">· queued <%= time_ago_in_words(delivery.created_at) %> ago</span>
+      </span>
+      <%= button_to "✕", delivery_path(delivery), method: :delete, class: "btn btn--quiet", title: "Remove from queue" %>
+    </div>
+  <% end %>
+
+  <% removing.sort_by(&:evict_requested_at).reverse.each do |delivery| %>
+    <div class="file-row">
+      <span class="stamp stamp--pending">removing</span>
+      <span class="grow small">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        <% if delivery.evict_reason.present? %><span class="muted">· <%= delivery.evict_reason %></span><% end %>
+      </span>
+      <%= button_to "Keep", eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet" %>
+    </div>
+  <% end %>
+<% end %>
+
+<% if @devices.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No devices yet.<br>
+    <%= link_to "Add a Kindle", devices_path %>
+  </div>
+<% end %>
+
+<% if @recently_delivered.any? %>
+  <p class="section-label">Recently delivered</p>
+  <% @recently_delivered.each do |delivery| %>
+    <div class="file-row">
+      <span class="stamp stamp--ready">on <%= delivery.device.name %></span>
+      <span class="grow small">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        <span class="muted">· delivered <%= time_ago_in_words(delivery.delivered_at) %> ago</span>
+      </span>
+    </div>
+  <% end %>
+<% end %>

@@ -13,6 +13,9 @@ class Conversion < ApplicationRecord
 
   scope :active, -> { where(status: %w[pending running]) }
 
+  # The book page follows conversion progress live.
+  broadcasts_refreshes_to :book
+
   STATUSES.each do |name|
     define_method("#{name}?") { status == name }
   end
