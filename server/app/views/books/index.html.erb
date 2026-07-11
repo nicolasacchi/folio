@@ -9,12 +9,13 @@
 <% if @query.present? %>
   <p class="kicker">
     Results for “<%= @query %>”
-    <% if @semantic_available %>
-      <span class="mode-toggle">
-        · <%= @mode == "text" ? tag.b("text") : link_to("text", root_path(q: @query)) %>
+    <span class="mode-toggle">
+      · <%= @mode == "title" ? tag.b("titles") : link_to("titles", root_path(q: @query), title: "Match titles, authors and series") %>
+      / <%= @mode == "full" ? tag.b("full text") : link_to("full text", root_path(q: @query, mode: "full"), title: "Also search descriptions and inside the books") %>
+      <% if @semantic_available %>
         / <%= @mode == "semantic" ? tag.b("meaning") : link_to("meaning", root_path(q: @query, mode: "semantic")) %>
-      </span>
-    <% end %>
+      <% end %>
+    </span>
   </p>
 
   <% if @mode == "semantic" %>
@@ -40,7 +41,10 @@
   <% elsif @hits.empty? %>
     <div class="empty-state">
       <span class="fleuron">❧</span>
-      Nothing in the library matches that.<br>
+      No <%= @mode == "full" ? "book" : "title or author" %> matches that.<br>
+      <% if @mode == "title" %>
+        <%= link_to "Search the full text too", root_path(q: @query, mode: "full") %> ·
+      <% end %>
       <% if @semantic_available %>
         <%= link_to "Try searching by meaning", root_path(q: @query, mode: "semantic") %> ·
       <% end %>
@@ -65,6 +69,9 @@
     <%= form_with url: root_path, method: :get, class: "toolbar-form" do %>
       <%= hidden_field_tag :author, @author if @author %>
       <%= hidden_field_tag :series, @series if @series %>
+      <%= hidden_field_tag :year, @year if @year %>
+      <%= hidden_field_tag :language, @language if @language %>
+      <%= hidden_field_tag :added, @added.iso8601 if @added %>
       <%= select_tag :sort,
             options_for_select([ [ "Recently added", "recent" ], [ "By title", "title" ], [ "By author", "author" ] ], @sort),
             onchange: "this.form.requestSubmit()", "aria-label": "Sort order" %>
@@ -82,7 +89,8 @@
     <% end %>
   </div>
 
-  <% active_filters = { author: @author, series: @series, format: @format }.compact %>
+  <% active_filters = { author: @author, series: @series, format: @format,
+                        year: @year, language: @language, added: @added }.compact %>
   <% if active_filters.any? %>
     <p class="chips">
       <% active_filters.each do |key, value| %>

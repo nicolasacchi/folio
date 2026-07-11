@@ -22,10 +22,19 @@
       <% end %>
     </p>
 
+    <%# Each fact links to the library filtered on it, like the author. %>
     <p class="meta-list small">
-      <% if @book.language.present? %><b><%= @book.language %></b> · <% end %>
-      <% if @book.published_year.present? %><%= @book.published_year %> · <% end %>
-      added <%= l @book.created_at.to_date, format: :long %>
+      <% if @book.language.present? %>
+        <%= link_to tag.b(@book.language), root_path(language: @book.language),
+              title: "All books in this language" %> ·
+      <% end %>
+      <% if @book.published_year.present? %>
+        <%= link_to @book.published_year, root_path(year: @book.published_year),
+              title: "All books published in #{@book.published_year}" %> ·
+      <% end %>
+      <%= link_to "added #{l @book.created_at.to_date, format: :long}",
+            root_path(added: @book.created_at.to_date.iso8601),
+            title: "Everything added that day" %>
     </p>
 
     <div class="actions">
@@ -132,7 +141,9 @@
   <p class="section-label">Files</p>
   <% @book.book_files.order(:format).each do |file| %>
     <div class="file-row">
-      <span class="stamp <%= "stamp--ready" if file.kindle_ready? %>"><%= file.format %></span>
+      <%= link_to file.format, root_path(format: file.format),
+            class: "stamp #{"stamp--ready" if file.kindle_ready?}",
+            title: "All books available as #{file.format.upcase}", data: { turbo_frame: "_top" } %>
       <% unless file.available? %>
         <span class="stamp stamp--failed" title="The scanned source file is no longer at <%= file.path %>">missing</span>
       <% end %>

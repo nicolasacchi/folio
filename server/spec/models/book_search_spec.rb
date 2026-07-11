@@ -28,6 +28,41 @@ RSpec.describe BookSearch do
     it "does not raise on hostile input" do
       expect { described_class.search('") OR 1=1 --') }.not_to raise_error
     end
+
+    context "with scope: :metadata" do
+      let!(:fulltext_only) { create(:book, title: "Unrelated Title") }
+
+      before { described_class.index_book!(fulltext_only, fulltext: "hidden cranes in the text body") }
+
+      it "matches titles but not fulltext" do
+        ids = described_class.search("cranes", scope: :metadata).map { |hit| hit[:book_id] }
+        expect(ids).to eq([ book.id ])
+      end
+
+      it "still finds fulltext matches in the default scope" do
+        ids = described_class.search("cranes").map { |hit| hit[:book_id] }
+        expect(ids).to contain_exactly(book.id, fulltext_only.id)
+      end
+
+      it "matches authors and series" do
+        authored = create(:book, title: "Zzz", author: "Maria Cranebuilder", series: "The Marsh")
+        described_class.index_book!(authored)
+
+        expect(described_class.search("cranebuilder", scope: :metadata).map { |h| h[:book_id] })
+          .to eq([ authored.id ])
+        expect(described_class.search("marsh", scope: :metadata).map { |h| h[:book_id] })
+          .to eq([ authored.id ])
+      end
+
+      it "returns no snippet" do
+        hit = described_class.search("cranes", scope: :metadata).first
+        expect(hit[:snippet]).to be_nil
+      end
+
+      it "survives hostile input" do
+        expect { described_class.search('") OR 1=1 --', scope: :metadata) }.not_to raise_error
+      end
+    end
   end
 
   describe ".index_book!" do

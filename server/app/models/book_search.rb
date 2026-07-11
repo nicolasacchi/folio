@@ -53,14 +53,19 @@ module BookSearch
   end
 
   # Returns [{ book_id:, snippet:, rank: }] ordered by relevance.
-  def search(query, limit: 100)
+  # scope :metadata restricts matching to title/author/series (the default
+  # search experience); :all also looks inside the description and the
+  # extracted fulltext, and returns a highlighted snippet.
+  def search(query, limit: 100, scope: :all)
     match = match_expression(query)
     return [] if match.blank?
+    match = "{title author series} : (#{match})" if scope == :metadata
 
+    snippet_sql = scope == :metadata ? "NULL" : "snippet(book_search, 5, '<mark>', '</mark>', '…', 12)"
     rows = with_db do |db|
       db.execute(<<~SQL, [ match, limit ])
         SELECT book_id,
-               snippet(book_search, 5, '<mark>', '</mark>', '…', 12) AS snippet,
+               #{snippet_sql} AS snippet,
                bm25(book_search, 0, 10.0, 8.0, 4.0, 2.0, 1.0) AS rank
         FROM book_search
         WHERE book_search MATCH ?
