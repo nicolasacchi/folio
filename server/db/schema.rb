@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_10_230000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_11_120000) do
   create_table "book_files", force: :cascade do |t|
     t.boolean "available", default: true, null: false
     t.integer "book_id", null: false
@@ -59,6 +59,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_230000) do
     t.datetime "updated_at", null: false
     t.index ["book_file_id"], name: "index_conversions_on_book_file_id"
     t.index ["book_id"], name: "index_conversions_on_book_id"
+  end
+
+  create_table "deliveries", force: :cascade do |t|
+    t.integer "book_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "delivered_at"
+    t.integer "device_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["book_id", "device_id"], name: "index_deliveries_on_book_id_and_device_id", unique: true
+    t.index ["book_id"], name: "index_deliveries_on_book_id"
+    t.index ["device_id"], name: "index_deliveries_on_device_id"
   end
 
   create_table "devices", force: :cascade do |t|
@@ -126,6 +137,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_230000) do
   add_foreign_key "book_files", "books"
   add_foreign_key "conversions", "book_files"
   add_foreign_key "conversions", "books"
+  add_foreign_key "deliveries", "books"
+  add_foreign_key "deliveries", "devices"
   add_foreign_key "import_files", "book_files", on_delete: :nullify
   add_foreign_key "reading_states", "books"
   add_foreign_key "reading_states", "devices"

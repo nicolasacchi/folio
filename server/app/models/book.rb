@@ -6,6 +6,7 @@ class Book < ApplicationRecord
   has_many :book_files, dependent: :destroy
   has_many :conversions, dependent: :destroy
   has_many :reading_states, dependent: :destroy
+  has_many :deliveries, dependent: :destroy
 
   # Assigned eagerly (not at validation) because the storage path of an
   # about-to-be-ingested file already depends on it.

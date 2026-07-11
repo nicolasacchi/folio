@@ -49,6 +49,8 @@ class BooksController < ApplicationController
   def show
     @conversions = @book.conversions.order(created_at: :desc).limit(10)
     @similar = similar_books
+    @devices = Device.order(:name)
+    @deliveries = @book.deliveries.index_by(&:device_id)
   end
 
   def edit

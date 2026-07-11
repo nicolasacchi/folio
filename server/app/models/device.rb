@@ -1,5 +1,7 @@
 class Device < ApplicationRecord
   has_many :reading_states, dependent: :destroy
+  has_many :deliveries, dependent: :destroy
+  has_many :queued_books, through: :deliveries, source: :book
 
   before_validation :assign_token, on: :create
 

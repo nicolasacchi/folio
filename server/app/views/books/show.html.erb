@@ -28,9 +28,20 @@
     </p>
 
     <div class="actions">
+      <% @devices.each do |device| %>
+        <% if (delivery = @deliveries[device.id]) %>
+          <%= button_to "#{delivery.delivered? ? "On" : "Queued for"} #{device.name} ✕",
+                delivery_path(delivery), method: :delete, class: "btn btn--quiet",
+                title: delivery.delivered? ? "Delivered — remove from the device's sync list" : "Remove from queue" %>
+        <% else %>
+          <%= button_to "Send to #{device.name}", deliveries_path(book_id: @book.id, device_id: device.id),
+                class: "btn btn--primary" %>
+        <% end %>
+      <% end %>
       <% if (kindle_file = @book.kindle_file) %>
-        <%= link_to "Send to device ↓ #{kindle_file.format.upcase}",
-              download_book_path(@book, fmt: kindle_file.format), class: "btn btn--primary" %>
+        <%= link_to "Download #{kindle_file.format.upcase}",
+              download_book_path(@book, fmt: kindle_file.format),
+              class: "btn #{"btn--primary" if @devices.empty?}", data: { turbo: false } %>
       <% end %>
       <%= link_to "Edit", edit_book_path(@book), class: "btn btn--quiet" %>
       <%= button_to "Index full text", reindex_book_path(@book), class: "btn btn--quiet",
