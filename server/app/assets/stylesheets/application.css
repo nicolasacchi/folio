@@ -633,3 +633,10 @@ table.plain td, table.plain th { text-align: left; padding: .5rem .4rem; border-
 }
 .annotation-content { margin: 0 0 .5rem; white-space: pre-wrap; }
 .annotation footer { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+
+/* ---------- Linked facts (book page → filtered library) ---------- */
+
+a.stamp { text-decoration: none; }
+a.stamp:hover { border-color: var(--accent); }
+.meta-list a { color: inherit; }
+.meta-list a:hover { color: var(--accent); }

@@ -3,36 +3,47 @@ class BooksController < ApplicationController
 
   PER_PAGE = 48
   SORTS = %w[recent title author].freeze
+  # "title" searches titles/authors/series (the default); "full" also digs
+  # through descriptions and the Calibre-extracted text; "semantic" uses
+  # the embedding index.
+  SEARCH_MODES = %w[title full semantic].freeze
 
   def index
     @query = params[:q].to_s.strip
     if @query.present?
       @semantic_available = Library::Embeddings.available? && Library::Embeddings.count.positive?
-      @mode = params[:mode] == "semantic" && @semantic_available ? "semantic" : "text"
+      @mode = SEARCH_MODES.include?(params[:mode]) ? params[:mode] : "title"
+      @mode = "title" if @mode == "semantic" && !@semantic_available
       if @mode == "semantic"
         hits = Library::Embeddings.nearest(text: @query, limit: 24)
         books = Book.includes(:book_files).where(id: hits.map(&:first)).index_by(&:id)
         @semantic_books = hits.filter_map { |id, _| books[id] }
       else
-        @hits = Book.search(@query)
+        @hits = Book.search(@query, scope: @mode == "full" ? :all : :metadata)
       end
     else
       @author = params[:author].presence
       @series = params[:series].presence
       @format = params[:format].presence
+      @year = params[:year].presence&.to_i
+      @language = params[:language].presence
+      @added = parse_date(params[:added])
       @sort = SORTS.include?(params[:sort]) ? params[:sort] : "recent"
 
       scope = Book.all
       scope = scope.where(author: @author) if @author
       scope = scope.where(series: @series) if @series
       scope = scope.where(id: BookFile.where(format: @format).select(:book_id)) if @format
+      scope = scope.where(published_year: @year) if @year
+      scope = scope.where(language: @language) if @language
+      scope = scope.where(created_at: @added.all_day) if @added
       scope = case @sort
-              when "title" then scope.order(Arel.sql("lower(title)"), :id)
-              when "author" then scope.order(Arel.sql("lower(coalesce(author, ''))"), Arel.sql("lower(title)"), :id)
-              else
+      when "title" then scope.order(Arel.sql("lower(title)"), :id)
+      when "author" then scope.order(Arel.sql("lower(coalesce(author, ''))"), Arel.sql("lower(title)"), :id)
+      else
                 # Inside a series, reading order beats recency.
                 @series ? scope.order(:series_index, :id) : scope.order(created_at: :desc, id: :desc)
-              end
+      end
 
       @total = scope.count
       @page = [ params[:page].to_i, 1 ].max
@@ -45,7 +56,7 @@ class BooksController < ApplicationController
       end
 
       # The "keep reading" shelf only heads the unfiltered front page.
-      if @page == 1 && !@author && !@series && !@format
+      if @page == 1 && !@author && !@series && !@format && !@year && !@language && !@added
         @currently_reading = Book.currently_reading(limit: 10)
       end
     end
@@ -119,6 +130,12 @@ class BooksController < ApplicationController
 
   def set_book
     @book = Book.find(params[:id])
+  end
+
+  def parse_date(value)
+    Date.iso8601(value.to_s)
+  rescue Date::Error
+    nil
   end
 
   def book_params

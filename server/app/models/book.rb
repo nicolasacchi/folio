@@ -22,8 +22,8 @@ class Book < ApplicationRecord
 
   # FTS5-ranked search. Returns SearchHit structs so views can show the
   # matching fulltext snippet next to each book.
-  def self.search(query)
-    hits = BookSearch.search(query)
+  def self.search(query, scope: :all)
+    hits = BookSearch.search(query, scope: scope)
     books = where(id: hits.map { |hit| hit[:book_id] }).index_by(&:id)
     hits.filter_map do |hit|
       book = books[hit[:book_id]]
