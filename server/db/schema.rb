@@ -10,13 +10,42 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_11_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_11_150005) do
+  create_table "annotations", force: :cascade do |t|
+    t.datetime "added_at"
+    t.integer "book_id"
+    t.text "content"
+    t.datetime "created_at", null: false
+    t.integer "device_id", null: false
+    t.string "fingerprint", null: false
+    t.string "kind", default: "highlight", null: false
+    t.integer "location_end"
+    t.integer "location_start"
+    t.integer "page"
+    t.string "raw_author"
+    t.string "raw_title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["book_id", "added_at"], name: "index_annotations_on_book_id_and_added_at"
+    t.index ["book_id"], name: "index_annotations_on_book_id"
+    t.index ["device_id", "fingerprint"], name: "index_annotations_on_device_id_and_fingerprint", unique: true
+    t.index ["device_id"], name: "index_annotations_on_device_id"
+    t.index ["kind"], name: "index_annotations_on_kind"
+  end
+
   create_table "book_files", force: :cascade do |t|
+    t.string "asin"
     t.boolean "available", default: true, null: false
     t.integer "book_id", null: false
+    t.datetime "cde_parsed_at"
+    t.string "cde_type"
     t.datetime "created_at", null: false
     t.string "format", null: false
     t.string "path", null: false
+    t.datetime "prepared_at"
+    t.string "prepared_path"
+    t.string "prepared_sha256"
+    t.integer "prepared_size"
+    t.string "prepared_source_sha256"
     t.string "sha256", null: false
     t.integer "size", null: false
     t.string "source", default: "upload", null: false
@@ -66,17 +95,45 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_120000) do
     t.datetime "created_at", null: false
     t.datetime "delivered_at"
     t.integer "device_id", null: false
+    t.string "evict_reason"
+    t.datetime "evict_requested_at"
+    t.datetime "removed_at"
     t.datetime "updated_at", null: false
     t.index ["book_id", "device_id"], name: "index_deliveries_on_book_id_and_device_id", unique: true
     t.index ["book_id"], name: "index_deliveries_on_book_id"
     t.index ["device_id"], name: "index_deliveries_on_device_id"
   end
 
-  create_table "devices", force: :cascade do |t|
+  create_table "device_syncs", force: :cascade do |t|
+    t.integer "battery_percent"
     t.datetime "created_at", null: false
+    t.integer "device_id", null: false
+    t.integer "downloaded_count", default: 0, null: false
+    t.integer "duration_ms"
+    t.integer "error_count", default: 0, null: false
+    t.bigint "free_bytes"
+    t.integer "removed_count", default: 0, null: false
+    t.integer "sdr_applied_count", default: 0, null: false
+    t.integer "sdr_pushed_count", default: 0, null: false
+    t.index ["device_id", "created_at"], name: "index_device_syncs_on_device_id_and_created_at"
+    t.index ["device_id"], name: "index_device_syncs_on_device_id"
+  end
+
+  create_table "devices", force: :cascade do |t|
+    t.boolean "auto_evict", default: false, null: false
+    t.integer "battery_percent"
+    t.datetime "created_at", null: false
+    t.string "firmware_version"
+    t.bigint "free_bytes"
+    t.string "kindled_version"
     t.datetime "last_seen_at"
+    t.datetime "last_sync_at"
+    t.integer "low_space_threshold_mb", default: 500, null: false
     t.string "name", null: false
+    t.string "serial"
+    t.datetime "status_reported_at"
     t.string "token", null: false
+    t.bigint "total_bytes"
     t.datetime "updated_at", null: false
     t.index ["token"], name: "index_devices_on_token", unique: true
   end
@@ -134,11 +191,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_120000) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  add_foreign_key "annotations", "books"
+  add_foreign_key "annotations", "devices"
   add_foreign_key "book_files", "books"
   add_foreign_key "conversions", "book_files"
   add_foreign_key "conversions", "books"
   add_foreign_key "deliveries", "books"
   add_foreign_key "deliveries", "devices"
+  add_foreign_key "device_syncs", "devices"
   add_foreign_key "import_files", "book_files", on_delete: :nullify
   add_foreign_key "reading_states", "books"
   add_foreign_key "reading_states", "devices"

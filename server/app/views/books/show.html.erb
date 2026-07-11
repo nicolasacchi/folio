@@ -1,4 +1,5 @@
 <% content_for :title, "#{@book.title} — Folio" %>
+<%= turbo_stream_from @book %>
 
 <div class="book-sheet">
   <%= render "cover", book: @book %>
@@ -29,13 +30,22 @@
 
     <div class="actions">
       <% @devices.each do |device| %>
-        <% if (delivery = @deliveries[device.id]) %>
-          <%= button_to "#{delivery.delivered? ? "On" : "Queued for"} #{device.name} ✕",
-                delivery_path(delivery), method: :delete, class: "btn btn--quiet",
-                title: delivery.delivered? ? "Delivered — remove from the device's sync list" : "Remove from queue" %>
-        <% else %>
+        <% delivery = @deliveries[device.id] %>
+        <% if delivery.nil? || delivery.removed? %>
           <%= button_to "Send to #{device.name}", deliveries_path(book_id: @book.id, device_id: device.id),
                 class: "btn btn--primary" %>
+        <% elsif delivery.evict_requested? %>
+          <%= button_to "Removing from #{device.name}… keep",
+                eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet",
+                title: "Queued for deletion on next sync — click to keep it" %>
+        <% elsif delivery.delivered? %>
+          <%= button_to "On #{device.name} ✕", evictions_path(delivery_id: delivery.id), class: "btn btn--quiet",
+                title: "Delete from the device on next sync",
+                form: { data: { turbo_confirm: "Delete “#{@book.title}” from #{device.name} on next sync?" } } %>
+        <% else %>
+          <%= button_to "Queued for #{device.name} ✕",
+                delivery_path(delivery), method: :delete, class: "btn btn--quiet",
+                title: "Remove from queue" %>
         <% end %>
       <% end %>
       <% if (kindle_file = @book.kindle_file) %>
@@ -75,15 +85,40 @@
 <% reading_states = @book.reading_states.includes(:device).order(content_mtime: :desc) %>
 <% if reading_states.any? %>
   <p class="section-label">Reading</p>
-  <% reading_states.each do |state| %>
+  <% reading_states.each_with_index do |state, index| %>
     <div class="file-row">
-      <span class="stamp stamp--ready"><%= state.device.name %></span>
-      <span class="grow small muted">
-        read <%= time_ago_in_words(state.content_mtime) %> ago
-        <% if state.annotation_count.to_i.positive? %> · <%= pluralize(state.annotation_count, "bookmark") %><% end %>
-        <% if state.progress_percent %> · ~<%= state.progress_percent.round %>% read<% end %>
+      <span class="stamp <%= index.zero? ? "stamp--ready" : "" %>"><%= state.device.name %></span>
+      <span class="grow small">
+        <% if state.progress_percent %>
+          <span class="progress-track progress-track--wide" role="img" aria-label="approximately <%= state.progress_percent.round %> percent read"><span class="progress-fill" style="width: <%= state.progress_percent.clamp(2, 100) %>%"></span></span>
+          <b>~<%= state.progress_percent.round %>%</b>
+        <% end %>
+        <span class="muted">
+          <% if state.last_position %> position <%= number_with_delimiter(state.last_position) %> ·<% end %>
+          read <%= time_ago_in_words(state.content_mtime) %> ago
+          <% if state.annotation_count.to_i.positive? %> · <%= pluralize(state.annotation_count, "bookmark") %><% end %>
+          <% if index.zero? && reading_states.size > 1 %> · furthest<% end %>
+        </span>
       </span>
     </div>
+  <% end %>
+<% end %>
+
+<% if @annotations.any? %>
+  <p class="section-label">
+    Highlights &amp; notes (<%= @annotations.size %>)
+    <span class="muted small">· <%= link_to "all notes", annotations_path %></span>
+  </p>
+  <% @annotations.each do |annotation| %>
+    <blockquote class="annotation">
+      <p class="annotation-content"><%= annotation.content %></p>
+      <footer class="small muted">
+        <span class="stamp <%= annotation.kind == "note" ? "stamp--pending" : "stamp--ready" %>"><%= annotation.kind %></span>
+        <% if annotation.location_label %><%= annotation.location_label %> · <% end %><%
+        %><% if annotation.added_at %><%= l annotation.added_at.to_date, format: :long %> · <% end %><%
+        %><%= annotation.device.name %>
+      </footer>
+    </blockquote>
   <% end %>
 <% end %>
 

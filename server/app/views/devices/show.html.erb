@@ -1,0 +1,224 @@
+<% content_for :title, "#{@device.name} — Folio" %>
+<%= turbo_stream_from "devices" %>
+<%= turbo_stream_from "deliveries" %>
+
+<p class="kicker"><%= link_to "Devices", devices_path %> / kindle</p>
+<h1 class="page-title"><%= @device.name %></h1>
+
+<div class="device-facts">
+  <div class="fact">
+    <span class="fact-label">Last seen</span>
+    <span class="fact-value"><%= @device.last_seen_at ? "#{time_ago_in_words(@device.last_seen_at)} ago" : "never" %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">Last sync</span>
+    <span class="fact-value"><%= @device.last_sync_at ? "#{time_ago_in_words(@device.last_sync_at)} ago" : "—" %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">Battery</span>
+    <span class="fact-value"><%= @device.battery_percent ? "#{@device.battery_percent}%" : "—" %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">Firmware</span>
+    <span class="fact-value"><%= @device.firmware_version.presence || "—" %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">Serial</span>
+    <span class="fact-value mono"><%= @device.serial.presence || "—" %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">Daemon</span>
+    <span class="fact-value">kindled <%= @device.kindled_version.presence || "—" %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">On device</span>
+    <span class="fact-value"><%= @on_device.size %> books · <%= format_size(@on_device_bytes) %></span>
+  </div>
+  <div class="fact">
+    <span class="fact-label">Highlights &amp; notes</span>
+    <span class="fact-value"><%= link_to pluralize(@annotation_count, "entry"), annotations_path %></span>
+  </div>
+</div>
+
+<p class="section-label">Storage</p>
+<% if @device.storage_known? %>
+  <span class="storage-bar storage-bar--wide <%= "storage-bar--low" if @device.low_space? %>" role="img"
+        aria-label="<%= format_size(@device.free_bytes) %> free of <%= format_size(@device.total_bytes) %>">
+    <span class="storage-bar-fill" style="width: <%= (100 - @device.free_percent).clamp(0, 100).round %>%"></span>
+  </span>
+  <p class="small muted">
+    <%= format_size(@device.used_bytes) %> used ·
+    <b><%= format_size(@device.free_bytes) %> free</b> of <%= format_size(@device.total_bytes) %>
+    <% if @device.low_space? %> — <b class="danger-text">below the <%= @device.low_space_threshold_mb %> MB floor</b><% end %>
+    <% if @device.pending_bytes.positive? %> · queue will use <%= format_size(@device.pending_bytes) %><% end %>
+    · reported <%= @device.status_reported_at ? "#{time_ago_in_words(@device.status_reported_at)} ago" : "never" %>
+  </p>
+<% else %>
+  <p class="muted small">No storage report yet — it arrives with the first sync from an updated <code>kindled</code>.</p>
+<% end %>
+
+<%= form_with model: @device, url: device_path(@device), method: :patch, class: "settings-form" do |form| %>
+  <div class="settings-grid">
+    <span>
+      <%= form.label :name, "Name" %>
+      <%= form.text_field :name %>
+    </span>
+    <span>
+      <%= form.label :low_space_threshold_mb, "Keep free (MB)" %>
+      <%= form.number_field :low_space_threshold_mb, min: 50, step: 50 %>
+    </span>
+    <span class="settings-check">
+      <%= form.check_box :auto_evict %>
+      <%= form.label :auto_evict, "Auto-remove finished/dormant books when space runs low" %>
+    </span>
+  </div>
+  <div class="actions">
+    <%= form.submit "Save settings", class: "btn" %>
+  </div>
+<% end %>
+
+<% if @plan.any? %>
+  <p class="section-label">Suggested removals</p>
+  <p class="muted small">
+    Space is short: freeing <%= format_size(@plan.sum(&:size)) %> keeps
+    <%= @device.low_space_threshold_mb %> MB free after the queue lands.
+    <% if @device.auto_evict? %>Auto-remove is on — these go out on the next sync.<% end %>
+  </p>
+  <% @plan.each do |suggestion| %>
+    <div class="file-row">
+      <span class="stamp stamp--pending"><%= suggestion.reason %></span>
+      <span class="grow small">
+        <%= link_to suggestion.book.title, book_path(suggestion.book) %>
+        <span class="muted">· <%= format_size(suggestion.size) %></span>
+      </span>
+      <%= button_to "Remove", evictions_path(delivery_id: suggestion.delivery.id), class: "btn btn--quiet" %>
+    </div>
+  <% end %>
+  <% unless @device.auto_evict? %>
+    <div class="actions">
+      <%= button_to "Remove all suggested", evict_suggested_device_path(@device), class: "btn btn--danger",
+            form: { data: { turbo_confirm: "Queue #{@plan.size} #{"removal".pluralize(@plan.size)} for #{@device.name}?" } } %>
+    </div>
+  <% end %>
+<% end %>
+
+<% if @removing.any? %>
+  <p class="section-label">Removing on next sync</p>
+  <% @removing.each do |delivery| %>
+    <div class="file-row">
+      <span class="stamp stamp--pending">removing</span>
+      <span class="grow small">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        <% if delivery.evict_reason.present? %><span class="muted">· <%= delivery.evict_reason %></span><% end %>
+      </span>
+      <%= button_to "Keep", eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet" %>
+    </div>
+  <% end %>
+<% end %>
+
+<% if @queued.any? %>
+  <p class="section-label">Queued (<%= @queued.size %>)</p>
+  <% @queued.each do |delivery| %>
+    <div class="file-row">
+      <span class="stamp stamp--pending">queued</span>
+      <span class="grow small">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        <% if (file = delivery.book.kindle_file) %><span class="muted">· <%= format_size(file.size) %></span>
+        <% else %><span class="stamp stamp--failed" title="No Kindle-readable file yet — conversion should be queued">no file</span><% end %>
+      </span>
+      <%= button_to "✕", delivery_path(delivery), method: :delete, class: "btn btn--quiet", title: "Remove from queue" %>
+    </div>
+  <% end %>
+<% end %>
+
+<p class="section-label">On device (<%= @on_device.size %>)</p>
+<% if @on_device.empty? %>
+  <p class="muted small">Nothing delivered yet — queue books from their pages.</p>
+<% else %>
+  <% reading_by_book = @device.reading_states.index_by(&:book_id) %>
+  <% @on_device.each do |delivery| %>
+    <div class="file-row">
+      <span class="grow small">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        <span class="muted">
+          · <%= format_size(delivery.book.kindle_file&.size.to_i) %>
+          · delivered <%= time_ago_in_words(delivery.delivered_at) %> ago
+          <% if (state = reading_by_book[delivery.book_id]) %>
+            · read <%= time_ago_in_words(state.content_mtime) %> ago<% if state.progress_percent %> (~<%= state.progress_percent.round %>%)<% end %>
+          <% else %>
+            · never opened
+          <% end %>
+        </span>
+      </span>
+      <%= button_to "Remove from Kindle", evictions_path(delivery_id: delivery.id), class: "btn btn--quiet",
+            form: { data: { turbo_confirm: "Delete “#{delivery.book.title}” from #{@device.name} on next sync?" } } %>
+    </div>
+  <% end %>
+<% end %>
+
+<% if @reading.any? %>
+  <p class="section-label">Recent reading</p>
+  <% @reading.each do |state| %>
+    <div class="file-row">
+      <span class="grow small">
+        <%= link_to state.book.title, book_path(state.book) %>
+        <span class="muted">· read <%= time_ago_in_words(state.content_mtime) %> ago</span>
+        <% if state.progress_percent %>
+          <span class="progress-track" role="img" aria-label="approximately <%= state.progress_percent.round %> percent read"><span class="progress-fill" style="width: <%= state.progress_percent.clamp(2, 100) %>%"></span></span>
+          <span class="muted">~<%= state.progress_percent.round %>%</span>
+        <% end %>
+      </span>
+    </div>
+  <% end %>
+<% end %>
+
+<p class="section-label">Sync history</p>
+<% if @syncs.empty? %>
+  <p class="muted small">No syncs reported yet (needs an updated <code>kindled</code>).</p>
+<% else %>
+  <% @syncs.each do |sync| %>
+    <div class="file-row">
+      <span class="grow small muted">
+        <%= l sync.created_at, format: :short %> ·
+        <% if sync.activity? %>
+          <% parts = [] %>
+          <% parts << "#{sync.downloaded_count} downloaded" if sync.downloaded_count.positive? %>
+          <% parts << "#{sync.removed_count} removed" if sync.removed_count.positive? %>
+          <% parts << "#{sync.sdr_pushed_count} progress pushed" if sync.sdr_pushed_count.positive? %>
+          <% parts << "#{sync.sdr_applied_count} progress applied" if sync.sdr_applied_count.positive? %>
+          <% parts << "#{sync.error_count} errors" if sync.error_count.positive? %>
+          <%= parts.join(" · ") %>
+        <% else %>
+          idle
+        <% end %>
+        <% if sync.duration_ms %> · <%= (sync.duration_ms / 1000.0).round(1) %>s<% end %>
+        <% if sync.free_bytes %> · <%= format_size(sync.free_bytes) %> free<% end %>
+      </span>
+      <% if sync.error_count.positive? %><span class="stamp stamp--failed">errors</span><% end %>
+    </div>
+  <% end %>
+<% end %>
+
+<% if @removed.any? %>
+  <p class="section-label">Removed recently</p>
+  <% @removed.each do |delivery| %>
+    <div class="file-row">
+      <span class="grow small muted">
+        <%= link_to delivery.book.title, book_path(delivery.book) %>
+        · removed <%= time_ago_in_words(delivery.removed_at) %> ago
+        <% if delivery.evict_reason.present? %> · <%= delivery.evict_reason %><% end %>
+      </span>
+      <%= button_to "Send again", deliveries_path(book_id: delivery.book_id, device_id: @device.id), class: "btn btn--quiet" %>
+    </div>
+  <% end %>
+<% end %>
+
+<p class="section-label">Token</p>
+<div class="device-row">
+  <span class="token-box grow" data-controller="clipboard" data-clipboard-text-value="<%= @device.token %>">
+    <%= @device.token %>
+    <button type="button" class="top-link" data-action="clipboard#copy" title="Copy token">copy</button>
+  </span>
+  <%= button_to "Remove device", device_path(@device), method: :delete, class: "btn btn--danger",
+        form: { data: { turbo_confirm: "Remove #{@device.name}? Its token stops working immediately." } } %>
+</div>

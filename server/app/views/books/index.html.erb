@@ -94,6 +94,28 @@
     </p>
   <% end %>
 
+  <% if @currently_reading.present? %>
+    <p class="section-label">Keep reading</p>
+    <div class="shelf shelf--similar shelf--reading">
+      <% @currently_reading.each do |book, state| %>
+        <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
+          <%= render "cover", book: book %>
+          <span class="shelf-caption">
+            <span class="t"><%= book.title %></span>
+            <span class="a">
+              <% if state.progress_percent %>~<%= state.progress_percent.round %>% · <% end %><%
+              %><%= time_ago_in_words(state.content_mtime) %> ago · <%= state.device.name %>
+            </span>
+            <% if state.progress_percent %>
+              <span class="progress-track"><span class="progress-fill" style="width: <%= state.progress_percent.clamp(2, 100) %>%"></span></span>
+            <% end %>
+          </span>
+        <% end %>
+      <% end %>
+    </div>
+    <p class="section-label">Library</p>
+  <% end %>
+
   <% if @books.empty? %>
     <div class="empty-state">
       <span class="fleuron">❧</span>

@@ -33,3 +33,7 @@
 # Ignore key files for decrypting credentials and more.
 /config/*.key
 
+
+# Local bundler install (dev host)
+/vendor/bundle
+/.bundle

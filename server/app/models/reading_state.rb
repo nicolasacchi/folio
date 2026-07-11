@@ -15,6 +15,10 @@ class ReadingState < ApplicationRecord
   validates :size, presence: true
   validates :device_id, uniqueness: { scope: :book_id }
 
+  # Live position updates on the book page and the reading feed.
+  broadcasts_refreshes_to :book
+  broadcasts_refreshes_to ->(_state) { "reading" }
+
   after_destroy :remove_from_disk
 
   def absolute_path

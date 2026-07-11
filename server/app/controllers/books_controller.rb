@@ -43,6 +43,11 @@ class BooksController < ApplicationController
       @stats = Rails.cache.fetch("library_stats", expires_in: 10.minutes) do
         { books: Book.count, files: BookFile.count, bytes: BookFile.sum(:size) }
       end
+
+      # The "keep reading" shelf only heads the unfiltered front page.
+      if @page == 1 && !@author && !@series && !@format
+        @currently_reading = Book.currently_reading(limit: 10)
+      end
     end
   end
 
@@ -51,6 +56,7 @@ class BooksController < ApplicationController
     @similar = similar_books
     @devices = Device.order(:name)
     @deliveries = @book.deliveries.index_by(&:device_id)
+    @annotations = @book.annotations.with_content.includes(:device).recent.limit(100)
   end
 
   def edit

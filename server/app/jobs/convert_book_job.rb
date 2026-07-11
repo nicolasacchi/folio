@@ -26,6 +26,9 @@ class ConvertBookJob < ApplicationJob
     end
 
     conversion.mark_completed!
+    # A queued-for-device book needs its delivery copy rebuilt from the
+    # fresh file (cover + personal-document identity).
+    PrepareKindleFileJob.perform_later(book.id) if book.deliveries.active.exists?
     # Keep Calibre-heavy work serialized on this queue: at batch-convert
     # scale, fulltext extraction on the 3-thread default queue would run
     # three ebook-converts in parallel on top of conversions.

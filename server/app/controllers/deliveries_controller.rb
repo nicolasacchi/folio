@@ -5,11 +5,20 @@ class DeliveriesController < ApplicationController
     device = Device.find(params[:device_id])
 
     delivery = Delivery.find_or_create_by!(book: book, device: device)
-    # A queued book with no Kindle-readable file gets one converted now.
-    EnsureKindleFormatJob.perform_later(book.id) unless book.kindle_file
+    # Re-sending a book that was previously removed (or queued for
+    # removal) re-arms the existing row.
+    requeued = delivery.removed? || delivery.evict_requested?
+    delivery.reactivate! if requeued
+    # A queued book with no Kindle-readable file gets one converted now;
+    # one with a file gets its delivery copy built (cover + PDOC identity).
+    if book.kindle_file
+      PrepareKindleFileJob.perform_later(book.id)
+    else
+      EnsureKindleFormatJob.perform_later(book.id)
+    end
 
     redirect_back fallback_location: book_path(book),
-      notice: delivery.previously_new_record? ? "Queued for #{device.name}." : "Already queued for #{device.name}."
+      notice: delivery.previously_new_record? || requeued ? "Queued for #{device.name}." : "Already queued for #{device.name}."
   end
 
   def destroy

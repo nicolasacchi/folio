@@ -578,3 +578,58 @@ code, .mono { font-family: var(--mono); font-size: .85em; }
 
 table.plain { border-collapse: collapse; width: 100%; }
 table.plain td, table.plain th { text-align: left; padding: .5rem .4rem; border-bottom: 1px solid var(--line); }
+
+/* ---------- Device page ---------- */
+
+.device-name { font-weight: 700; text-decoration: none; }
+.device-name:hover { text-decoration: underline; }
+
+.device-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: .9rem .8rem;
+  margin: 1.2rem 0;
+}
+.fact { display: flex; flex-direction: column; gap: .15rem; }
+.fact-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--ink-soft);
+}
+.fact-value { font-size: .95rem; }
+
+.storage-bar {
+  display: block;
+  max-width: 22rem;
+  height: .55rem;
+  margin-top: .4rem;
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+}
+.storage-bar--wide { max-width: 34rem; height: .8rem; }
+.storage-bar-fill { display: block; height: 100%; background: var(--accent); }
+.storage-bar--low .storage-bar-fill { background: var(--danger, #a33); }
+.danger-text { color: var(--danger, #a33); }
+
+.settings-form { margin: 1rem 0 1.6rem; }
+.settings-grid { display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: end; }
+.settings-grid > span { display: flex; flex-direction: column; gap: .25rem; }
+.settings-check { flex-direction: row !important; align-items: center; gap: .5rem !important; }
+
+/* ---------- Reading & queue extras ---------- */
+
+.progress-track--wide { width: 10rem; }
+.shelf--reading .shelf-caption .progress-track { width: 100%; margin-top: .25rem; }
+
+/* ---------- Annotations ---------- */
+
+.annotation {
+  margin: 0 0 1.1rem;
+  padding: .8rem 1rem .7rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+}
+.annotation-content { margin: 0 0 .5rem; white-space: pre-wrap; }
+.annotation footer { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }

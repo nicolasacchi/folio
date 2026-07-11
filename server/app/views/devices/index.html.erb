@@ -1,28 +1,34 @@
 <% content_for :title, "Devices — Folio" %>
+<%= turbo_stream_from "devices" %>
+<%= turbo_stream_from "deliveries" %>
 
 <p class="kicker">Reading room</p>
 <h1 class="page-title">Devices</h1>
 <p class="muted small">
   Each Kindle running <code>kindled</code> authenticates with its own token
-  (<code>X-Api-Token</code>). Revoke a device by deleting it.
+  (<code>X-Api-Token</code>). Open a device for storage, sync history and
+  its on-device library.
 </p>
 
 <% @devices.each do |device| %>
   <div class="device-row">
     <span class="grow">
-      <b><%= device.name %></b><br>
+      <%= link_to device.name, device_path(device), class: "device-name" %><br>
       <span class="small muted">
         <%= device.last_seen_at ? "seen #{time_ago_in_words(device.last_seen_at)} ago" : "never seen" %>
-        · <%= pluralize(device.deliveries.delivered.count, "book") %> on device<%
-        %><% pending = device.deliveries.pending.count %><% if pending.positive? %>, <%= pending %> queued<% end %>
+        · <%= pluralize(device.deliveries.on_device.count, "book") %> on device<%
+        %><% pending = device.deliveries.pending.count %><% if pending.positive? %>, <%= pending %> queued<% end %><%
+        %><% removing = device.deliveries.evict_requested.count %><% if removing.positive? %>, <%= removing %> removing<% end %>
       </span>
+      <% if device.storage_known? %>
+        <span class="storage-bar <%= "storage-bar--low" if device.low_space? %>" role="img"
+              aria-label="<%= format_size(device.free_bytes) %> free of <%= format_size(device.total_bytes) %>">
+          <span class="storage-bar-fill" style="width: <%= (100 - device.free_percent).clamp(0, 100).round %>%"></span>
+        </span>
+        <span class="small muted"><%= format_size(device.free_bytes) %> free of <%= format_size(device.total_bytes) %><% if device.low_space? %> — <b>low space</b><% end %></span>
+      <% end %>
     </span>
-    <span class="token-box" data-controller="clipboard" data-clipboard-text-value="<%= device.token %>">
-      <%= device.token %>
-      <button type="button" class="top-link" data-action="clipboard#copy" title="Copy token">copy</button>
-    </span>
-    <%= button_to "Remove", device_path(device), method: :delete, class: "btn btn--danger",
-          form: { data: { turbo_confirm: "Remove #{device.name}? Its token stops working immediately." } } %>
+    <%= link_to "Details", device_path(device), class: "btn btn--quiet" %>
   </div>
 <% end %>
 
