@@ -39,10 +39,18 @@ impl From<std::io::Error> for ApiError {
 
 /// Extra JSON fields (version, generated_at, per-item series/size details)
 /// are intentionally ignored — only what the sync logic needs is kept.
+/// The v3 fields (removals, status_url, clippings_url, thumbnails) default
+/// to empty against older servers.
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
     #[serde(default)]
     pub items: Vec<ManifestItem>,
+    #[serde(default)]
+    pub removals: Vec<Removal>,
+    #[serde(default)]
+    pub status_url: Option<String>,
+    #[serde(default)]
+    pub clippings_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,7 +65,30 @@ pub struct ManifestItem {
     pub sha256: String,
     pub url: String,
     #[serde(default)]
+    pub thumbnail: Option<Thumbnail>,
+    #[serde(default)]
     pub reading_state: Option<ReadingStateSummary>,
+}
+
+/// Library cover to install into the firmware's thumbnail cache
+/// (fallback path for files that still carry a store identity).
+#[derive(Debug, Deserialize)]
+pub struct Thumbnail {
+    pub url: String,
+    pub filename: String,
+}
+
+/// A server-requested eviction: delete the file on-device, then ack.
+#[derive(Debug, Deserialize)]
+pub struct Removal {
+    /// Book public id (the `items[].id` key and state map key).
+    pub id: String,
+    pub filename: String,
+    #[serde(default)]
+    pub thumbnail_filename: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    pub ack_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,13 +136,15 @@ impl<'a> Client<'a> {
             .map_err(|e| ApiError::Http(format!("manifest parse: {e}")))
     }
 
-    /// Streams a book to `destination.part`, verifies the sha256, then
-    /// renames into place so readers never see a half-written file.
-    pub fn download_book(
+    /// Streams and verifies into `destination.part` WITHOUT the final
+    /// rename — the sync layer decides placement (replacing an indexed
+    /// file needs a delete + rescan first or the catalog keeps stale
+    /// metadata; verified on firmware 5.19.2).
+    pub fn download_book_part(
         &self,
         item: &ManifestItem,
         destination: &Path,
-    ) -> Result<(), ApiError> {
+    ) -> Result<std::path::PathBuf, ApiError> {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -150,7 +183,43 @@ impl<'a> Client<'a> {
             });
         }
 
-        fs::rename(&part, destination)?;
+        Ok(part)
+    }
+
+    /// Small binary fetch (thumbnails).
+    pub fn download_bytes(&self, path: &str) -> Result<Vec<u8>, ApiError> {
+        let response = self
+            .get(path)
+            .with_timeout(120)
+            .send()
+            .map_err(|e| ApiError::Http(e.to_string()))?;
+        expect_ok(response.status_code, path)?;
+        Ok(response.into_bytes())
+    }
+
+    /// POST a JSON body (device status, removal acks).
+    pub fn post_json(&self, path: &str, body: &serde_json::Value) -> Result<(), ApiError> {
+        let response = minreq::post(self.url(path))
+            .with_header("X-Api-Token", &self.config.api_token)
+            .with_header("Content-Type", "application/json")
+            .with_timeout(60)
+            .with_body(body.to_string())
+            .send()
+            .map_err(|e| ApiError::Http(e.to_string()))?;
+        expect_ok(response.status_code, path)?;
+        Ok(())
+    }
+
+    /// Uploads the whole My Clippings.txt.
+    pub fn put_clippings(&self, path: &str, body: Vec<u8>) -> Result<(), ApiError> {
+        let response = minreq::put(self.url(path))
+            .with_header("X-Api-Token", &self.config.api_token)
+            .with_header("Content-Type", "text/plain")
+            .with_timeout(120)
+            .with_body(body)
+            .send()
+            .map_err(|e| ApiError::Http(e.to_string()))?;
+        expect_ok(response.status_code, path)?;
         Ok(())
     }
 
@@ -225,6 +294,42 @@ mod tests {
         let item = &manifest.items[0];
         assert_eq!(item.id, "abc");
         assert_eq!(item.reading_state.as_ref().unwrap().mtime, 5);
+        // v2 server: the v3 fields default to empty.
+        assert!(manifest.removals.is_empty());
+        assert!(manifest.status_url.is_none());
+        assert!(item.thumbnail.is_none());
+    }
+
+    #[test]
+    fn parses_v3_manifest_fields() {
+        let json = r#"{
+            "version": 3,
+            "generated_at": 1,
+            "items": [{
+                "id": "abc", "title": "T", "author": null, "series": null,
+                "format": "azw3", "filename": "T.azw3", "size": 10,
+                "sha256": "aa", "url": "/api/v1/books/abc/file?fmt=azw3",
+                "thumbnail": {"url": "/api/v1/books/abc/thumbnail",
+                               "filename": "thumbnail_uuid_EBOK_portrait.jpg"},
+                "reading_state": null
+            }],
+            "removals": [{
+                "id": "gone", "delivery_id": 7, "filename": "Old.azw3",
+                "thumbnail_filename": null, "reason": "finished",
+                "ack_url": "/api/v1/removals/7/ack"
+            }],
+            "status_url": "/api/v1/device/status",
+            "clippings_url": "/api/v1/clippings"
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        let thumb = manifest.items[0].thumbnail.as_ref().unwrap();
+        assert_eq!(thumb.filename, "thumbnail_uuid_EBOK_portrait.jpg");
+        assert_eq!(manifest.removals.len(), 1);
+        assert_eq!(manifest.removals[0].id, "gone");
+        assert_eq!(manifest.removals[0].reason.as_deref(), Some("finished"));
+        assert_eq!(manifest.removals[0].ack_url, "/api/v1/removals/7/ack");
+        assert_eq!(manifest.status_url.as_deref(), Some("/api/v1/device/status"));
+        assert_eq!(manifest.clippings_url.as_deref(), Some("/api/v1/clippings"));
     }
 
     #[test]
