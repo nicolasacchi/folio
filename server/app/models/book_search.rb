@@ -148,6 +148,10 @@ module BookSearch
 
   def with_db
     @mutex.synchronize do
+      # sqlite3-ruby closes inherited handles in forked children (Solid
+      # Queue workers fork off the Puma master, which opened the handle
+      # at boot) — reopen instead of failing on the dead object.
+      @db = nil if @db&.closed?
       @db ||= open_database
       yield @db
     end

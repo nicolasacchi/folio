@@ -106,6 +106,9 @@ module Library::Embeddings
 
   def with_db(&block)
     @mutex.synchronize do
+      # Forked children (Solid Queue workers) inherit a closed handle —
+      # see BookSearch.with_db.
+      @db = nil if @db&.closed?
       @db ||= open_database
       block.call(@db)
     end
