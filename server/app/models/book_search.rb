@@ -117,7 +117,10 @@ module BookSearch
 
       last_rowid = rows.last["rowid"]
       with_db do |db|
-        db.transaction do
+        # :immediate takes the write lock up front. A deferred transaction
+        # would start as a read and get an instant (untimed) BUSY when it
+        # tries to upgrade while indexing jobs are writing.
+        db.transaction(:immediate) do
           rows.each do |row|
             next if db.get_first_value("SELECT 1 FROM book_search WHERE book_id = ?", [ row["book_id"] ])
             db.execute(

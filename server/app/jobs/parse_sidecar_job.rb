@@ -21,15 +21,18 @@ class ParseSidecarJob < ApplicationJob
 
   private
 
-  # Rough by construction: MBP positions are offsets into the book text,
-  # while the only denominator we always have is the delivered file's
-  # size (which includes markup/images). Shown with a "~" in the UI.
+  # Sidecar positions are offsets into the uncompressed text, so prefer
+  # the MOBI header's text_length as denominator; the file size fallback
+  # (markup/images included) stays rough — hence the "~" in the UI.
   def estimate_percent(book, position)
     return nil unless position&.positive?
 
     file = book.kindle_file
-    return nil unless file && file.size.to_i.positive?
+    return nil unless file
 
-    ((position.to_f / file.size) * 100).clamp(0.0, 100.0).round(1)
+    denominator = Library::Mobi.text_length(file.absolute_path) || file.size.to_i
+    return nil unless denominator.positive?
+
+    ((position.to_f / denominator) * 100).clamp(0.0, 100.0).round(1)
   end
 end
