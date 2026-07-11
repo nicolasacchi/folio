@@ -14,13 +14,29 @@ through `.sdr` sidecar bundles on the private server, not WhisperSync.
 - **`server/` — Folio, the backend + web UI** (Rails 8, SQLite only).
   Multi-format library with Calibre-powered conversion (auto-AZW3 so
   everything is Kindle-deliverable), FTS5 full-text search with snippet
-  highlighting, and a phone-first, installable web UI. Exposes the
-  token-authenticated device API the daemon consumes.
+  highlighting, and a phone-first, installable web UI with live-updating
+  pages (Turbo morph over solid_cable). Per-device send queue with a
+  low-space eviction planner (finished / never-opened / dormant books are
+  suggested — or auto-queued — for removal when storage runs short),
+  device pages with telemetry and sync history, highlights & notes
+  imported from My Clippings.txt, and delivery preparation that makes the
+  Kindle show real covers (see below). Exposes the token-authenticated
+  device API the daemon consumes.
 - **`kindled/` — the Kindle daemon** (Rust, single static ARMv7 binary,
-  ~650 KB). Mirrors the manifest with SHA-256 verification and atomic
-  writes, triggers the capture-proven LIPC ingestion hooks, and syncs
-  reading state latest-mtime-wins with local backups. Ships with a KUAL
-  extension.
+  ~1 MB). Mirrors the manifest with SHA-256 verification and atomic
+  writes, performs server-requested removals with an ack handshake,
+  reports device status (statvfs/battery/firmware plus the on-disk book
+  list), uploads My Clippings.txt, triggers the LIPC ingestion hooks
+  (pre- and post-5.19 property sets), and syncs reading state
+  latest-mtime-wins with local backups. Ships with a KUAL extension.
+
+  Cover fix, verified live on firmware 5.19.2: calibre files carry
+  `EXTH 501=EBOK` + a uuid ASIN, so the firmware asks Amazon for the
+  cover (never resolves), caches a "no image available" placeholder and
+  renders half-height tiles — it only extracts embedded covers for
+  personal documents. Folio therefore delivers each queued book as a
+  prepared copy with the store-identity EXTH records neutralized (and a
+  cover embedded when the source had none).
 - **`observer/` — research tooling.** Read-only SSH capture scripts and
   the findings that shaped the design (see its README).
 - **`privatecloud/` — first prototypes** (Python manifest server, shell
