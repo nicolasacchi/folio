@@ -33,6 +33,33 @@ RSpec.describe Library::SidecarProgress do
     expect(result.files).to contain_exactly("book.mbp1", "book.mbs")
   end
 
+  describe "KRDS sidecars (KPP firmware)" do
+    # Real files written by a Kindle on firmware 5.19.2 at ~67% of a small
+    # MOBI: fpr 31740 / lpr 31739 live in the .mbs, the .mbp1 only carries
+    # flags and an empty annotation cache.
+    let(:mbp1) { File.binread(Rails.root.join("spec/fixtures/sidecars/krds.mbp1")) }
+    let(:mbs) { File.binread(Rails.root.join("spec/fixtures/sidecars/krds.mbs")) }
+
+    it "takes the furthest position across KRDS members" do
+      bundle = build_bundle("book.sdr/book.mbp1" => mbp1, "book.sdr/book.mbs" => mbs)
+      result = described_class.parse(bundle)
+
+      expect(result.source).to eq("krds")
+      expect(result.last_position).to eq(31_740)
+      expect(result.annotation_count).to eq(0)
+      expect(result.files).to contain_exactly("book.mbp1", "book.mbs")
+    end
+
+    it "counts cached personal annotations" do
+      annotated = mbp1 + "annotation.personal.bookmark".b + "annotation.personal.highlight".b
+      bundle = build_bundle("book.sdr/book.mbp1" => annotated)
+      result = described_class.parse(bundle)
+
+      expect(result.source).to eq("krds")
+      expect(result.annotation_count).to eq(2)
+    end
+  end
+
   it "degrades to an inventory when the sidecar format is unknown" do
     bundle = build_bundle("book.sdr/book.azw3r" => "\x00\x01krds-ish".b)
     result = described_class.parse(bundle)
