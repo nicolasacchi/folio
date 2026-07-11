@@ -13,6 +13,9 @@ pub struct State {
     /// Keyed by the server's book public id.
     #[serde(default)]
     pub books: HashMap<String, BookState>,
+    /// Unix mtime of the My Clippings.txt we last uploaded.
+    #[serde(default)]
+    pub clippings_pushed_mtime: u64,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -26,6 +29,12 @@ pub struct BookState {
     /// Server bundle mtime we last applied locally.
     #[serde(default)]
     pub applied_sdr_mtime: u64,
+    /// Thumbnail we installed into the firmware cache (name + size, so a
+    /// scanner-regenerated placeholder is detected by the size change).
+    #[serde(default)]
+    pub thumbnail_filename: Option<String>,
+    #[serde(default)]
+    pub thumbnail_size: u64,
 }
 
 impl State {
@@ -64,6 +73,7 @@ mod tests {
                 sha256: "ff".into(),
                 pushed_sdr_mtime: 5,
                 applied_sdr_mtime: 0,
+                ..Default::default()
             },
         );
         state.save(&path).unwrap();

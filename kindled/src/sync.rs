@@ -7,21 +7,26 @@
 //! local sidecar that produced them).
 
 use std::fs;
+use std::thread;
+use std::time::{Duration, Instant};
 
-use crate::api::{ApiError, Client, ManifestItem};
+use crate::api::{ApiError, Client, ManifestItem, Removal};
 use crate::config::Config;
 use crate::state::{BookState, State};
-use crate::{lipc, sdr};
+use crate::{device, lipc, sdr};
 
 #[derive(Debug, Default)]
 pub struct SyncReport {
     pub downloaded: u32,
     pub pushed_states: u32,
     pub applied_states: u32,
+    pub removed: u32,
+    pub clippings_pushed: bool,
     pub errors: Vec<String>,
 }
 
 pub fn run(config: &Config) -> Result<SyncReport, ApiError> {
+    let started = Instant::now();
     let client = Client::new(config);
     let manifest = client.manifest()?;
     let mut state = State::load(&config.state_file);
@@ -37,7 +42,149 @@ pub fn run(config: &Config) -> Result<SyncReport, ApiError> {
         state.save(&config.state_file)?;
     }
 
+    for removal in &manifest.removals {
+        match process_removal(config, &client, &mut state, removal) {
+            Ok(()) => report.removed += 1,
+            Err(error) => report
+                .errors
+                .push(format!("removal {} ({}): {error}", removal.filename, removal.id)),
+        }
+        state.save(&config.state_file)?;
+    }
+
+    if let Some(url) = &manifest.clippings_url {
+        match push_clippings(config, &client, &mut state, url) {
+            Ok(pushed) => {
+                report.clippings_pushed = pushed;
+                if pushed {
+                    state.save(&config.state_file)?;
+                }
+            }
+            Err(error) => report.errors.push(format!("clippings: {error}")),
+        }
+    }
+
+    // Telemetry last, so the report covers this whole pass. Best-effort:
+    // an old server without the endpoint must not fail the sync.
+    if let Some(url) = &manifest.status_url {
+        if let Err(error) = post_status(config, &client, &state, &report, started, url) {
+            eprintln!("status report failed: {error}");
+        }
+    }
+
     Ok(report)
+}
+
+/// Delete a book (plus sidecar and any installed thumbnail) at the
+/// server's request, then ack so the delivery row is closed out. Newer
+/// local reading state is pushed first — finishing position survives the
+/// eviction on the server.
+fn process_removal(
+    config: &Config,
+    client: &Client,
+    state: &mut State,
+    removal: &Removal,
+) -> Result<(), ApiError> {
+    let path = config.document_dir.join(&removal.filename);
+    let sdr_dir = sdr::sdr_dir_for(&path);
+
+    if let Some(book_state) = state.books.get(&removal.id) {
+        if let Some(local) = sdr::latest_mtime(&sdr_dir) {
+            if local > book_state.pushed_sdr_mtime && local > book_state.applied_sdr_mtime {
+                let bundle = sdr::pack(&sdr_dir)?;
+                client.push_reading_state(&removal.id, bundle, local)?;
+            }
+        }
+    }
+
+    fs::remove_file(&path).ok(); // may already be gone
+    fs::remove_dir_all(&sdr_dir).ok();
+    if let Some(thumbnail) = &removal.thumbnail_filename {
+        fs::remove_file(config.thumbnail_dir.join(thumbnail)).ok();
+    }
+    lipc::refresh_file(&path); // drop the catalog row
+
+    client.post_json(&removal.ack_url, &serde_json::json!({}))?;
+    state.books.remove(&removal.id);
+    if let Some(reason) = &removal.reason {
+        eprintln!("removed {} ({reason})", removal.filename);
+    } else {
+        eprintln!("removed {}", removal.filename);
+    }
+    Ok(())
+}
+
+/// Upload My Clippings.txt when it changed since the last push.
+fn push_clippings(
+    config: &Config,
+    client: &Client,
+    state: &mut State,
+    url: &str,
+) -> Result<bool, ApiError> {
+    const MAX_CLIPPINGS_BYTES: u64 = 10 * 1024 * 1024;
+
+    let Ok(meta) = fs::metadata(&config.clippings_path) else {
+        return Ok(false); // no highlights yet
+    };
+    if meta.len() == 0 || meta.len() > MAX_CLIPPINGS_BYTES {
+        return Ok(false);
+    }
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if mtime <= state.clippings_pushed_mtime {
+        return Ok(false);
+    }
+
+    let body = fs::read(&config.clippings_path)?;
+    client.put_clippings(url, body)?;
+    state.clippings_pushed_mtime = mtime;
+    Ok(true)
+}
+
+/// POST storage/battery/firmware telemetry, the pass report, and the list
+/// of books actually present on disk (the server reconciles deliveries
+/// against it).
+fn post_status(
+    config: &Config,
+    client: &Client,
+    state: &State,
+    report: &SyncReport,
+    started: Instant,
+    url: &str,
+) -> Result<(), ApiError> {
+    let info = device::collect(&config.document_dir);
+    let books: Vec<serde_json::Value> = state
+        .books
+        .iter()
+        .filter(|(_, book)| book.path.exists())
+        .map(|(id, book)| {
+            let size = fs::metadata(&book.path).map(|m| m.len()).unwrap_or(0);
+            serde_json::json!({ "id": id, "size": size })
+        })
+        .collect();
+
+    let payload = serde_json::json!({
+        "free_bytes": info.free_bytes,
+        "total_bytes": info.total_bytes,
+        "battery_percent": info.battery_percent,
+        "firmware_version": info.firmware_version,
+        "serial": info.serial,
+        "kindled_version": env!("CARGO_PKG_VERSION"),
+        "sync": {
+            "downloaded": report.downloaded,
+            "sdr_pushed": report.pushed_states,
+            "sdr_applied": report.applied_states,
+            "removed": report.removed,
+            "errors": report.errors.len(),
+            "duration_ms": started.elapsed().as_millis() as u64,
+        },
+        "books": books,
+    });
+    client.post_json(url, &payload)
 }
 
 fn sync_item(
@@ -63,7 +210,17 @@ fn sync_item(
             return Ok(());
         }
         eprintln!("downloading {} -> {}", item.title, destination.display());
-        client.download_book(item, &destination)?;
+        let part = client.download_book_part(item, &destination)?;
+        if destination.exists() {
+            // Replacing in place keeps stale catalog metadata (the scanner
+            // does not re-read an existing row's file) — drop the row
+            // first, then place the new bytes. The `.sdr` sidecar stays,
+            // so the reading position survives the swap.
+            fs::remove_file(&destination)?;
+            lipc::refresh_file(&destination);
+            thread::sleep(Duration::from_millis(1500));
+        }
+        fs::rename(&part, &destination)?;
         lipc::refresh_file(&destination);
         report.downloaded += 1;
         state.books.insert(
@@ -76,7 +233,53 @@ fn sync_item(
         );
     }
 
+    if let Err(error) = install_thumbnail(config, client, state, item) {
+        // Cosmetic; never fail the book sync over it.
+        eprintln!("thumbnail for {} failed: {error}", item.title);
+    }
+
     sync_reading_state(client, state, item, report)
+}
+
+/// Fallback cover path for files that still carry a store identity: put
+/// the server-rendered cover into the firmware's thumbnail cache under the
+/// EXTH-derived name. A rescan regenerates the firmware's placeholder (the
+/// size change betrays it), so re-install whenever the size differs from
+/// what we wrote.
+fn install_thumbnail(
+    config: &Config,
+    client: &Client,
+    state: &mut State,
+    item: &ManifestItem,
+) -> Result<(), ApiError> {
+    let Some(thumbnail) = &item.thumbnail else {
+        return Ok(());
+    };
+    if !config.thumbnail_dir.is_dir() {
+        return Ok(()); // not on a Kindle
+    }
+    let Some(book_state) = state.books.get(&item.id).cloned() else {
+        return Ok(()); // book not downloaded yet
+    };
+
+    let destination = config.thumbnail_dir.join(&thumbnail.filename);
+    let current_size = fs::metadata(&destination).map(|m| m.len()).ok();
+    let ours = book_state.thumbnail_filename.as_deref() == Some(thumbnail.filename.as_str())
+        && current_size == Some(book_state.thumbnail_size);
+    if ours {
+        return Ok(());
+    }
+
+    let bytes = client.download_bytes(&thumbnail.url)?;
+    let size = bytes.len() as u64;
+    let part = destination.with_extension("part");
+    fs::write(&part, &bytes)?;
+    fs::rename(&part, &destination)?;
+    state.books.entry(item.id.clone()).and_modify(|book| {
+        book.thumbnail_filename = Some(thumbnail.filename.clone());
+        book.thumbnail_size = size;
+    });
+    Ok(())
 }
 
 fn sync_reading_state(
@@ -178,6 +381,7 @@ mod tests {
             size: 1,
             sha256: sha.into(),
             url: format!("/api/v1/books/{id}/file"),
+            thumbnail: None,
             reading_state: state_mtime.map(|mtime| crate::api::ReadingStateSummary { mtime }),
         }
     }

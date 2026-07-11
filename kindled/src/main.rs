@@ -11,6 +11,7 @@
 
 mod api;
 mod config;
+mod device;
 mod lipc;
 mod sdr;
 mod state;
@@ -85,11 +86,13 @@ fn cmd_sync() -> Result<(), String> {
     let config = load_config()?;
     let report = sync::run(&config).map_err(|e| e.to_string())?;
     println!(
-        "sync done: {} downloaded, {} states pushed, {} states applied, {} errors",
+        "sync done: {} downloaded, {} removed, {} states pushed, {} states applied, {} errors{}",
         report.downloaded,
+        report.removed,
         report.pushed_states,
         report.applied_states,
-        report.errors.len()
+        report.errors.len(),
+        if report.clippings_pushed { ", clippings uploaded" } else { "" }
     );
     for error in &report.errors {
         eprintln!("  error: {error}");
@@ -110,10 +113,10 @@ fn cmd_daemon() -> Result<(), String> {
     loop {
         match sync::run(&config) {
             Ok(report) => {
-                if report.downloaded + report.pushed_states + report.applied_states > 0 {
+                if report.downloaded + report.removed + report.pushed_states + report.applied_states > 0 {
                     eprintln!(
-                        "sync: {} downloaded, {} pushed, {} applied",
-                        report.downloaded, report.pushed_states, report.applied_states
+                        "sync: {} downloaded, {} removed, {} pushed, {} applied",
+                        report.downloaded, report.removed, report.pushed_states, report.applied_states
                     );
                 }
                 for error in &report.errors {
@@ -147,6 +150,21 @@ fn cmd_status() -> Result<(), String> {
     println!("documents:     {}", config.document_dir.display());
     println!("poll:          {}s", config.poll_interval_secs);
     println!("auto-download: {}", config.auto_download);
+
+    let info = device::collect(&config.document_dir);
+    if let (Some(free), Some(total)) = (info.free_bytes, info.total_bytes) {
+        println!(
+            "storage:       {:.1} GB free of {:.1} GB",
+            free as f64 / 1e9,
+            total as f64 / 1e9
+        );
+    }
+    if let Some(battery) = info.battery_percent {
+        println!("battery:       {battery}%");
+    }
+    if let Some(firmware) = &info.firmware_version {
+        println!("firmware:      {firmware}");
+    }
 
     let state = State::load(&config.state_file);
     println!("tracked books: {}", state.books.len());

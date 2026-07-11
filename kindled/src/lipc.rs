@@ -1,22 +1,28 @@
 //! Stock-firmware integration through `lipc-set-prop`, the same calls the
 //! capture research proved trigger local library ingestion:
 //!   com.lab126.scanner reScanFile <path>
-//!   com.lab126.ccat    triggerUpdate 1
-//! KPP-era firmware (5.19+) dropped both properties and instead watches
-//! /mnt/us/documents by itself — verified live: downloads get indexed
-//! with no trigger at all. The calls stay for older firmware, muted, as
-//! pure best-effort.
+//!   com.lab126.ccat    triggerUpdate 1     (pre-5.19 firmware)
+//!   com.lab126.scanner triggerUpdate 1     (5.19+: moved to the scanner)
+//! On 5.19 the documents folder is also inotify-watched, so most changes
+//! index with no trigger at all; the calls stay as best-effort accelerators
+//! and are muted when a property doesn't exist on the running firmware.
 //! Off-device (tests, dev host) the binary is absent and calls are no-ops.
+//!
+//! Caveat verified live on 5.19.2: `reScanFile` on an EXISTING catalog row
+//! does NOT re-read the file's metadata — replacing a book in place keeps
+//! stale catalog identity. The sync layer therefore deletes + rescans
+//! before writing the new bytes.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 pub fn refresh_file(path: &Path) {
     set_prop(&["com.lab126.scanner", "reScanFile", &path.to_string_lossy()]);
-    set_prop(&["com.lab126.ccat", "triggerUpdate", "1"]);
+    trigger_catalog_update();
 }
 
 pub fn trigger_catalog_update() {
+    set_prop(&["com.lab126.scanner", "triggerUpdate", "1"]);
     set_prop(&["com.lab126.ccat", "triggerUpdate", "1"]);
 }
 

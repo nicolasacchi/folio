@@ -21,6 +21,21 @@ Every poll (default 300 s), one reconciliation pass:
    bundles are restored locally after backing up the existing sidecar to
    `<book>.sdr.bak-<timestamp>`. Restored files get the server-side mtime
    so they never bounce back as fresh changes.
+4. Process `removals[]` (manifest v3): push any newer reading state, delete
+   the book + sidecar (+ installed thumbnail), drop the catalog row, then
+   ack so the server closes the delivery. This is how Folio's low-space
+   eviction frees the Kindle.
+5. Upload `My Clippings.txt` when its mtime moved — Folio parses
+   highlights/notes out of it (the sidecars only carry positions).
+6. POST `/api/v1/device/status`: free/total bytes (statvfs on the
+   documents dir), battery (`powerd battLevel`), firmware, serial, the
+   pass report, and the list of books actually on disk (the server
+   reconciles deliveries against it and plans evictions).
+
+Replacement downloads (server sha changed) delete the old file and let the
+scanner drop the row *before* the new bytes land — verified on 5.19.2 that
+an in-place overwrite keeps stale catalog metadata. The `.sdr` sidecar
+survives the swap, so the reading position does too.
 
 State lives in `/mnt/us/privatecloud/state.json` (atomic writes — the
 Kindle loses power whenever it likes).
@@ -47,6 +62,8 @@ API_TOKEN=...
 DOCUMENT_DIR=/mnt/us/documents/PrivateCloud
 POLL_INTERVAL=300
 AUTO_DOWNLOAD=1     # 0 = mirror nothing automatically
+THUMBNAIL_DIR=/mnt/us/system/thumbnails       # firmware cover cache
+CLIPPINGS_PATH=/mnt/us/documents/My Clippings.txt
 ```
 
 `PRIVATECLOUD_DIR` overrides the base directory (used by tests/dev).

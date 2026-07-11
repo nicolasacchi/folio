@@ -14,10 +14,16 @@ pub struct Config {
     pub state_file: PathBuf,
     pub poll_interval_secs: u64,
     pub auto_download: bool,
+    /// The firmware's Library thumbnail cache.
+    pub thumbnail_dir: PathBuf,
+    /// Where the reader appends highlights/notes.
+    pub clippings_path: PathBuf,
 }
 
 pub const DEFAULT_BASE_DIR: &str = "/mnt/us/privatecloud";
 pub const DEFAULT_DOCUMENT_DIR: &str = "/mnt/us/documents/PrivateCloud";
+pub const DEFAULT_THUMBNAIL_DIR: &str = "/mnt/us/system/thumbnails";
+pub const DEFAULT_CLIPPINGS_PATH: &str = "/mnt/us/documents/My Clippings.txt";
 
 impl Config {
     pub fn base_dir() -> PathBuf {
@@ -63,6 +69,14 @@ impl Config {
                 .get("AUTO_DOWNLOAD")
                 .map(|s| s != "0" && !s.eq_ignore_ascii_case("false"))
                 .unwrap_or(true),
+            thumbnail_dir: values
+                .get("THUMBNAIL_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_THUMBNAIL_DIR)),
+            clippings_path: values
+                .get("CLIPPINGS_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_CLIPPINGS_PATH)),
         })
     }
 
