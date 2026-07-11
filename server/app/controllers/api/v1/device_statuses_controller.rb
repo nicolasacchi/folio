@@ -25,10 +25,15 @@ class Api::V1::DeviceStatusesController < Api::V1::BaseController
     attrs[:free_bytes] = params[:free_bytes].to_i if params[:free_bytes].present?
     attrs[:total_bytes] = params[:total_bytes].to_i if params[:total_bytes].present?
     attrs[:battery_percent] = params[:battery_percent].to_i if params[:battery_percent].present?
-    attrs[:firmware_version] = params[:firmware_version].to_s.first(100) if params[:firmware_version].present?
-    attrs[:serial] = params[:serial].to_s.first(100) if params[:serial].present?
-    attrs[:kindled_version] = params[:kindled_version].to_s.first(40) if params[:kindled_version].present?
+    attrs[:firmware_version] = printable(params[:firmware_version], 100) if params[:firmware_version].present?
+    attrs[:serial] = printable(params[:serial], 100) if params[:serial].present?
+    attrs[:kindled_version] = printable(params[:kindled_version], 40) if params[:kindled_version].present?
     current_device.update!(attrs)
+  end
+
+  # /proc/usid and friends can carry trailing NULs; keep stored values clean.
+  def printable(value, max)
+    value.to_s.scrub.gsub(/[^[:print:]]/, "").strip.first(max)
   end
 
   def record_sync!
