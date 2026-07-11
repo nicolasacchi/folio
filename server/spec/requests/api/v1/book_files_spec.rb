@@ -26,4 +26,17 @@ RSpec.describe "API v1 book files", type: :request do
 
     expect(response).to have_http_status(:not_found)
   end
+
+  describe "delivery tracking" do
+    let!(:delivery) { create(:delivery, book: book, device: device) }
+    let!(:other_device) { create(:device) }
+    let!(:other_delivery) { create(:delivery, book: book, device: other_device) }
+
+    it "marks this device's queued delivery as delivered on download" do
+      get "/api/v1/books/#{book.public_id}/file", headers: headers
+
+      expect(delivery.reload).to be_delivered
+      expect(other_delivery.reload).not_to be_delivered
+    end
+  end
 end

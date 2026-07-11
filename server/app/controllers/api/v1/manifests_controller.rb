@@ -1,9 +1,9 @@
 class Api::V1::ManifestsController < Api::V1::BaseController
-  # The device manifest lists one deliverable (Kindle-ready) file per book,
-  # plus enough reading-state info for the daemon to sync sidecars without
-  # extra round-trips.
+  # The device manifest lists one deliverable (Kindle-ready) file per book
+  # queued for this device (see Delivery), plus enough reading-state info
+  # for the daemon to sync sidecars without extra round-trips.
   def show
-    books = Book.includes(:book_files, :reading_states).order(:title)
+    books = current_device.queued_books.includes(:book_files, :reading_states).order(:title)
 
     items = books.filter_map do |book|
       file = book.kindle_file

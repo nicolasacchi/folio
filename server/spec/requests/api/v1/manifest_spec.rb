@@ -19,8 +19,14 @@ RSpec.describe "API v1 manifest", type: :request do
     let!(:azw3) { create(:book_file, book: ready_book, format: "azw3") }
     let!(:epub_only_book) { create(:book, title: "Epub Only") }
     let!(:epub) { create(:book_file, book: epub_only_book, format: "epub") }
+    let!(:unqueued_book) { create(:book, title: "Not Sent") }
+    let!(:unqueued_azw3) { create(:book_file, book: unqueued_book, format: "azw3") }
+    let!(:other_device) { create(:device) }
+    let!(:ready_delivery) { create(:delivery, book: ready_book, device: device) }
+    let!(:epub_delivery) { create(:delivery, book: epub_only_book, device: device) }
+    let!(:foreign_delivery) { create(:delivery, book: unqueued_book, device: other_device) }
 
-    it "lists only books with a Kindle-ready file" do
+    it "lists only queued books with a Kindle-ready file" do
       get "/api/v1/manifest", headers: headers
 
       expect(response).to have_http_status(:ok)

@@ -7,6 +7,8 @@ class Api::V1::BookFilesController < Api::V1::BaseController
       return render json: { error: "file not found" }, status: :not_found
     end
 
+    current_device.deliveries.find_by(book: book)&.update_column(:delivered_at, Time.current)
+
     send_file file.absolute_path,
       filename: file.filename,
       type: "application/octet-stream",

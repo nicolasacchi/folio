@@ -12,6 +12,7 @@ Rails.application.routes.draw do
     end
     resources :conversions, only: [ :create ]
   end
+  resources :deliveries, only: [ :create, :destroy ]
   resources :uploads, only: [ :new, :create ]
   resources :devices, only: [ :index, :create, :destroy ]
 
