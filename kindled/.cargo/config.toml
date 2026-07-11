@@ -1,6 +1,7 @@
-# Kindle target: ARMv7 (Cortex-A9 class, hard float) with static musl,
-# linked with rust-lld so no C cross-toolchain is required. All
-# dependencies are pure Rust, which is what makes this work.
+# Kindle target: ARMv7 (Cortex-A9 class, hard float) with static musl.
+# rust-lld links fine even with ring's C/asm objects; compiling those
+# objects needs an ARM C toolchain, so build-kindle.sh runs the build in
+# the rust-musl-cross docker image (its env linker override wins there).
 [target.armv7-unknown-linux-musleabihf]
 linker = "rust-lld"
 rustflags = ["-C", "target-feature=+crt-static"]

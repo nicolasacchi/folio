@@ -1,14 +1,17 @@
 # kindled
 
 Rust sync daemon for the Kindle side of the private cloud. One static
-ARMv7 binary (~650 KB), no runtime, pure-Rust dependencies, plain HTTP on
-the LAN. Replaces the `privatecloud/kindle-agent.sh` prototype.
+ARMv7 binary (~1 MB), no runtime, HTTPS via rustls with bundled Mozilla
+roots (the Kindle's own CA store never matters). Replaces the
+`privatecloud/kindle-agent.sh` prototype.
 
 ## What it does
 
 Every poll (default 300 s), one reconciliation pass:
 
 1. Fetch `/api/v1/manifest` from the Folio server (`X-Api-Token` auth).
+   The manifest lists only the books queued for this device ("Send to
+   Kindle" in the web UI) — never the whole library.
 2. Download new/changed books into `/mnt/us/documents/PrivateCloud`:
    stream to `.part`, verify SHA-256, atomic rename, then trigger
    `com.lab126.scanner reScanFile` + `com.lab126.ccat triggerUpdate` so the
@@ -51,14 +54,15 @@ AUTO_DOWNLOAD=1     # 0 = mirror nothing automatically
 ## Build & install
 
 ```sh
-./build-kindle.sh   # needs rustup; adds armv7-unknown-linux-musleabihf
+./build-kindle.sh   # docker (rust-musl-cross image); rustup fallback
 scp target/armv7-unknown-linux-musleabihf/release/kindled root@KINDLE:/mnt/us/privatecloud/
 ```
 
-Linking uses `rust-lld` (see `.cargo/config.toml`); because every
-dependency is pure Rust there is no C cross-toolchain to install. TLS is
-deliberately absent — run the server on the LAN, or terminate TLS on a
-reverse proxy and keep the Kindle segment HTTP.
+HTTPS comes from rustls (`minreq/https-rustls`) with webpki bundled
+roots. rustls' `ring` backend contains C/asm, so cross-builds run inside
+the `messense/rust-musl-cross:armv7-musleabihf` docker image, which
+carries the ARM musl C toolchain; everything else stays pure Rust and
+the binary stays fully static.
 
 ## KUAL
 

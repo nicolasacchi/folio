@@ -167,7 +167,6 @@ fn filetime_set(path: &std::path::Path, unix_secs: u64) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     fn item(id: &str, sha: &str, state_mtime: Option<u64>) -> ManifestItem {
         ManifestItem {

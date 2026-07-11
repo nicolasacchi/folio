@@ -5,12 +5,12 @@ edition = "2021"
 description = "Private-cloud sync daemon for jailbroken Kindles"
 license = "MIT"
 
-# Every dependency is pure Rust on purpose: the target is a static
-# armv7-unknown-linux-musleabihf binary and nothing here needs a C
-# cross-toolchain. TLS is intentionally absent — the server lives on the
-# LAN and speaks plain HTTP.
+# Static armv7-unknown-linux-musleabihf binary. HTTPS comes from rustls
+# (bundled webpki roots, so the Kindle's ancient CA store is irrelevant);
+# rustls' ring backend has C/asm parts, so cross-builds need a C
+# cross-toolchain — build-kindle.sh uses the rust-musl-cross docker image.
 [dependencies]
-minreq = "2"
+minreq = { version = "2", features = ["https-rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
