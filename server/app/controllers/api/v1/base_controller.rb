@@ -5,6 +5,13 @@ class Api::V1::BaseController < ActionController::API
 
   attr_reader :current_device
 
+  # A write stuck behind the busy timeout (bulk jobs hold SQLite's write
+  # lock) is a retry-later, not a server bug; the daemon polls again anyway.
+  rescue_from ActiveRecord::StatementTimeout do
+    response.headers["Retry-After"] = "60"
+    render json: { error: "database busy" }, status: :service_unavailable
+  end
+
   private
 
   def authenticate_device!

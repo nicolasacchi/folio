@@ -1,10 +1,11 @@
-# The search index is an SQLite FTS5 virtual table. schema.rb cannot
-# represent it, so its tables are excluded from the dump and the table is
-# (re)created idempotently wherever the schema was loaded instead of migrated.
+# The search index is an SQLite FTS5 virtual table in its own database
+# file (storage/<env>_search.sqlite3). The dump exclusion stays because a
+# legacy in-primary table may still exist until `book_search:migrate` has
+# run.
 ActiveRecord::SchemaDumper.ignore_tables = [/\Abook_search/]
 
 Rails.application.config.after_initialize do
   BookSearch.ensure_schema!
-rescue ActiveRecord::ActiveRecordError, SQLite3::Exception
-  # Database not created/loaded yet (e.g. during db:prepare boot).
+rescue SQLite3::Exception
+  # Storage not writable yet (e.g. during image build).
 end
