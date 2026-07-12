@@ -15,7 +15,10 @@ class ConvertBookJob < ApplicationJob
 
     Dir.mktmpdir("conversion") do |dir|
       target = File.join(dir, "#{Library.filename_stem(book)}.#{conversion.target_format}")
-      Calibre.convert(source.absolute_path, target)
+      # MOBI targets get the joint MOBI6+KF8 container: KF8 rendering for
+      # the reader, MOBI6 outside so the Library UI shows the cover.
+      options = conversion.target_format == "mobi" ? Library::KindlePrep::COMBO_OPTIONS : []
+      Calibre.convert(source.absolute_path, target, options: options)
       Library::Ingest.call(
         target,
         original_filename: File.basename(target),

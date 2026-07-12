@@ -68,7 +68,7 @@ RSpec.describe "API v1 manifest (v3 fields)", type: :request do
       expect(removal).to include(
         "id" => book.public_id,
         "delivery_id" => delivery.id,
-        "filename" => azw3.filename,
+        "filename" => azw3.delivery_filename,
         "reason" => "finished",
         "ack_url" => "/api/v1/removals/#{delivery.id}/ack"
       )

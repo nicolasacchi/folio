@@ -83,4 +83,48 @@ RSpec.describe Library::KindlePrep do
     expect { described_class.prepare!(file) }.not_to raise_error
     expect(file.reload).to be_prepared_fresh
   end
+
+  describe "azw3 → joint mobi transcode" do
+    it "converts through calibre and delivers a .mobi" do
+      allow(Calibre).to receive(:available?).and_return(true)
+      allow(Calibre).to receive(:convert) do |_source, staging, options:|
+        expect(options).to eq([ "--mobi-file-type", "both" ])
+        MobiFixture.write(staging.to_s, exth: { 113 => "re-added-uuid", 501 => "EBOK" })
+      end
+
+      described_class.prepare!(file)
+      file.reload
+
+      expect(file.prepared_path).to end_with(".mobi")
+      expect(file.delivery_format).to eq("mobi")
+      expect(file.delivery_filename).to eq("#{File.basename(file.filename, '.*')}.mobi")
+      # The transcode output still gets its identity rewritten.
+      expect(Library::MobiCde.parse(file.prepared_absolute_path)).to eq(asin: nil, cde_type: "PDOC")
+    end
+
+    it "falls back to the byte-patched copy when the transcode fails" do
+      allow(Calibre).to receive(:available?).and_return(true)
+      allow(Calibre).to receive(:convert).and_raise(Calibre::Error, "boom")
+
+      described_class.prepare!(file)
+      file.reload
+
+      expect(file.prepared_path).to end_with(".azw3")
+      expect(file.delivery_filename).to end_with(".azw3")
+      expect(Library::MobiCde.parse(file.prepared_absolute_path)).to eq(asin: nil, cde_type: "PDOC")
+    end
+
+    it "patches every MOBI header in a joint file" do
+      path = Rails.root.join("tmp", "test_storage", "joint.mobi").to_s
+      MobiFixture.write_joint(path, exth: { 113 => "uuid", 501 => "EBOK" })
+
+      expect(described_class.neutralize_store_identity!(path)).to be(true)
+
+      contents = File.binread(path)
+      # Both EXTH copies rewritten: no live ASIN record, both cdeTypes PDOC.
+      expect(contents.scan("PDOC").size).to eq(2)
+      expect(contents.scan("EBOK")).to be_empty
+      expect(Library::MobiCde.parse(path)).to eq(asin: nil, cde_type: "PDOC")
+    end
+  end
 end

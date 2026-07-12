@@ -78,6 +78,17 @@ class BookFile < ApplicationRecord
     prepared_fresh? ? prepared_size : size
   end
 
+  # Preparation may change the container (azw3 → joint mobi), so the
+  # delivered name/format follow the prepared file, keeping the human
+  # "Title -- Author" stem.
+  def delivery_format
+    prepared_fresh? ? File.extname(prepared_path).delete_prefix(".").presence || format : format
+  end
+
+  def delivery_filename
+    "#{File.basename(filename, '.*')}.#{delivery_format}"
+  end
+
   private
 
   # Never touch external files: the scan roots are someone else's data

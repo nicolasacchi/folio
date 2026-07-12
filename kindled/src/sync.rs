@@ -231,6 +231,21 @@ fn sync_item(
                 ..book_state.clone().unwrap_or_default()
             },
         );
+
+        // The server may rename a deliverable (e.g. container change,
+        // azw3 → joint mobi). Clear out the old file so the Library
+        // doesn't show the book twice. Same-stem renames share the same
+        // `.sdr` sidecar, so the reading position carries over untouched.
+        if let Some(previous) = &book_state {
+            if previous.path != destination && previous.path.exists() {
+                fs::remove_file(&previous.path).ok();
+                let old_sdr = sdr::sdr_dir_for(&previous.path);
+                if old_sdr != sdr::sdr_dir_for(&destination) {
+                    fs::remove_dir_all(&old_sdr).ok();
+                }
+                lipc::refresh_file(&previous.path);
+            }
+        }
     }
 
     if let Err(error) = install_thumbnail(config, client, state, item) {

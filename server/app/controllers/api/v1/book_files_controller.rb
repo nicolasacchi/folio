@@ -10,7 +10,7 @@ class Api::V1::BookFilesController < Api::V1::BaseController
     current_device.deliveries.find_by(book: book)&.update!(delivered_at: Time.current)
 
     send_file file.delivery_path,
-      filename: file.filename,
+      filename: file.delivery_filename,
       type: "application/octet-stream",
       disposition: "attachment"
   end
