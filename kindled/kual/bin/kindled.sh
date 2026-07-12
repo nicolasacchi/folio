@@ -1,6 +1,11 @@
 #!/bin/sh
 # KUAL entry points for the kindled daemon. Shell stays deliberately thin:
 # all real logic lives in the Rust binary.
+#
+# When the upstart job is installed (/etc/upstart/kindled.conf, see
+# ../upstart/kindled.conf) start/stop delegate to it — upstart would
+# otherwise respawn a daemon KUAL had stopped, and two supervisors would
+# fight over one pid.
 set -eu
 
 PRIVATECLOUD_DIR=${PRIVATECLOUD_DIR:-/mnt/us/privatecloud}
@@ -10,6 +15,10 @@ LOG="$PRIVATECLOUD_DIR/kindled.log"
 
 log() {
     printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"
+}
+
+upstart_managed() {
+    [ -f /etc/upstart/kindled.conf ] && command -v initctl >/dev/null 2>&1
 }
 
 daemon_running() {
@@ -22,7 +31,10 @@ case "${1:-}" in
         "$KINDLED" sync >> "$LOG" 2>&1 || log "sync exited with errors"
         ;;
     start)
-        if daemon_running; then
+        if upstart_managed; then
+            start kindled >/dev/null 2>&1 || true
+            log "daemon start requested via upstart"
+        elif daemon_running; then
             log "daemon already running (pid $(cat "$PIDFILE"))"
         else
             "$KINDLED" daemon >> "$LOG" 2>&1 &
@@ -31,7 +43,10 @@ case "${1:-}" in
         fi
         ;;
     stop)
-        if daemon_running; then
+        if upstart_managed; then
+            stop kindled >/dev/null 2>&1 || true
+            log "daemon stop requested via upstart"
+        elif daemon_running; then
             kill "$(cat "$PIDFILE")" && rm -f "$PIDFILE"
             log "daemon stopped"
         else
@@ -41,6 +56,7 @@ case "${1:-}" in
         ;;
     refresh)
         lipc-set-prop com.lab126.scanner doFullScan 1 2>/dev/null || true
+        lipc-set-prop com.lab126.scanner triggerUpdate 1 2>/dev/null || true
         lipc-set-prop com.lab126.ccat triggerUpdate 1 2>/dev/null || true
         log "library refresh requested"
         ;;
