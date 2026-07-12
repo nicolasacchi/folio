@@ -149,7 +149,12 @@ main {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--line);
+  /* More entries than a narrow phone can fit: swipe sideways. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.bottom-nav::-webkit-scrollbar { display: none; }
 .bottom-nav a {
   font-family: var(--mono);
   font-size: .66rem;
@@ -158,6 +163,8 @@ main {
   text-decoration: none;
   color: var(--ink-soft);
   padding: .5rem .8rem;
+  flex: none;
+  white-space: nowrap;
 }
 .bottom-nav a[aria-current] { color: var(--accent); border-top: 2px solid var(--accent); margin-top: -2px; }
 @media (min-width: 721px) { .bottom-nav { display: none; } }
