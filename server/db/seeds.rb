@@ -4,7 +4,7 @@ if User.none?
   password = ENV["ADMIN_PASSWORD"].presence
   generated = password.nil?
   password ||= SecureRandom.alphanumeric(16)
-  User.create!(email_address: email, password: password)
+  User.create!(email_address: email, password: password, admin: true)
   if generated
     # Only echo passwords we invented; provided ones must stay out of logs.
     puts "Created web user #{email} with password: #{password}"

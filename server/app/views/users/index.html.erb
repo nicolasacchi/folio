@@ -1,0 +1,52 @@
+<% content_for :title, "Users — Folio" %>
+
+<p class="kicker">Access</p>
+<h1 class="page-title">Users</h1>
+<p class="muted small">
+  Everyone here can sign in to the library. Admins manage users and see
+  this page. Leave the password blank when adding someone to get a
+  generated one (shown once).
+</p>
+
+<% @users.each do |user| %>
+  <div class="device-row">
+    <span class="grow">
+      <b><%= user.email_address %></b>
+      <% if user.admin? %><span class="stamp stamp--ready">admin</span><% end %>
+      <% if user == Current.user %><span class="stamp">you</span><% end %>
+      <br>
+      <span class="small muted">
+        added <%= l user.created_at.to_date, format: :long %>
+        <% if (last = user.sessions.maximum(:updated_at)) %> · last seen <%= time_ago_in_words(last) %> ago<% end %>
+      </span>
+    </span>
+
+    <%= form_with model: user, url: user_path(user), method: :patch, class: "settings-grid inline-user-form" do |form| %>
+      <%= form.password_field :password, placeholder: "new password",
+            autocomplete: "new-password", "aria-label": "New password for #{user.email_address}" %>
+      <% unless user == Current.user %>
+        <label class="small muted">
+          <%= form.check_box :admin %> admin
+        </label>
+      <% end %>
+      <%= form.submit "Save", class: "btn btn--quiet" %>
+    <% end %>
+
+    <% unless user == Current.user %>
+      <%= button_to "Remove", user_path(user), method: :delete, class: "btn btn--danger",
+            form: { data: { turbo_confirm: "Remove #{user.email_address}? They will be signed out everywhere." } } %>
+    <% end %>
+  </div>
+<% end %>
+
+<p class="section-label">Add user</p>
+<%= form_with model: @user, url: users_path do |form| %>
+  <%= form.label :email_address, "Email" %>
+  <%= form.email_field :email_address, placeholder: "reader@example.com", autocomplete: "off" %>
+  <%= form.label :password, "Password (blank = generate)" %>
+  <%= form.password_field :password, autocomplete: "new-password" %>
+  <label class="small muted"><%= form.check_box :admin %> admin</label>
+  <div class="actions">
+    <%= form.submit "Add user", class: "btn btn--primary" %>
+  </div>
+<% end %>

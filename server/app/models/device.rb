@@ -47,6 +47,20 @@ class Device < ApplicationRecord
     Library::EvictionPlanner.new(self).plan
   end
 
+  # A cheap monotonic-enough fingerprint of "would a sync do anything?":
+  # the newest change across this device's deliveries, the files of its
+  # queued books (preparation bumps them), and those books' reading
+  # states (another device's progress). The daemon compares it between
+  # full syncs to get near-realtime pickup without full manifest polls.
+  def queue_version
+    book_ids = deliveries.active.select(:book_id)
+    [
+      deliveries.maximum(:updated_at),
+      BookFile.where(book_id: book_ids).maximum(:updated_at),
+      ReadingState.where(book_id: book_ids).maximum(:updated_at)
+    ].compact.max.to_i
+  end
+
   private
 
   def assign_token

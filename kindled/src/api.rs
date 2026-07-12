@@ -186,6 +186,23 @@ impl<'a> Client<'a> {
         Ok(part)
     }
 
+    /// The tiny "did anything change?" probe backing the fast-poll loop.
+    pub fn queue_version(&self) -> Result<u64, ApiError> {
+        #[derive(Deserialize)]
+        struct QueueVersion {
+            version: u64,
+        }
+        let path = "/api/v1/queue_version";
+        let response = self
+            .get(path)
+            .send()
+            .map_err(|e| ApiError::Http(e.to_string()))?;
+        expect_ok(response.status_code, path)?;
+        let parsed: QueueVersion = serde_json::from_slice(response.as_bytes())
+            .map_err(|e| ApiError::Http(format!("queue_version parse: {e}")))?;
+        Ok(parsed.version)
+    }
+
     /// Small binary fetch (thumbnails).
     pub fn download_bytes(&self, path: &str) -> Result<Vec<u8>, ApiError> {
         let response = self

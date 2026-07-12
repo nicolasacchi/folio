@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="architecture">
+  <meta name="kb-tags" content="folio, kindle, rails, rust, sync, architecture">
+  <title>Folio — Kindle private cloud architecture (server, daemon, device API)</title>
+  <template id="kb-prompt">Document the kindle-private-cloud system as kb artifacts: the Folio Rails server, the kindled Rust daemon, the v3 device API contract, storage management/evictions, annotations, live web UI, and the delivery-preparation pipeline, as built and deployed 2026-07-10 → 2026-07-12.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2, h3 { line-height: 1.25; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    pre { padding: .8rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; border-bottom: 1px solid #ddd; padding: .4rem .5rem; vertical-align: top; }
+    .note { border-left: 3px solid #0b57d0; background: #f0f4ff; padding: .6rem .9rem; }
+  </style>
+</head>
+<body>
+<h1 id="overview">Folio — Kindle private cloud architecture</h1>
+
+<p>A privacy-preserving, self-hosted library for jailbroken Kindles.
+Live at <code>YOUR_HOST</code>; source in
+<code>the repo</code>. The design deliberately does
+<em>not</em> impersonate Amazon's backend: a private server publishes a
+per-device manifest and book files; a device-side daemon downloads them
+into <code>/mnt/us/documents/PrivateCloud</code>, where the stock scanner
+indexes them into the normal Library UI. Reading progress, highlights and
+storage management ride the same device-initiated channel.</p>
+
+<h2 id="components">Components</h2>
+<table>
+  <tr><th>Component</th><th>Stack</th><th>Role</th></tr>
+  <tr><td><code>server/</code> (Folio)</td><td>Rails 8, SQLite-only (primary + queue + cache + cable), Calibre CLI, FTS5, sqlite-vec + informers embeddings</td>
+      <td>Catalog, conversion, search, phone-first PWA, device API, send queue, eviction planning, annotations</td></tr>
+  <tr><td><code>kindled/</code></td><td>Rust, single static ARMv7 musl binary (~1.1&nbsp;MB), rustls HTTPS</td>
+      <td>Manifest mirror, sdr reading-state sync, removals, telemetry, clippings upload; KUAL extension + upstart job</td></tr>
+  <tr><td><code>observer/</code></td><td>shell capture scripts</td><td>The original on-device research that shaped the design (read-only)</td></tr>
+</table>
+
+<h2 id="data-model">Server data model</h2>
+<ul>
+  <li><strong>books</strong> — one row per logical work (<code>public_id</code> is the external id everywhere).</li>
+  <li><strong>book_files</strong> — one row per format; <code>source</code> ∈ upload/converted/scan. Scan rows reference files in place (read-only mounts, e.g. the Komga library). Carries the <em>prepared delivery copy</em> columns (<code>prepared_path/sha256/size/at/source_sha256</code>) and the cached EXTH identity (<code>asin</code>, <code>cde_type</code>).</li>
+  <li><strong>devices</strong> — token-authenticated Kindles; telemetry columns (free/total bytes, battery, firmware, serial, kindled version) plus storage policy (<code>low_space_threshold_mb</code>, <code>auto_evict</code>).</li>
+  <li><strong>deliveries</strong> — the per-device send queue and lifecycle: created (queued) → <code>delivered_at</code> (device downloaded) → optional <code>evict_requested_at</code> → <code>removed_at</code> (device deleted + acked). Re-sending reactivates the row.</li>
+  <li><strong>reading_states</strong> — one <code>.sdr</code> bundle per book+device; parsed best-effort into <code>progress_percent</code>/<code>last_position</code> (MBP) with <code>content_mtime</code> as the reliable recency signal.</li>
+  <li><strong>device_syncs</strong> — one row per daemon pass (downloaded/removed/pushed/applied/errors, duration, free bytes) for the device-page history.</li>
+  <li><strong>annotations</strong> — highlights/notes/bookmarks parsed from My&nbsp;Clippings.txt, deduped by SHA-256 fingerprint per device, matched to books by title + author word-set.</li>
+</ul>
+
+<h2 id="device-api">Device API (manifest v3)</h2>
+<p>All endpoints under <code>/api/v1</code>, authenticated by the
+per-device <code>X-Api-Token</code>. The daemon is the only client; the
+contract is additive so old daemons keep working.</p>
+<pre>GET  /manifest                      → { version: 3, items: [...], removals: [...],
+                                        status_url, clippings_url }
+GET  /books/:id/file?fmt=…          → book bytes (delivered_at stamped)
+GET  /books/:id/thumbnail           → cover JPEG (EBOK fallback path)
+GET  /books/:id/reading_state       → newest .sdr bundle (tar.gz)
+PUT  /books/:id/reading_state       → upload bundle (X-Sdr-Mtime)
+POST /device/status                 → telemetry + sync report + on-disk book list
+POST /removals/:delivery_id/ack     → closes an eviction
+PUT  /clippings                     → whole My Clippings.txt</pre>
+<p>Manifest <code>items[]</code> serve the <em>prepared</em> file's
+sha/size/filename (see <a href="#delivery-prep">delivery preparation</a>);
+<code>removals[]</code> list evict-requested deliveries with an ack URL.
+The status POST reconciles reality: books the daemon no longer has are
+closed out (<code>removed_at</code>, reason "missing on device"), pending
+deliveries found on disk get their <code>delivered_at</code> backfilled.</p>
+
+<h2 id="sync-flow">Daemon sync pass</h2>
+<ol>
+  <li>Fetch manifest.</li>
+  <li>Per item: download when new/changed/missing (stream to <code>.part</code>, SHA-256 verify, atomic rename). <strong>Replacements delete the old file and let the scanner drop the row before the new bytes land</strong> — verified on 5.19.2 that in-place overwrites keep stale catalog metadata. Renamed deliverables (container changes) remove the old file; same-stem renames share the <code>.sdr</code> so position survives.</li>
+  <li>Reading state: newest content mtime wins across devices; local sidecars are backed up before overwrite; restored files get the server mtime pinned so they never bounce back.</li>
+  <li>Removals: push newer reading state first, delete book + sidecar + any installed thumbnail, drop the catalog row, ack.</li>
+  <li>Upload My&nbsp;Clippings.txt when its mtime moved.</li>
+  <li>POST device status (statvfs of the documents volume, battery via <code>powerd battLevel</code>, firmware, serial, pass report, on-disk book list).</li>
+</ol>
+
+<h2 id="delivery-prep">Delivery preparation (the cover fix)</h2>
+<p class="note">Every queued book is served from a prepared copy built by
+<code>Library::KindlePrep</code>. See the companion artifact
+<em>Kindle 5.19 cover tiles: the three conditions</em> for the on-device
+evidence. In short: ASIN EXTH records neutralized, cdeType rewritten
+EBOK→PDOC in <em>every</em> MOBI header, and KF8-only AZW3 transcoded to
+a joint MOBI6+KF8 container (<code>--mobi-file-type both</code>) because
+the 5.19 Library UI only renders cover art for MOBI6 containers. Covers
+are embedded via <code>ebook-meta</code> when the source lacks one.
+Preparation is queued on delivery, on conversion completion, and
+self-heals from the manifest (raw file serves until the prep lands; the
+sha change re-delivers).</p>
+
+<h2 id="storage">Storage management</h2>
+<p>Each device reports storage every sync. When projected free space
+(after the pending queue lands) drops under the device's threshold,
+<code>Library::EvictionPlanner</code> proposes removals in order:
+finished (progress ≥ 95%), never opened (delivered ≥ 7 days), dormant
+(untouched ≥ 45 days) — sized to clear the shortfall, never touching
+recently-active books. Suggestions surface on the device page
+(one-tap "remove all"); with <code>auto_evict</code> the status endpoint
+applies the plan automatically. Removals ride the manifest and the row
+survives as history.</p>
+
+<h2 id="web-ui">Web UI</h2>
+<ul>
+  <li>Phone-first PWA; bottom nav scrolls horizontally on narrow screens.</li>
+  <li>Live updates via Turbo 8 morph refreshes over solid_cable —
+      Delivery/Device/DeviceSync/Conversion/BookFile/ReadingState broadcast;
+      the queue page, device pages, book pages and reading feed update in place.</li>
+  <li>Search: default mode matches titles/authors/series (FTS5 column
+      filter); "full text" adds descriptions + Calibre-extracted text with
+      snippets; "meaning" uses bge-small embeddings over sqlite-vec.</li>
+  <li>Book page facts link to filtered library views: author, series,
+      language, publication year, added-date, per-format stamps.</li>
+  <li>"Keep reading" shelf (recent reading states &lt; 96%), per-device
+      progress bars, highlights &amp; notes section, /notes browser.</li>
+</ul>
+
+<h2 id="deploy">Deployment</h2>
+<p>Docker via the traefik stack (<code>your reverse-proxy compose file</code>,
+service <code>folio</code>, build context <code>server/</code>). Solid Queue
+runs inside Puma. Storage under <code>/var/lib/folio/storage</code>; the
+Komga library is mounted read-only at <code>/komga</code> and referenced in
+place. Deploy = <code>docker compose build folio &amp;&amp; docker compose
+up -d folio</code>; the entrypoint runs <code>db:prepare</code>.
+The daemon cross-builds with <code>kindled/build-kindle.sh</code>
+(rust-musl-cross docker image) and installs to
+<code>/mnt/us/privatecloud/kindled</code>; an upstart job
+(<code>kindled/upstart/kindled.conf</code>) starts it at boot and
+respawns it on crash.</p>
+
+</body>
+</html>

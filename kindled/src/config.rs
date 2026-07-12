@@ -13,6 +13,10 @@ pub struct Config {
     pub document_dir: PathBuf,
     pub state_file: PathBuf,
     pub poll_interval_secs: u64,
+    /// While the device is awake, probe the tiny queue-version endpoint
+    /// this often and sync immediately on change. 0 disables the fast
+    /// path (plain POLL_INTERVAL sleeps).
+    pub fast_poll_secs: u64,
     pub auto_download: bool,
     /// The firmware's Library thumbnail cache.
     pub thumbnail_dir: PathBuf,
@@ -65,6 +69,10 @@ impl Config {
                 .get("POLL_INTERVAL")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(300),
+            fast_poll_secs: values
+                .get("FAST_POLL")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30),
             auto_download: values
                 .get("AUTO_DOWNLOAD")
                 .map(|s| s != "0" && !s.eq_ignore_ascii_case("false"))
