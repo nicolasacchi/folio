@@ -10,7 +10,7 @@ RSpec.describe Library::KindlePrep do
     allow(Calibre).to receive(:available?).and_return(false)
   end
 
-  it "neutralizes the store identity in the prepared copy" do
+  it "rewrites the store identity in the prepared copy" do
     described_class.prepare!(file)
     file.reload
 
@@ -19,17 +19,29 @@ RSpec.describe Library::KindlePrep do
     expect(file.prepared_sha256).to eq(Library.sha256(file.prepared_absolute_path))
     expect(file.prepared_size).to eq(File.size(file.prepared_absolute_path))
 
+    # No ASIN left, and the cdeType says personal document — the scanner
+    # leaves AZW3 rows typeless without one, which the Library UI renders
+    # as a cover-less text tile.
     identity = Library::MobiCde.parse(file.prepared_absolute_path)
-    expect(identity).to eq(asin: nil, cde_type: nil)
+    expect(identity).to eq(asin: nil, cde_type: "PDOC")
     expect(file.asin).to be_nil
-    expect(file.cde_type).to be_nil
+    expect(file.cde_type).to eq("PDOC")
 
     # Non-identity records survive untouched.
     records = Library::MobiCde.exth_records(file.prepared_absolute_path)
     expect(records[100]).to eq("An Author")
-    # The neutralized records are still present, under unknown type ids.
+    # The neutralized ASIN records are still present, under unknown type ids.
     expect(records[113 + 6000]).to eq("0a37-uuid")
-    expect(records[501 + 6000]).to eq("EBOK")
+    expect(records[112 + 6000]).to eq("calibre:0a37")
+  end
+
+  it "neutralizes an odd-length cdeType instead of rewriting it" do
+    MobiFixture.write(file.absolute_path, exth: { 501 => "MAGZ!" })
+    described_class.prepare!(file)
+
+    records = Library::MobiCde.exth_records(file.prepared_absolute_path)
+    expect(records[501]).to be_nil
+    expect(records[501 + 6000]).to eq("MAGZ!")
   end
 
   it "leaves the source file untouched" do

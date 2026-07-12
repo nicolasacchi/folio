@@ -10,12 +10,20 @@
 # thumbnailed locally by the scanner, on every rescan.
 #
 # So preparation = copy the file, embed the catalog cover if the file has
-# none, then neutralize the store-identity EXTH records in place (type ids
-# are bumped into an unknown range; values keep their length, so no
-# structural rebuild is needed and KF8 offsets are untouched).
+# none, then rewrite the store identity in place: EXTH 501 becomes "PDOC"
+# (same byte length as "EBOK") and the ASIN records' type ids are bumped
+# into an unknown range. Values keep their length, so no structural
+# rebuild is needed and KF8 offsets are untouched.
+#
+# 501 must be REWRITTEN, not dropped: without any cdeType the scanner
+# defaults MOBI6 rows to PDOC but leaves AZW3/KF8 rows typeless, and the
+# Library UI renders typeless rows as text tiles even though it extracted
+# a perfectly good cover thumbnail (found the hard way on-device).
 module Library
   module KindlePrep
-    STORE_IDENTITY_EXTH = [ 112, 113, 501, 504 ].freeze
+    ASIN_EXTH = [ 112, 113, 504 ].freeze
+    CDE_TYPE_EXTH = 501
+    PERSONAL_DOC = "PDOC".b.freeze
     NEUTRAL_TYPE_OFFSET = 6000
     EXTH_COVER_OFFSET = 201
     PATCHABLE_FORMATS = %w[azw3 azw mobi prc].freeze
@@ -69,8 +77,11 @@ module Library
       book_file
     end
 
-    # Rewrites the EXTH type ids of the store-identity records to unknown
-    # values the scanner ignores. In-place byte pokes — lengths unchanged.
+    # In-place byte pokes, lengths unchanged: the ASIN records' type ids
+    # move to unknown values the scanner ignores; cdeType's VALUE becomes
+    # "PDOC" when it has the same length (the calibre case, "EBOK"),
+    # otherwise the record is neutralized like the ASINs and the scanner's
+    # MOBI6 default applies.
     def neutralize_store_identity!(path)
       File.open(path, "r+b") do |io|
         header = io.read(86)
@@ -93,9 +104,17 @@ module Library
         count.times do
           type, length = rec0[pos, 8]&.unpack("NN")
           break if type.nil? || length.nil? || length < 8 || pos + length > rec0.bytesize
-          if STORE_IDENTITY_EXTH.include?(type)
+          if ASIN_EXTH.include?(type)
             io.seek(rec0_offset + pos)
             io.write([ type + NEUTRAL_TYPE_OFFSET ].pack("N"))
+          elsif type == CDE_TYPE_EXTH
+            if length - 8 == PERSONAL_DOC.bytesize
+              io.seek(rec0_offset + pos + 8)
+              io.write(PERSONAL_DOC)
+            else
+              io.seek(rec0_offset + pos)
+              io.write([ type + NEUTRAL_TYPE_OFFSET ].pack("N"))
+            end
           end
           pos += length
         end
