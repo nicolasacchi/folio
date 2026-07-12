@@ -56,6 +56,17 @@ pipeline) inspects the container. Fix: transcode AZW3 sources with
 <code>ebook-convert --mobi-file-type both</code> — the reader opens the
 KF8 half (typography unchanged), the UI sees a MOBI6 book.</div>
 
+<div class="cond"><strong>Bonus (reader side): MOBI6-only files render in
+the legacy mobi7 reader</strong> — firmware metrics say
+<code>book_format=mobi7, is_opened_by_kpp_reader=No</code> — whose 5.19
+chrome has <em>no back/home buttons at all</em> (users had to reboot to
+exit a book; PDFs share this legacy-chrome fate), no page numbers, no
+time-in-chapter. The joint MOBI6+KF8 container fixes the reading
+experience too: the reader opens the KF8 half. Hence the final rule:
+<em>transcode whenever the source has fewer than two MOBI headers</em>
+(KF8-only azw3 AND MOBI6-only mobi/azw/prc); already-joint files just
+get byte-patched.</div>
+
 <h2 id="traps">Traps discovered along the way</h2>
 
 <div class="trap"><strong>Joint files have two EXTH blocks.</strong>
