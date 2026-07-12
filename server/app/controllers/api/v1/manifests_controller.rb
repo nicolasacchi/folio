@@ -25,8 +25,8 @@ class Api::V1::ManifestsController < Api::V1::BaseController
         title: book.title,
         author: book.author,
         series: book.series,
-        format: file.format,
-        filename: file.filename,
+        format: file.delivery_format,
+        filename: file.delivery_filename,
         size: file.delivery_size,
         sha256: file.delivery_sha256,
         url: api_v1_book_file_path(public_id: book.public_id, fmt: file.format),
@@ -88,7 +88,7 @@ class Api::V1::ManifestsController < Api::V1::BaseController
       {
         id: book.public_id,
         delivery_id: delivery.id,
-        filename: file.filename,
+        filename: file.delivery_filename,
         thumbnail_filename: thumbnail,
         reason: delivery.evict_reason,
         ack_url: api_v1_ack_removal_path(delivery)
