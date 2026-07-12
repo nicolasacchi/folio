@@ -32,8 +32,6 @@ module Library
     NEUTRAL_TYPE_OFFSET = 6000
     EXTH_COVER_OFFSET = 201
     PATCHABLE_FORMATS = %w[azw3 azw mobi prc].freeze
-    # KF8-only containers that need the MOBI6+KF8 transcode.
-    TRANSCODE_FORMATS = %w[azw3].freeze
     COMBO_OPTIONS = [ "--mobi-file-type", "both" ].freeze
 
     module_function
@@ -54,7 +52,12 @@ module Library
       return nil unless File.exist?(source)
 
       source_sha = book_file.sha256
-      transcode = TRANSCODE_FORMATS.include?(book_file.format) && Calibre.available?
+      # A delivery needs BOTH halves: the MOBI6 shell for Library cover
+      # tiles, the KF8 half for the modern reader (the mobi7 path renders
+      # with the legacy chrome — no back/home buttons, no page numbers).
+      # One MOBI header means either KF8-only azw3 or MOBI6-only mobi;
+      # both go through calibre. Joint files just get byte-patched.
+      transcode = Calibre.available? && mobi_header_count(source) < 2
       dest_format = transcode ? "mobi" : book_file.format
       dest = root.join("#{book_file.book.public_id}.#{dest_format}")
       # Named so ebook-convert infers the output format from the extension.
@@ -175,6 +178,29 @@ module Library
     def embedded_cover?(path)
       records = Library::MobiCde.exth_records(path)
       records.present? && records.key?(EXTH_COVER_OFFSET)
+    end
+
+    # How many MOBI headers the PalmDB carries: 1 = single-format
+    # (MOBI6-only or KF8-only azw3), 2 = joint MOBI6+KF8.
+    def mobi_header_count(path)
+      File.open(path, "rb") do |io|
+        header = io.read(78)
+        return 0 unless header && header.bytesize == 78
+
+        record_count = header[76, 2].unpack1("n")
+        return 0 if record_count < 1
+
+        table = io.read(record_count * 8)
+        return 0 unless table && table.bytesize == record_count * 8
+
+        (0...record_count).count do |index|
+          io.seek(table[index * 8, 4].unpack1("N"))
+          probe = io.read(20)
+          probe && probe[16, 4] == "MOBI"
+        end
+      end
+    rescue Errno::ENOENT, Errno::EACCES
+      0
     end
 
     def embed_cover(path, book)
