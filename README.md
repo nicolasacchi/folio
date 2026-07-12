@@ -30,13 +30,21 @@ through `.sdr` sidecar bundles on the private server, not WhisperSync.
   (pre- and post-5.19 property sets), and syncs reading state
   latest-mtime-wins with local backups. Ships with a KUAL extension.
 
-  Cover fix, verified live on firmware 5.19.2: calibre files carry
-  `EXTH 501=EBOK` + a uuid ASIN, so the firmware asks Amazon for the
-  cover (never resolves), caches a "no image available" placeholder and
-  renders half-height tiles — it only extracts embedded covers for
-  personal documents. Folio therefore delivers each queued book as a
-  prepared copy with the store-identity EXTH records neutralized (and a
-  cover embedded when the source had none).
+  Cover fix, verified live on firmware 5.19.2 (all three conditions are
+  required):
+  1. No store ASIN — calibre files carry `EXTH 501=EBOK` + a uuid ASIN,
+     so the firmware asks Amazon for the cover (never resolves), caches a
+     "no image available" placeholder, and never extracts the embedded
+     cover. The prepared copy neutralizes the ASIN records (112/113/504).
+  2. An explicit `PDOC` cdeType — with 501 missing entirely the scanner
+     leaves AZW3 rows typeless and the UI renders text tiles, so 501 is
+     rewritten in place (EBOK→PDOC), in *both* EXTH copies of a joint
+     file.
+  3. A MOBI6 container — the 5.19 Library UI never renders cover art for
+     KF8-only AZW3 (`x-mobi8-ebook`), even with a perfect extracted
+     thumbnail. AZW3 sources are transcoded to joint MOBI6+KF8 files
+     (`--mobi-file-type both`): the reader opens the KF8 half, the UI
+     sees a MOBI6 book and shows the cover.
 - **`observer/` — research tooling.** Read-only SSH capture scripts and
   the findings that shaped the design (see its README).
 - **`privatecloud/` — first prototypes** (Python manifest server, shell
