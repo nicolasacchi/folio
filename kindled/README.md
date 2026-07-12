@@ -61,10 +61,18 @@ SERVER_URL=http://192.168.1.75:3000
 API_TOKEN=...
 DOCUMENT_DIR=/mnt/us/documents/PrivateCloud
 POLL_INTERVAL=300
+FAST_POLL=30        # awake-only change probe; 0 disables
 AUTO_DOWNLOAD=1     # 0 = mirror nothing automatically
 THUMBNAIL_DIR=/mnt/us/system/thumbnails       # firmware cover cache
 CLIPPINGS_PATH=/mnt/us/documents/My Clippings.txt
 ```
+
+While the device is awake (`powerd state == active`) the daemon probes
+`GET /api/v1/queue_version` (~1 KB) every `FAST_POLL` seconds and syncs
+immediately when the version moves — sends land in ~30 s instead of up
+to `POLL_INTERVAL`. Battery-neutral by construction: a suspended Kindle
+freezes the process (no probes, no radio wakeups), and screen-saver
+state skips probes too.
 
 `PRIVATECLOUD_DIR` overrides the base directory (used by tests/dev).
 

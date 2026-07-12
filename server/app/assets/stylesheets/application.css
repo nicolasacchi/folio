@@ -647,3 +647,8 @@ a.stamp { text-decoration: none; }
 a.stamp:hover { border-color: var(--accent); }
 .meta-list a { color: inherit; }
 .meta-list a:hover { color: var(--accent); }
+
+/* ---------- Users admin ---------- */
+
+.inline-user-form { display: flex; gap: .5rem; align-items: center; margin: 0; }
+.inline-user-form input[type="password"] { width: 10rem; }

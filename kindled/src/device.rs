@@ -91,6 +91,17 @@ fn run_capture(program: &str, args: &[&str]) -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
+/// Is the device awake (screen on, radio likely up)? The fast-poll loop
+/// only probes the server in this state — a suspended Kindle freezes the
+/// process anyway, and screen-saver dozing shouldn't keep the radio busy.
+/// Off-device (no lipc) this says awake, which is right for dev boxes.
+pub fn awake() -> bool {
+    match run_capture("lipc-get-prop", &["com.lab126.powerd", "state"]) {
+        Some(state) => state.trim().eq_ignore_ascii_case("active"),
+        None => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

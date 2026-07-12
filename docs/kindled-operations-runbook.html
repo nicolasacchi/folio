@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="runbook">
+  <meta name="kb-tags" content="kindle, kindled, folio, operations, upstart, deploy, troubleshooting">
+  <title>kindled operations runbook — install, boot persistence, deploy, troubleshooting</title>
+  <template id="kb-prompt">Write the operations runbook for the kindle-private-cloud deployment: server deploys, daemon installs, the SSH tunnel, boot persistence, and the troubleshooting knowledge accumulated while debugging on the real device.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2 { line-height: 1.25; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    pre { padding: .8rem; overflow-x: auto; }
+    .warn { border-left: 3px solid #9b4d00; background: #fdf6ee; padding: .6rem .9rem; margin: .8rem 0; }
+  </style>
+</head>
+<body>
+<h1 id="runbook">kindled operations runbook</h1>
+
+<h2 id="server-deploy">Server (Folio) deploy</h2>
+<pre>cd ~/traefik
+docker compose build folio
+docker compose up -d folio        # entrypoint runs db:prepare + seed
+curl -s -o /dev/null -w "%{http_code}\n" https://kindle.scc.im/healthz</pre>
+<p>Source: <code>~/project/kindle-private-cloud/server</code>. SQLite +
+storage live in <code>/home/nik/folio/storage</code> (bind mount). The
+Komga library is mounted read-only at <code>/komga</code>. Solid Queue
+runs inside Puma (<code>SOLID_QUEUE_IN_PUMA=1</code>) — one container.</p>
+
+<h2 id="device-access">Device access (SSH tunnel)</h2>
+<p>The Kindle opens a <em>reverse</em> SSH tunnel to this host (logs in
+as <code>nik</code>, binds <code>127.0.0.1:22222</code>). It exists only
+while the device is awake and the tunnel session lives — expect it to
+come and go; re-activate from the device when needed.</p>
+<pre>ssh root@localhost -p 22222 -i ~/.ssh/id_ed25519x</pre>
+<p>If port 22222 refuses: check <code>ss -tlnp | grep 22222</code> and
+<code>journalctl -u sshd</code> for the device's login; the device's WAN
+IP shows in folio's request logs. Port 2222 is Gitea — not the Kindle.</p>
+
+<h2 id="daemon-install">Daemon build + install</h2>
+<pre>cd ~/project/kindle-private-cloud/kindled
+./build-kindle.sh                                  # docker rust-musl-cross
+scp -P 22222 -i ~/.ssh/id_ed25519x \
+    target/armv7-unknown-linux-musleabihf/release/kindled \
+    root@localhost:/mnt/us/privatecloud/kindled.new
+ssh root@localhost -p 22222 -i ~/.ssh/id_ed25519x '
+  cd /mnt/us/privatecloud
+  stop kindled 2>/dev/null
+  mv kindled.new kindled && chmod +x kindled
+  start kindled'</pre>
+<p>Config: <code>/mnt/us/privatecloud/config</code> (KEY=VALUE:
+SERVER_URL, API_TOKEN, DOCUMENT_DIR, POLL_INTERVAL, AUTO_DOWNLOAD,
+THUMBNAIL_DIR, CLIPPINGS_PATH). State: <code>state.json</code> next to it.
+Logs: <code>/mnt/us/privatecloud/kindled.log</code>.</p>
+
+<h2 id="boot">Boot persistence (upstart)</h2>
+<p>The daemon survives reboots via <code>/etc/upstart/kindled.conf</code>
+(repo copy: <code>kindled/upstart/kindled.conf</code>): starts on
+<code>started lab126_gui</code>, respawns on crash (verified live:
+<code>kill -9</code> → new pid in ~3 s), backs off after 5 respawns/5 min.</p>
+<pre>mntroot rw
+cp /mnt/us/privatecloud/upstart-kindled.conf /etc/upstart/kindled.conf
+mntroot ro
+start kindled; status kindled</pre>
+<div class="warn">Firmware OTA updates wipe <code>/etc/upstart</code>
+additions — reinstall the job after any Kindle system update. The KUAL
+Start/Stop entries delegate to upstart when the job exists, so the two
+supervisors never fight.</div>
+
+<h2 id="verify">Health checks</h2>
+<pre># on the device
+/mnt/us/privatecloud/kindled status   # config, storage, battery, tracked books, server health
+/mnt/us/privatecloud/kindled sync     # one verbose pass
+status kindled                        # upstart state
+
+# on the server
+docker exec folio bin/rails runner 'd=Device.last; puts d.last_sync_at, d.free_bytes'</pre>
+<p>The web device page (Devices → device) shows last sync, storage gauge,
+battery, firmware, sync history and the on-device library — all reported
+by the daemon's status POST each pass.</p>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+  <li><strong>Books show text tiles / no covers</strong> — see the
+    cover-tile findings artifact; delivery prep must produce joint MOBI
+    with PDOC identity. Re-queue preparation by clearing
+    <code>prepared_source_sha256</code> and running
+    <code>PrepareKindleFileJob</code>; the sha change re-delivers.</li>
+  <li><strong>Row keeps stale metadata after re-delivery</strong> —
+    expected if a file was replaced in place; the daemon's
+    delete→rescan→write flow handles it. Manual fix: move the file away,
+    wait for the row to drop, move it back.</li>
+  <li><strong>Reading badge reset to 0% after re-delivery</strong> —
+    cosmetic; the catalog row was recreated. Position lives in the
+    <code>.sdr</code> and restores on open.</li>
+  <li><strong>Scanner errors in /var/log/messages</strong>
+    (<code>scan_file_err … scan file failed</code>) — normal during the
+    delete-first replacement dance (file briefly absent).</li>
+  <li><strong>Device page shows "never seen"</strong> — token mismatch or
+    the daemon can't reach <code>SERVER_URL</code>; run
+    <code>kindled status</code> on-device (prints server health).</li>
+  <li><strong>SQLite "database busy" 503s to the daemon</strong> — the
+    API replies Retry-After: 60 during bulk jobs; the daemon just polls
+    again. No action needed.</li>
+</ul>
+
+<h2 id="screenshots">Screenshots (visual verification)</h2>
+<pre>ssh … '/usr/sbin/screenshot'   # writes /mnt/us/screenshots/…png
+scp -P 22222 … root@localhost:/mnt/us/screenshots/FILE.png /tmp/</pre>
+
+</body>
+</html>

@@ -54,6 +54,10 @@
                 aria: { current: current_page?(duplicates_path) ? "page" : nil } %>
           <%= link_to "Devices", devices_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(devices_path) ? "page" : nil } %>
+          <% if Current.user&.admin? %>
+            <%= link_to "Users", users_path, class: "top-link top-link--nav",
+                  aria: { current: current_page?(users_path) ? "page" : nil } %>
+          <% end %>
           <%= button_to "Sign out", session_path, method: :delete, class: "top-link" %>
         </nav>
       </header>
@@ -72,6 +76,7 @@
         <%= link_to "Notes", annotations_path, aria: { current: current_page?(annotations_path) ? "page" : nil } %>
         <%= link_to "Queue", queue_path, aria: { current: current_page?(queue_path) ? "page" : nil } %>
         <%= link_to "Upload", new_upload_path, aria: { current: current_page?(new_upload_path) ? "page" : nil } %>
+        <%= link_to "Devices", devices_path, aria: { current: current_page?(devices_path) ? "page" : nil } %>
       </nav>
     <% end %>
   </body>

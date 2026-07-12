@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="research">
+  <meta name="kb-tags" content="kindle, firmware, exth, cover, thumbnails, mobi, kf8, cc-db">
+  <title>Kindle 5.19 cover tiles: the three conditions a sideloaded book must meet</title>
+  <template id="kb-prompt">Sideloaded books delivered by Folio showed as half-height "Nessuna immagine disponibile" tiles on a Kindle running firmware 5.19.2. Investigate on the real device (SSH), find the root cause, and fix the delivery pipeline so private-cloud books look identical to store books.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2 { line-height: 1.25; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    pre { padding: .8rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; border-bottom: 1px solid #ddd; padding: .4rem .5rem; vertical-align: top; }
+    .cond { border-left: 3px solid #137333; background: #f2fbf4; padding: .6rem .9rem; margin: .8rem 0; }
+    .trap { border-left: 3px solid #b3261e; background: #fdf2f1; padding: .6rem .9rem; margin: .8rem 0; }
+  </style>
+</head>
+<body>
+<h1 id="summary">Kindle 5.19 cover tiles: the three conditions</h1>
+
+<p>Everything below was established empirically on a real Kindle
+(firmware 5.19.2, Photon/KPP UI) over 2026-07-11/12, via SSH: cc.db
+inspection, EXTH byte surgery, catalog-row diffing against store books,
+UI restarts, and screenshot verification after every step. A sideloaded
+book's Library tile shows real cover art <strong>only when all three
+conditions hold</strong>:</p>
+
+<div class="cond"><strong>1. No store ASIN.</strong> calibre-produced
+MOBI/AZW3 carry <code>EXTH 501 = "EBOK"</code> plus a uuid ASIN in EXTH
+112/113(/504). The firmware treats such files as store books: it asks
+Amazon for cover art by ASIN — which never resolves for a calibre uuid —
+caches a 5,946-byte "Nessuna immagine disponibile" placeholder in
+<code>/mnt/us/system/thumbnails/thumbnail_&lt;ASIN&gt;_EBOK_portrait.jpg</code>,
+and <em>never extracts the embedded cover</em> for EBOK content. Fix:
+neutralize the ASIN records (bump their EXTH type ids into an unknown
+range, +6000 — same length, no structural rebuild).</div>
+
+<div class="cond"><strong>2. An explicit PDOC cdeType.</strong> Dropping
+EXTH 501 entirely is <em>not</em> equivalent: the scanner defaults MOBI6
+rows to <code>PDOC</code> but leaves AZW3 rows <em>typeless</em>, and the
+UI renders typeless rows as text tiles even when the scanner has
+extracted a perfectly good thumbnail. Fix: rewrite 501's value in place —
+<code>"EBOK"</code> → <code>"PDOC"</code> (same 4-byte length).</div>
+
+<div class="cond"><strong>3. A MOBI6 container.</strong> The 5.19 Library
+UI never renders cover art for KF8-only AZW3
+(<code>application/x-mobi8-ebook</code>). Proven with a side-by-side test:
+the same book, same PDOC identity, same extracted thumbnail — text tile
+as <code>.azw3</code>, full cover tile as a joint MOBI6+KF8 file. Flipping
+<code>p_mimeType</code> in cc.db and restarting KPPMainApp does
+<em>not</em> help, so it is not the catalog row — the UI (or its cover
+pipeline) inspects the container. Fix: transcode AZW3 sources with
+<code>ebook-convert --mobi-file-type both</code> — the reader opens the
+KF8 half (typography unchanged), the UI sees a MOBI6 book.</div>
+
+<h2 id="traps">Traps discovered along the way</h2>
+
+<div class="trap"><strong>Joint files have two EXTH blocks.</strong>
+A MOBI6+KF8 file carries a second MOBI header (with its own EXTH copy) in
+the KF8 section, and the scanner reads it: patching only record 0 produced
+an EBOK row from a "patched" file. The patcher must walk every PDB record
+and patch each one that has <code>MOBI</code> at offset 16.</div>
+
+<div class="trap"><strong><code>reScanFile</code> does not re-read
+metadata for existing rows.</strong> Replacing a book file in place and
+rescanning keeps the stale catalog identity. To re-deliver a changed
+file: delete the old file → rescan (row drops, the documents folder is
+also inotify-watched) → write the new bytes → rescan. The
+<code>.sdr</code> sidecar is keyed on the filename <em>stem</em>, so
+container swaps (<code>.azw3</code>→<code>.mobi</code>) keep the reading
+position automatically.</div>
+
+<div class="trap"><strong>The UI caches tile bitmaps.</strong> Replacing
+a thumbnail file under the firmware's nose does nothing (the placeholder
+was also regenerated over our pushed cover on every rescan while the file
+was EBOK). Only a fresh catalog row (delete + re-ingest) reliably
+refreshes a tile.</div>
+
+<div class="trap"><strong><code>triggerUpdate</code> moved services on
+5.19.</strong> It lives on <code>com.lab126.scanner</code> now;
+<code>com.lab126.ccat triggerUpdate</code> returns
+<code>lipcErrNoSuchProperty</code>. The daemon calls both (each is a
+muted no-op where absent).</div>
+
+<h2 id="evidence">Evidence trail (key observations)</h2>
+<table>
+  <tr><th>Observation</th><th>Conclusion</th></tr>
+  <tr><td>Both delivered books' thumbnails byte-identical (5,946 B, same md5); store book's is 11 KB</td><td>Firmware placeholder, not extracted covers</td></tr>
+  <tr><td>Caino MOBI has EXTH 201/202 cover records, yet placeholder generated</td><td>EBOK never extracts embedded covers locally</td></tr>
+  <tr><td>In-place 501 EBOK→PDOC alone: row recreated still EBOK</td><td>ASIN presence (113) also drives store classification</td></tr>
+  <tr><td>ASIN+501 neutralized on MOBI6: PDOC row, scanner-generated real thumbnail, cover tile ✓</td><td>Conditions 1+2 sufficient for MOBI6</td></tr>
+  <tr><td>Same treatment on AZW3: PDOC row, real extracted thumbnail on disk, <em>text tile</em></td><td>Container matters (condition 3)</td></tr>
+  <tr><td>cc.db mimetype flip + KPPMainApp restart: still text tile</td><td>UI sniffs the file, not the row</td></tr>
+  <tr><td>Joint MOBI6+KF8 of the same book: cover tile ✓</td><td>Condition 3 confirmed; production fix</td></tr>
+</table>
+
+<h2 id="production">What ships in Folio</h2>
+<p><code>Library::KindlePrep</code> builds a prepared delivery copy per
+queued book: joint-mobi transcode for AZW3 sources (with byte-patch
+fallback if the transcode fails), <code>ebook-meta --cover</code> when the
+source lacks an embedded cover (before the identity rewrite — ebook-meta
+re-adds a calibre uuid), then the in-place EXTH rewrite across all MOBI
+headers. Auto-conversions target joint mobi directly
+(<code>EnsureKindleFormatJob</code>). The daemon handles deliverable
+renames (old file removed, catalog row dropped, shared-stem sidecar keeps
+the position). Verified end-to-end 2026-07-12: five delivered books, five
+real covers, indistinguishable from store books.</p>
+
+</body>
+</html>

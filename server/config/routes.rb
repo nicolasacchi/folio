@@ -16,6 +16,7 @@ Rails.application.routes.draw do
   # Ask a device to delete a delivered book (rides the next manifest).
   resources :evictions, only: [ :create, :destroy ], param: :delivery_id
   resources :uploads, only: [ :new, :create ]
+  resources :users, only: [ :index, :create, :update, :destroy ]
   resources :devices, only: [ :index, :create, :show, :update, :destroy ] do
     member do
       post :evict_suggested # apply the whole eviction plan in one tap
@@ -49,6 +50,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       get "manifest", to: "manifests#show"
+      get "queue_version", to: "queue_versions#show", as: :queue_version
       get "books/:public_id/file", to: "book_files#show", as: :book_file
       get "books/:public_id/thumbnail", to: "thumbnails#show", as: :book_thumbnail
       get "books/:public_id/reading_state", to: "reading_states#show", as: :book_reading_state
