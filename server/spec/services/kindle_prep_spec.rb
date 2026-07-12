@@ -126,5 +126,31 @@ RSpec.describe Library::KindlePrep do
       expect(contents.scan("EBOK")).to be_empty
       expect(Library::MobiCde.parse(path)).to eq(asin: nil, cde_type: "PDOC")
     end
+
+    it "transcodes MOBI6-only sources too (the mobi7 reader has no chrome nav)" do
+      mobi = create(:book_file, book: create(:book), format: "mobi", sha256: "m6")
+      MobiFixture.write(mobi.absolute_path, exth: { 501 => "EBOK" })
+      allow(Calibre).to receive(:available?).and_return(true)
+      allow(Calibre).to receive(:convert) do |_source, staging, options:|
+        MobiFixture.write_joint(staging.to_s, exth: { 501 => "EBOK" })
+      end
+
+      described_class.prepare!(mobi)
+
+      expect(Calibre).to have_received(:convert)
+      expect(Library::MobiCde.parse(mobi.reload.prepared_absolute_path)).to eq(asin: nil, cde_type: "PDOC")
+    end
+
+    it "leaves already-joint sources on the byte-patch path" do
+      joint = create(:book_file, book: create(:book), format: "mobi", sha256: "j1")
+      MobiFixture.write_joint(joint.absolute_path, exth: { 113 => "uuid", 501 => "EBOK" })
+      allow(Calibre).to receive(:available?).and_return(true)
+      allow(Calibre).to receive(:convert)
+
+      described_class.prepare!(joint)
+
+      expect(Calibre).not_to have_received(:convert)
+      expect(Library::MobiCde.parse(joint.reload.prepared_absolute_path)).to eq(asin: nil, cde_type: "PDOC")
+    end
   end
 end
