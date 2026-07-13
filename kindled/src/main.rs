@@ -12,6 +12,7 @@
 mod api;
 mod config;
 mod device;
+mod hardening;
 mod lipc;
 mod sdr;
 mod state;

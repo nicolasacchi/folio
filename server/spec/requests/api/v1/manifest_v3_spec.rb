@@ -20,6 +20,21 @@ RSpec.describe "API v1 manifest (v3 fields)", type: :request do
     expect(body["removals"]).to eq([])
   end
 
+  describe "device_settings" do
+    it "carries the reader/experiment policy (defaults on)" do
+      expect(manifest["device_settings"]).to eq(
+        "modern_reader" => true, "freeze_experiments" => true
+      )
+    end
+
+    it "reflects a policy the admin turned off" do
+      device.update!(modern_reader_pinned: false, freeze_experiments: false)
+      expect(manifest["device_settings"]).to eq(
+        "modern_reader" => false, "freeze_experiments" => false
+      )
+    end
+  end
+
   describe "thumbnails" do
     before do
       FileUtils.mkdir_p(Library.covers_root)

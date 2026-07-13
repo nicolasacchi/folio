@@ -71,7 +71,39 @@
       <%= form.check_box :auto_evict %>
       <%= form.label :auto_evict, "Auto-remove finished/dormant books when space runs low" %>
     </span>
+    <span class="settings-check">
+      <%= form.check_box :modern_reader_pinned %>
+      <%= form.label :modern_reader_pinned, "Pin the modern reader (back/home buttons, page numbers)" %>
+    </span>
+    <span class="settings-check">
+      <%= form.check_box :freeze_experiments %>
+      <%= form.label :freeze_experiments, "Freeze Amazon experiments (block weblab re-sync on this device)" %>
+    </span>
   </div>
+  <p class="muted small">
+    <% if @device.reader_mode.present? %>
+      Reader on device: <b><%= @device.reader_mode_label %></b>.
+      <% case @device.reader_mode when "kpp" %>
+        <span class="stamp stamp--ready">buttons active</span>
+      <% when "kpp_pending" %>
+        <span class="stamp stamp--pending">pinned · awaiting Amazon</span>
+      <% else %>
+        <span class="stamp">legacy</span>
+      <% end %>
+      <%= " · experiments frozen" if @device.experiments_frozen %>
+    <% else %>
+      Reader on device: <span class="muted">not yet reported by the daemon.</span>
+    <% end %>
+    <a href="https://kb.scc.im/folio/kindle-519-kpp-reader-routing" target="_blank" rel="noreferrer">Why?</a>
+  </p>
+  <% if @device.reader_mode == "kpp_pending" %>
+    <p class="muted small">
+      The modern reader is pinned and ready, but back/home buttons appear only once
+      Amazon enables the <code>LegacyFormatMigration</code> experiment
+      (<code>KINDLE_FEATURE_1308000</code>) for this device — it's a staged rollout,
+      out of Folio's control. Keep <em>Freeze experiments</em> <b>off</b> so it can arrive.
+    </p>
+  <% end %>
   <div class="actions">
     <%= form.submit "Save settings", class: "btn" %>
   </div>

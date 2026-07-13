@@ -51,6 +51,19 @@ pub struct Manifest {
     pub status_url: Option<String>,
     #[serde(default)]
     pub clippings_url: Option<String>,
+    /// Reader/experiment policy the daemon enforces on-device. Absent on
+    /// older servers → both false (leave the device alone).
+    #[serde(default)]
+    pub device_settings: DeviceSettings,
+}
+
+/// Per-device reader/experiment policy (see hardening.rs).
+#[derive(Debug, Deserialize, Default, Clone, Copy)]
+pub struct DeviceSettings {
+    #[serde(default)]
+    pub modern_reader: bool,
+    #[serde(default)]
+    pub freeze_experiments: bool,
 }
 
 #[derive(Debug, Deserialize)]

@@ -41,7 +41,8 @@ class Api::V1::ManifestsController < Api::V1::BaseController
       items: items,
       removals: removals,
       status_url: api_v1_device_status_path,
-      clippings_url: api_v1_clippings_path
+      clippings_url: api_v1_clippings_path,
+      device_settings: current_device.manifest_settings
     }
   end
 
