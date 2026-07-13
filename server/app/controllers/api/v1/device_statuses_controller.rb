@@ -28,6 +28,12 @@ class Api::V1::DeviceStatusesController < Api::V1::BaseController
     attrs[:firmware_version] = printable(params[:firmware_version], 100) if params[:firmware_version].present?
     attrs[:serial] = printable(params[:serial], 100) if params[:serial].present?
     attrs[:kindled_version] = printable(params[:kindled_version], 40) if params[:kindled_version].present?
+    # Reader/experiment reconciliation the daemon just performed on-device.
+    if params[:reader_mode].present?
+      attrs[:reader_mode] = printable(params[:reader_mode], 20)
+      attrs[:experiments_frozen] = ActiveModel::Type::Boolean.new.cast(params[:experiments_frozen])
+      attrs[:reader_settings_applied_at] = Time.current
+    end
     current_device.update!(attrs)
   end
 

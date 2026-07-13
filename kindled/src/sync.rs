@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use crate::api::{ApiError, Client, ManifestItem, Removal};
 use crate::config::Config;
 use crate::state::{BookState, State};
+use crate::hardening::{self, ReaderStatus};
 use crate::{device, lipc, sdr};
 
 #[derive(Debug, Default)]
@@ -64,10 +65,17 @@ pub fn run(config: &Config) -> Result<SyncReport, ApiError> {
         }
     }
 
+    // Enforce the reader/experiment policy on-device before reporting, so
+    // the status we send reflects reality. Idempotent and quiet.
+    let reader = hardening::reconcile(hardening::Policy {
+        modern_reader: manifest.device_settings.modern_reader,
+        freeze_experiments: manifest.device_settings.freeze_experiments,
+    });
+
     // Telemetry last, so the report covers this whole pass. Best-effort:
     // an old server without the endpoint must not fail the sync.
     if let Some(url) = &manifest.status_url {
-        if let Err(error) = post_status(config, &client, &state, &report, started, url) {
+        if let Err(error) = post_status(config, &client, &state, &report, started, url, reader) {
             eprintln!("status report failed: {error}");
         }
     }
@@ -155,6 +163,7 @@ fn post_status(
     report: &SyncReport,
     started: Instant,
     url: &str,
+    reader: ReaderStatus,
 ) -> Result<(), ApiError> {
     let info = device::collect(&config.document_dir);
     let books: Vec<serde_json::Value> = state
@@ -174,6 +183,8 @@ fn post_status(
         "firmware_version": info.firmware_version,
         "serial": info.serial,
         "kindled_version": env!("CARGO_PKG_VERSION"),
+        "reader_mode": reader.reader_mode,
+        "experiments_frozen": reader.experiments_frozen,
         "sync": {
             "downloaded": report.downloaded,
             "sdr_pushed": report.pushed_states,

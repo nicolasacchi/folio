@@ -61,6 +61,7 @@ class DevicesController < ApplicationController
   end
 
   def device_settings_params
-    params.expect(device: [ :name, :low_space_threshold_mb, :auto_evict ])
+    params.expect(device: [ :name, :low_space_threshold_mb, :auto_evict,
+                            :modern_reader_pinned, :freeze_experiments ])
   end
 end

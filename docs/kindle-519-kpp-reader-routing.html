@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="research">
+  <meta name="kb-tags" content="kindle, firmware, kpp-reader, weblab, reader-routing, mobi, kf8, sidecar, jailbreak">
+  <title>Kindle 5.19 reader routing: how the modern (KPP) reader is gated, and how to pin it</title>
+  <template id="kb-prompt">On a Kindle running firmware 5.19.2, sideloaded books delivered by Folio intermittently lost their back/home buttons — they opened in a chrome-less legacy reader instead of the modern one, and it flipped across reboots. Investigate on the real device (SSH), decompile the firmware's reader-routing logic, find exactly what gates the modern reader, prove it on the live device, and design a way to pin the modern reader on permanently plus stop Amazon's server-driven experiments from changing device behaviour.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2, h3 { line-height: 1.25; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    pre { padding: .8rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: .6rem 0; }
+    td, th { text-align: left; border-bottom: 1px solid #ddd; padding: .4rem .5rem; vertical-align: top; }
+    .find { border-left: 3px solid #137333; background: #f2fbf4; padding: .6rem .9rem; margin: .8rem 0; }
+    .trap { border-left: 3px solid #b3261e; background: #fdf2f1; padding: .6rem .9rem; margin: .8rem 0; }
+    .note { border-left: 3px solid #8250df; background: #f7f4fd; padding: .6rem .9rem; margin: .8rem 0; }
+  </style>
+</head>
+<body>
+<h1 id="summary">Kindle 5.19 reader routing: the modern (KPP) reader and how to pin it</h1>
+
+<p>Established empirically on a real Kindle (firmware 5.19.2, Photon/KPP UI)
+on 2026-07-13 via SSH: <code>strings</code>/<code>javap</code> decompilation
+of the firmware's Java reader stack, inspection of the on-device weblab cache
+and marker files, and <code>.sdr</code> sidecar fingerprinting to observe which
+reader actually opened each book. The short version:</p>
+
+<div class="find"><strong>A reflowable book opens in the modern reader only
+when TWO gates are both on:</strong> (1) the marker file
+<code>/var/local/ENABLE_KPPREADER</code> exists, AND (2) Amazon's
+<code>LegacyFormatMigration</code> weblab (<code>KINDLE_FEATURE_1308000</code>, in
+the <em>MobileWeblab</em> subsystem) is <code>T1</code>. With both on, books open
+in the native <code>kfxreader</code> KPP reader (back/home buttons, page numbers).
+If either is off, the same book opens in the legacy Java reader (<code>YJReader</code>),
+whose 5.19 chrome has none of that. Our joint MOBI6+KF8 files are format-eligible
+(<code>BookType is not Mobi7</code>) — the file is never the problem.</div>
+
+<div class="trap"><strong>Correction to an earlier draft of this note.</strong>
+The marker alone is <em>necessary but not sufficient</em>. This device had
+<code>ENABLE_KPPREADER</code> present yet books still opened legacy, because gate
+(2) — the MobileWeblab treatment for <code>KINDLE_FEATURE_1308000</code> — was
+<code>C</code>. Also, the KRDS <code>.azw3r</code>/<code>.azw3f</code> sidecars are
+NOT proof of KPP rendering: KPP <em>shadow mode</em> dual-writes them for position
+tracking even while the legacy reader draws the page. The only reliable signal is
+the framework log (<code>isKPPLegacyFormatMigrationEnabled = true/false</code>,
+<code>Init with (KPP|Java)Reader</code>).</div>
+
+<h2 id="architecture">Two readers in one firmware</h2>
+
+<p>The reader is the Java "booklet" framework (<code>cvm</code> / concierge
+Framework, <code>/etc/upstart/framework</code>). Its classpath carries
+<em>both</em> readers:</p>
+
+<table>
+  <tr><th></th><th>Modern — KPP reader</th><th>Legacy — Java reader</th></tr>
+  <tr><td>Binary</td><td><code>/usr/bin/kfxreader</code> (native C++, runs as a service <code>kfxreader -l</code>)</td><td><code>YJReader-impl.jar</code> + <code>MobiReader-impl.jar</code> (in-process Java)</td></tr>
+  <tr><td>Chrome</td><td>back arrow, home, page numbers, time-in-chapter, TOC, sticky notes</td><td>none of that on 5.19</td></tr>
+  <tr><td>Metric</td><td><code>is_opened_by_kpp_reader = Yes</code></td><td><code>= No</code></td></tr>
+  <tr><td>Sidecar it writes</td><td><code>.azw3r</code> / <code>.azw3f</code> (KRDS)</td><td><code>.mbp1</code> / <code>.mbs</code> (legacy)</td></tr>
+</table>
+
+<p>For a mobi book the Java framework decides, per book, whether to render it
+in-process (legacy) or proxy it to the native KPP reader over LIPC
+(<code>com.lab126.kppReader</code>, <code>MobiKPPReaderController</code> —
+"Open book by KPP Reader").</p>
+
+<h2 id="decision">The decision chain (decompiled)</h2>
+
+<p>Three layers, all in <code>ReaderSDK-impl.jar</code> /
+<code>MobiReader-impl.jar</code> / <code>Reader-utils.jar</code>:</p>
+
+<h3 id="layer1">1. Device switch — <code>KPPReaderSwitchUtils</code></h3>
+<pre>RZ():  new File("/var/local/ENABLE_KPPREADER").exists() ? KPP_READER : JAVA_READER
+Sa():  return new File("/var/local/DISABLE_KPPREADER_WEBLAB").exists()   // true ⇒ ignore the weblab
+Sc():  create /var/local/KPPREADER_YJOP_DIALED_DOWN                      // "dial down" legacy for reflowable</pre>
+<p>Five 0-byte markers live in <code>/var/local</code>:
+<code>ENABLE_KPPREADER</code>, <code>DISABLE_KPPREADER_WEBLAB</code>,
+<code>KPPREADER_TRIGGERED</code>, <code>KPPREADER_YJOP_DIALED_DOWN</code>,
+<code>KPPREADER_YJOP_SB_DIALED_UP</code>. Their <em>presence</em> is the state —
+content is irrelevant.</p>
+
+<h3 id="layer2">2. Per-book gate — <code>MobiBookController.nu()</code></h3>
+<pre>if (controller == null && ReaderUtils.Z(book))
+    controller = new MobiKPPReaderController(...);   // KPP path
+return controller;                                   // else → legacy MobiBookViewer</pre>
+<p>A mobi opens in the modern reader <strong>iff <code>ReaderUtils.Z(book)</code></strong>
+returns true.</p>
+
+<h3 id="layer3">3. Eligibility — <code>ReaderUtils.Z(book)</code></h3>
+<pre>Z(book) = aKA() && ( (cl(book) && !co(book))   // reflowable text (our books)
+                     || cG(book)                // fixed-format / manga  (gated by aKB/aKC/aKD)
+                     || cK(book)                // other                 (gated by aKM)
+                     || (p(book) && aKN()) )     // periodicals           (gated by aKN)</pre>
+<ul>
+  <li><code>aKA()</code> = <em>"isKppReaderEnabled()"</em> — reads
+  <code>/var/local/ENABLE_KPPREADER</code> (cached per framework process). <strong>This is the master gate.</strong></li>
+  <li><code>p(book)</code> = <em>"BookType is not Mobi7"</em> (reads
+  <code>BookMetadata.getContentType()</code>).</li>
+  <li><code>aKN/aKM/aKB/aKC/aKD</code> = per-category feature gates, each backed by
+  a <code>KINDLE_FEATURE_*</code> weblab (e.g. periodicals =
+  <code>KINDLE_FEATURE_1342385</code>).</li>
+</ul>
+<p>Beyond the master gate <code>aKA()</code>, the reflowable path also consults
+<code>isKPPLegacyFormatMigrationEnabled()</code>, which reads weblab
+<code>KINDLE_FEATURE_1308000</code> (name <code>LegacyFormatMigration</code>) from
+the <strong>MobileWeblab</strong> client — <em>not</em> the KWIS
+<code>kindleforeink_weblabs.json</code> cache. On this device that treatment is
+<code>C</code>, so a reflowable KF8 book stays in the legacy reader even with the
+marker on. The sibling categories (fixed-format, manga) already read <code>T1</code>;
+reflowable is a later stage of the same rollout.</p>
+
+<h2 id="weblab">The weblab machinery (why it flips)</h2>
+
+<p><code>KPPReaderSwitchManagerImpl</code> registers four
+<code>KINDLE_FEATURE</code> weblabs (one per content class: reflowable "YJOP",
+fixed-format "YJFF", manga, sample-book) via the KSDK
+<code>WeblabManager</code>. Treatment <code>T1</code> ⇒ "Init with KPPReader",
+<code>C</code> ⇒ "Init with JavaReader". Assignments are fetched from Amazon and
+cached on device:</p>
+
+<table>
+  <tr><th>Thing</th><th>Where</th></tr>
+  <tr><td>Weblab cache (244 assignments, plain JSON)</td><td><code>/var/local/kindleforeink_weblabs.json</code></td></tr>
+  <tr><td>Weblab client id</td><td><code>/var/local/mobile_weblab_cid.txt</code></td></tr>
+  <tr><td>Fetch endpoint (KWIS)</td><td><code>https://kwis-opf.amazon.com/getWeblabs/</code></td></tr>
+  <tr><td>Fetch endpoint (MobileWeblab)</td><td><code>https://msh&lt;REGION&gt;…/mwl/</code> (from <code>appreg.db</code>)</td></tr>
+</table>
+
+<p>Two <em>separate</em> weblab systems coexist: <strong>KWIS</strong> (the
+<code>kindleforeink_weblabs.json</code> cache above) and <strong>MobileWeblab</strong>
+(<code>com.lab126.kaf.MobileWeblabService</code>, its own store). The reader's
+reflowable-migration gate (<code>KINDLE_FEATURE_1308000</code>) is read from
+<em>MobileWeblab</em>. Editing the KWIS JSON — even though it also contains a
+<code>1308000</code> row — does not change what the reader sees. A book-open
+re-evaluates these gates each time, so behaviour tracks whatever treatment the
+respective client currently holds.</p>
+
+<h2 id="proof">The reliable signal: the framework log</h2>
+
+<p>Ignore the sidecars for reader identity (shadow mode taints them). The
+authoritative source is <code>/var/log/messages</code>, written by <code>cvm</code>
+on every book open:</p>
+<pre>ReaderUtils: isKppReaderEnabled() check for /var/local/ENABLE_KPPREADER is cached = true
+MobileWeblabLogUtils: Fetching weblab for experiment : KINDLE_FEATURE_1308000
+ReaderUtils: isKPPLegacyFormatMigrationEnabled() check for LegacyFormatMigration = false   ← blocker
+ReaderUtils: BookType is not Mobi7                                                          ← file is fine</pre>
+<p>Gate 1 (marker) reads <code>true</code>; gate 2 (MobileWeblab 1308000) reads
+<code>false</code> → the reflowable book opens in the legacy reader, no buttons.
+The daemon reports this to Folio as <code>reader_mode = "kpp_pending"</code>.</p>
+
+<h2 id="pin">How to pin the modern reader</h2>
+<ol>
+  <li><strong>Gate 1 (in our control):</strong> ensure
+  <code>/var/local/ENABLE_KPPREADER</code> exists and make it immutable
+  (<code>chattr +i</code>) so nothing deletes it; keep
+  <code>/var/local/DISABLE_KPPREADER_WEBLAB</code> too. Persists across reboots.
+  Revert with <code>chattr -i</code> then delete.</li>
+  <li><strong>Gate 2 (Amazon's):</strong> <code>KINDLE_FEATURE_1308000 = T1</code>
+  in MobileWeblab. There is no marker bypass for it; it arrives via Amazon's
+  staged rollout. A local MobileWeblab override
+  (<code>weblab_overrides/KINDLE_FEATURE_1308000</code> containing <code>T1</code>)
+  is plausible but was never initialised on this device and is not confirmed to be
+  honoured on a production build.</li>
+</ol>
+<div class="trap"><strong>Editing the KWIS <code>kindleforeink_weblabs.json</code>
+does nothing for the reader.</strong> That file is the KWIS cache; the reader
+reads <code>1308000</code> from the separate MobileWeblab client. Two distinct
+weblab systems live on the device — don't confuse them.</div>
+
+<h2 id="stop-amazon">Freezing experiments — and the tension with the reader</h2>
+<p>"Freeze experiments" (make <code>kindleforeink_weblabs.json</code> immutable +
+iptables-<code>REJECT</code> the <code>kwis-opf</code> fetch by TLS SNI) pins the
+KWIS-driven experiments against silent A/B changes. But it is <strong>in direct
+tension</strong> with getting the reader buttons: the change that turns them on
+(<code>1308000 → T1</code>) is itself an Amazon experiment we <em>want</em>.
+Freezing/blocking would lock in the current "off".</p>
+<div class="note">Resolution on this device: <strong>pin the reader</strong>
+(gate 1, immutable) but leave <strong>freeze OFF</strong> so MobileWeblab can still
+deliver <code>1308000 = T1</code> when Amazon rolls it out. The buttons then appear
+with no further action. The Folio <em>Freeze experiments</em> toggle stays available
+per-device for cases where you'd rather lock behaviour than accept a wanted rollout.</div>
+
+<h2 id="folio">Folio integration (shipped)</h2>
+<p>Both levers are managed device settings, controlled from the web UI rather
+than an SSH poke — applied on-device 2026-07-13, then wired into Folio:</p>
+<ul>
+  <li><strong>Applied on device</strong> — gate 1 pinned:
+  <code>ENABLE_KPPREADER</code> + <code>DISABLE_KPPREADER_WEBLAB</code> made
+  immutable (<code>chattr +i</code>, survives reboots). Freeze <em>relaxed</em>:
+  the weblab cache is un-frozen and the <code>kwis-opf</code> block removed, so
+  Amazon can still deliver <code>1308000 = T1</code>. Originals backed up under
+  <code>/mnt/us/privatecloud/kpp-backup-&lt;ts&gt;/</code>.</li>
+  <li><strong>Server</strong> — per-device flags
+  <code>modern_reader_pinned</code> / <code>freeze_experiments</code> ride the
+  manifest as <code>device_settings</code>; for this device pin=on, freeze=off.
+  The daemon reports <code>reader_mode</code> (<code>kpp</code> /
+  <code>kpp_pending</code> / <code>legacy</code>) + <code>experiments_frozen</code>
+  back via <code>device/status</code>.</li>
+  <li><strong>kindled ≥ 0.2.2</strong> — <code>hardening.rs</code> reconciles
+  every pass (idempotent, quiet): pins/immutabilises or removes the markers,
+  freezes/unfreezes the cache and applies/removes the SNI block per policy, and
+  reads the real gate-2 state from <code>/var/log/messages</code> to report
+  <code>kpp</code> vs <code>kpp_pending</code> honestly.</li>
+  <li><strong>Web UI</strong> — the device page shows the true reader state
+  ("modern reader pinned — waiting on Amazon's rollout") with toggles.</li>
+</ul>
+<div class="note">Current posture: reader pinned (persists via immutability),
+freeze off (so the wanted rollout can arrive). When Amazon flips
+<code>1308000 → T1</code>, the next book-open logs
+<code>LegacyFormatMigration = true</code>, the daemon reports <code>kpp</code>,
+and the buttons appear — no further action.</div>
+
+<h2 id="traps">Traps discovered</h2>
+<div class="trap"><strong>The marker is checked once and cached per framework
+process.</strong> <code>aKA()</code> caches <code>ENABLE_KPPREADER</code>'s
+presence at first use ("… is cached ="). Creating the marker takes effect on the
+next framework start (reboot / <code>restart framework</code>), not mid-session.</div>
+<div class="trap"><strong>Every content class has its own MobileWeblab gate.</strong>
+Reflowable (<code>1308000</code>), fixed-format, manga and periodicals each gate on
+a distinct <code>KINDLE_FEATURE_*</code> treatment. So the marker being on does not
+imply <em>any</em> book opens in KPP — each category flips only when its own weblab
+is <code>T1</code>. On this device reflowable is the last one still <code>C</code>.</div>
+<div class="trap"><strong>No conflict with the cover-tile fix.</strong> The
+joint MOBI6+KF8 container required for Library cover tiles still classifies as
+"not Mobi7" to the reader (it opens the KF8 half), so it stays KPP-eligible. Both
+fixes hold at once — verified on <em>Io, la giraffa</em>.</div>
+
+</body>
+</html>

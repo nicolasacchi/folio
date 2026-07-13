@@ -47,6 +47,39 @@ class Device < ApplicationRecord
     Library::EvictionPlanner.new(self).plan
   end
 
+  # The reader/experiment policy the manifest carries to the daemon, which
+  # pins the modern (KPP) reader and freezes Amazon's weblab experiments
+  # on-device. See docs/kindle-519-kpp-reader-routing.html.
+  def manifest_settings
+    { modern_reader: modern_reader_pinned, freeze_experiments: freeze_experiments }
+  end
+
+  # Does what the daemon last reported match the policy we asked for? Drives
+  # the "pending / applied" badge on the device page. When the reader is
+  # pinned, "kpp_pending" still counts as applied — the marker is in place;
+  # we're only waiting on Amazon's format-migration weblab (out of our hands).
+  def reader_settings_applied?
+    return false if reader_settings_applied_at.nil?
+
+    reader_applied =
+      if modern_reader_pinned
+        reader_mode.in?(%w[kpp kpp_pending])
+      else
+        reader_mode == "legacy"
+      end
+    reader_applied && experiments_frozen == freeze_experiments
+  end
+
+  # Human summary of what a book actually opens in on the device.
+  def reader_mode_label
+    case reader_mode
+    when "kpp"         then "modern reader active"
+    when "kpp_pending" then "modern reader pinned — waiting on Amazon's format-migration rollout"
+    when "legacy"      then "legacy reader (no back/home buttons)"
+    else "not yet reported"
+    end
+  end
+
   # A cheap monotonic-enough fingerprint of "would a sync do anything?":
   # the newest change across this device's deliveries, the files of its
   # queued books (preparation bumps them), and those books' reading

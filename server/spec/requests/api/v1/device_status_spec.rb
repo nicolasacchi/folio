@@ -33,6 +33,19 @@ RSpec.describe "API v1 device status", type: :request do
     expect(sync.free_bytes).to eq(4_000_000_000)
   end
 
+  it "records the reader/experiment state the daemon reconciled" do
+    post "/api/v1/device/status", headers: headers, params: {
+      free_bytes: 4_000_000_000, total_bytes: 6_000_000_000,
+      reader_mode: "kpp", experiments_frozen: true
+    }.to_json
+
+    device.reload
+    expect(device.reader_mode).to eq("kpp")
+    expect(device.experiments_frozen).to be(true)
+    expect(device.reader_settings_applied_at).to be_present
+    expect(device.reader_settings_applied?).to be(true)
+  end
+
   it "flags low space" do
     post "/api/v1/device/status", headers: headers, params: {
       free_bytes: 100.megabytes, total_bytes: 6_000_000_000

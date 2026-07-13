@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_12_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -123,13 +123,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_160000) do
     t.boolean "auto_evict", default: false, null: false
     t.integer "battery_percent"
     t.datetime "created_at", null: false
+    t.boolean "experiments_frozen"
     t.string "firmware_version"
     t.bigint "free_bytes"
+    t.boolean "freeze_experiments", default: true, null: false
     t.string "kindled_version"
     t.datetime "last_seen_at"
     t.datetime "last_sync_at"
     t.integer "low_space_threshold_mb", default: 500, null: false
+    t.boolean "modern_reader_pinned", default: true, null: false
     t.string "name", null: false
+    t.string "reader_mode"
+    t.datetime "reader_settings_applied_at"
     t.string "serial"
     t.datetime "status_reported_at"
     t.string "token", null: false
