@@ -228,5 +228,32 @@ joint MOBI6+KF8 container required for Library cover tiles still classifies as
 "not Mobi7" to the reader (it opens the KF8 half), so it stays KPP-eligible. Both
 fixes hold at once — verified on <em>Io, la giraffa</em>.</div>
 
+<h2 id="incident">Incident 2026-07-13: forcing gate 2 bricked remote access</h2>
+<p>At the user's explicit request, gate 2 was force-enabled by patching
+<code>/opt/amazon/ebook/lib/Reader-utils.jar</code> bytecode directly: the
+obfuscated method (named e.g. <code>aKM</code> on this build) that reads weblab
+<code>KINDLE_FEATURE_1308000</code> had its final <code>iload_0</code> flipped to
+<code>iconst_1</code> — one byte, unconditionally returns <code>true</code>. Tooling
+in <code>tools/kpp-reader-patch/</code>: <code>patch_reader_utils.py</code>
+(locates the method by its string-constant reference, not by name, since names
+are obfuscated and may differ per build), <code>kpp-apply.sh</code>,
+<code>kpp-autoheal.conf</code> (a dead-man switch meant to auto-revert on the next
+unconfirmed boot), <code>kpp-recover.sh</code>.</p>
+<div class="trap"><strong>The auto-heal job was hooked too late in boot and never
+fired.</strong> It ran on <code>start on starting lab126_gui</code>. The patched
+jar crashed the Java framework before upstart reached that stage, so the
+auto-heal job never ran — no revert, no WiFi, no reverse SSH tunnel, no remote
+access at all. Multiple power-cycles did not help (the same early crash repeats
+every boot). Recovery required a physical USB connection to run the equivalent
+of <code>kpp-recover.sh</code> from a shell independent of the crashed framework.
+The corrected <code>kpp-autoheal.conf</code> hooks <code>start on startup</code>
+instead — the earliest upstart event — but that fix is <strong>unverified on real
+hardware</strong>; the device that broke couldn't be used to test it.</div>
+<div class="note">Takeaway: patching this jar is a materially different risk
+tier than anything else in this repo — a rootfs firmware edit with no
+in-band recovery if the framework fails to boot. The recommended path remains
+waiting for Amazon's rollout (gate 1 is already pinned and safe); see
+<code>tools/kpp-reader-patch/README.md</code> before attempting gate 2 again.</div>
+
 </body>
 </html>
