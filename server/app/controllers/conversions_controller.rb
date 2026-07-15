@@ -1,7 +1,4 @@
 class ConversionsController < ApplicationController
-  # Richest formats first: converting from these loses the least.
-  SOURCE_PREFERENCE = %w[epub azw3 kfx mobi azw fb2 docx html htmlz odt rtf lit pdf cbz cbr djvu txt].freeze
-
   def create
     book = Book.find(params[:book_id])
     target = params[:target_format].to_s
@@ -17,7 +14,7 @@ class ConversionsController < ApplicationController
     end
 
     by_format = book.book_files.index_by(&:format)
-    source = SOURCE_PREFERENCE.filter_map { |format| format == target ? nil : by_format[format] }.first
+    source = Conversion::SOURCE_PREFERENCE.filter_map { |format| format == target ? nil : by_format[format] }.first
     return redirect_to book, alert: "No convertible source file." unless source
 
     conversion = book.conversions.create!(book_file: source, target_format: target)

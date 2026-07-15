@@ -3,11 +3,20 @@ class Book < ApplicationRecord
   # order. EPUB is not on this list on purpose: firmware 5.x cannot open it.
   KINDLE_FORMATS = %w[azw3 kfx azw mobi prc txt pdf].freeze
 
+  # Formats the in-browser reader (foliate-js) can open, in preference
+  # order — richest/most-reflowable first. PDF is last: foliate-js renders
+  # it via a vendored pdf.js wrapper rather than reflowing text, so it's a
+  # last resort rather than a peer of the reflowable formats. KFX is
+  # deliberately excluded — it's a proprietary Amazon container foliate-js
+  # cannot parse.
+  READABLE_FORMATS = %w[epub azw3 azw mobi prc fb2 cbz txt pdf].freeze
+
   has_many :book_files, dependent: :destroy
   has_many :conversions, dependent: :destroy
   has_many :reading_states, dependent: :destroy
   has_many :deliveries, dependent: :destroy
   has_many :annotations, dependent: :nullify
+  has_many :reader_positions, dependent: :destroy
 
   # Assigned eagerly (not at validation) because the storage path of an
   # about-to-be-ingested file already depends on it.
@@ -42,6 +51,16 @@ class Book < ApplicationRecord
 
   def file_for(format)
     book_files.find_by(format: format)
+  end
+
+  # Best format for the in-browser reader, see READABLE_FORMATS.
+  def readable_file
+    by_format = book_files.select(&:available?).index_by(&:format)
+    READABLE_FORMATS.each do |format|
+      file = by_format[format]
+      return file if file
+    end
+    nil
   end
 
   def formats

@@ -13,6 +13,17 @@ class Device < ApplicationRecord
 
   broadcasts_refreshes_to ->(_device) { "devices" }
 
+  # Real hardware synced via the device API, vs. the single synthetic "web"
+  # device that owns rows the in-browser reader writes (see .web_reader!).
+  scope :physical, -> { where(kind: "kindle") }
+  scope :web, -> { where(kind: "web") }
+
+  # The one Device row the web reader writes annotations/positions under.
+  # Never appears in device-management UI (see Device.physical usages).
+  def self.web_reader!
+    find_or_create_by!(kind: "web") { |d| d.name = "Folio Web"; d.token = SecureRandom.hex(24) }
+  end
+
   def touch_last_seen!
     # Avoid a write on every API call.
     update_column(:last_seen_at, Time.current) if last_seen_at.nil? || last_seen_at < 1.minute.ago

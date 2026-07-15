@@ -57,6 +57,9 @@
                 title: "Remove from queue" %>
         <% end %>
       <% end %>
+      <% if @book.readable_file || @book.book_files.any? %>
+        <%= link_to "Read in browser", read_book_path(@book), class: "btn btn--primary" %>
+      <% end %>
       <% if (kindle_file = @book.kindle_file) %>
         <%= link_to "Download #{kindle_file.format.upcase}",
               download_book_path(@book, fmt: kindle_file.format),

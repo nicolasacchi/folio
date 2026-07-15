@@ -2,7 +2,7 @@ class DevicesController < ApplicationController
   before_action :set_device, only: [ :show, :update, :evict_suggested, :destroy ]
 
   def index
-    @devices = Device.order(:name)
+    @devices = Device.physical.order(:name)
     @device = Device.new
   end
 
@@ -52,8 +52,13 @@ class DevicesController < ApplicationController
 
   private
 
+  # .physical excludes the synthetic "Folio Web" device (Device.web_reader!)
+  # so it 404s here instead of exposing a working destroy/settings UI for it
+  # — deleting it would cascade-destroy every web annotation and Kindle
+  # write-back sync row for the household (see Device#annotations/
+  # #reading_states dependent: :destroy).
   def set_device
-    @device = Device.find(params[:id])
+    @device = Device.physical.find(params[:id])
   end
 
   def device_params
@@ -62,6 +67,6 @@ class DevicesController < ApplicationController
 
   def device_settings_params
     params.expect(device: [ :name, :low_space_threshold_mb, :auto_evict,
-                            :modern_reader_pinned, :freeze_experiments ])
+                            :modern_reader_pinned, :freeze_experiments, :reader_writeback ])
   end
 end
