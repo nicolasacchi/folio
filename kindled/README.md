@@ -67,12 +67,26 @@ THUMBNAIL_DIR=/mnt/us/system/thumbnails       # firmware cover cache
 CLIPPINGS_PATH=/mnt/us/documents/My Clippings.txt
 ```
 
-While the device is awake (`powerd state == active`) the daemon probes
-`GET /api/v1/queue_version` (~1 KB) every `FAST_POLL` seconds and syncs
-immediately when the version moves — sends land in ~30 s instead of up
+While the device is awake (`powerd state == active`) the daemon checks
+twice every `FAST_POLL` seconds, cheapest first:
+
+1. **Outbound** — stat each tracked book's `.sdr` sidecar; if its content
+   mtime has moved past both the pushed and applied watermarks (see
+   `state.json`), the firmware wrote a fresh reading position locally, and
+   that's reason enough to sync. No network involved.
+2. **Inbound** — otherwise probe `GET /api/v1/queue_version` (~1 KB); a
+   moved version means the server has something new.
+
+Either one cuts the wait short and triggers a full sync pass immediately,
+so reading-position changes land in ~30 s in both directions instead of up
 to `POLL_INTERVAL`. Battery-neutral by construction: a suspended Kindle
-freezes the process (no probes, no radio wakeups), and screen-saver
-state skips probes too.
+freezes the process (no probes, no radio wakeups), screen-saver state
+skips probes too, and the sidecar check is a handful of `stat`s — no
+allocation, no IO if there are no tracked books yet. A book left open with
+the firmware continuously touching its sidecar triggers at most one early
+sync per `FAST_POLL` tick: the push in step 3 of the reconciliation pass
+advances the watermark past the mtime that triggered it, so the same
+content can't re-trigger itself.
 
 `PRIVATECLOUD_DIR` overrides the base directory (used by tests/dev).
 
