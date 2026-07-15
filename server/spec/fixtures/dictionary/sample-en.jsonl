@@ -1,0 +1,25 @@
+{"word":"mouse","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a small rodent with a long tail"]},{"glosses":["a shy person"]},{"glosses":["a computer pointing device"]},{"glosses":["to hunt for mice, said of a cat prowling around looking for rodents to catch and eat quietly"]}]}
+{"word":"mice","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["plural of mouse"],"form_of":[{"word":"mouse"}]}]}
+{"word":"run","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["an act of running"]}]}
+{"word":"run","pos":"verb","lang":"English","lang_code":"en","senses":[{"glosses":["to move at a speed faster than a walk"]},{"glosses":["to operate or function"]},{"glosses":["to manage a business or organization"]},{"glosses":["of dye or colour: to spread when wet, staining the surrounding fabric or paper"]}],"forms":[{"form":"running","tags":["present","participle"]},{"form":"ran","tags":["past"]},{"form":"runs","tags":["present","third-person","singular"]},{"form":"run down","tags":[]},{"form":"runnenings","tags":["table"]}]}
+{"word":"jump","pos":"verb","lang":"English","lang_code":"en","senses":[{"glosses":["to push oneself off the ground using the legs"]}]}
+{"word":"stop","pos":"verb","lang":"English","lang_code":"en","senses":[{"glosses":["to cease moving or acting"]}]}
+{"word":"quick","pos":"adj","lang":"English","lang_code":"en","senses":[{"glosses":["moving fast"]}]}
+{"word":"fly","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a two-winged insect"]}]}
+{"word":"box","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a container with flat, rigid sides"]}]}
+{"word":"cat","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a small domesticated carnivorous mammal"]}]}
+{"word":"leaf","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a flat outgrowth of a plant, usually green"]}],"forms":[{"form":"leaves","tags":["plural"]}]}
+{"word":"child","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a young human"]}]}
+{"word":"children","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["plural of child"],"form_of":[{"word":"child"}]}]}
+{"word":"go","pos":"verb","lang":"English","lang_code":"en","senses":[{"glosses":["to move from one place to another"]}],"forms":[{"form":"went","tags":["past"]},{"form":"gone","tags":["past","participle"]}]}
+{"word":"dog","pos":"noun","lang":"English","lang_code":"en","senses":[{"glosses":["a domesticated canine"]}]}
+{"word":"happy","pos":"adj","lang":"English","lang_code":"en","senses":[{"glosses":["feeling or showing pleasure"]}]}
+{"word":"small","pos":"adj","lang":"English","lang_code":"en","senses":[{"glosses":["little in size"]},{"glosses":["insignificant"]}]}
+{"word":"love","pos":"verb","lang":"English","lang_code":"en","senses":[{"glosses":["to feel deep affection for"]}]}
+{"word": "broken", "pos": "noun", "senses": [
+{"pos":"noun","lang_code":"en","senses":[{"glosses":["orphan entry, no word field"]}]}
+{"word":"ghostword","pos":"noun","lang_code":"en","senses":[{"glosses":[]}]}
+{"word":"bonjour","pos":"intj","lang_code":"fr","senses":[{"glosses":["hello"]}]}
+{}
+{"word":"typo","senses":[{"glosses":["a mistake in writing"]}]}
+
