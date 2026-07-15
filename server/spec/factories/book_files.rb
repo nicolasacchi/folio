@@ -14,5 +14,15 @@ FactoryBot.define do
         File.write(book_file.absolute_path, "content of #{book_file.path}")
       end
     end
+
+    # A real, tiny, valid EPUB — for specs that actually open/stream the
+    # file rather than just exercising the DB row (see EpubFixture).
+    trait :epub_fixture do
+      format { "epub" }
+      after(:create) do |book_file|
+        EpubFixture.write(book_file.absolute_path)
+        book_file.update!(size: File.size(book_file.absolute_path), sha256: Library.sha256(book_file.absolute_path))
+      end
+    end
   end
 end

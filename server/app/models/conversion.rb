@@ -4,6 +4,11 @@ class Conversion < ApplicationRecord
   # Targets Calibre can produce without extra plugins. KFX is input-only.
   TARGET_FORMATS = %w[epub azw3 mobi pdf txt docx].freeze
 
+  # Richest formats first: converting from these loses the least. Shared by
+  # ConversionsController (explicit user-picked target) and ReaderController
+  # (auto-queued epub conversion when a book has no browser-readable file).
+  SOURCE_PREFERENCE = %w[epub azw3 kfx mobi azw fb2 docx html htmlz odt rtf lit pdf cbz cbr djvu txt].freeze
+
   belongs_to :book
   belongs_to :book_file # source file
 

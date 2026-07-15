@@ -79,7 +79,16 @@
       <%= form.check_box :freeze_experiments %>
       <%= form.label :freeze_experiments, "Freeze Amazon experiments (block weblab re-sync on this device)" %>
     </span>
+    <% if @device.kind == "kindle" %>
+      <span class="settings-check">
+        <%= form.check_box :reader_writeback %>
+        <%= form.label :reader_writeback, "Web reader position sync" %>
+      </span>
+    <% end %>
   </div>
+  <% if @device.kind == "kindle" %>
+    <p class="muted small">Allows the web reader to update this Kindle's reading position.</p>
+  <% end %>
   <p class="muted small">
     <% if @device.reader_mode.present? %>
       Reader on device: <b><%= @device.reader_mode_label %></b>.

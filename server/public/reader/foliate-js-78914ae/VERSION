@@ -1,0 +1,19 @@
+foliate-js
+source: https://github.com/johnfactotum/foliate-js
+commit: 78914aef4466eb960965702401634c2cb348e9b1
+commit date: 2026-05-01T19:24:25Z
+vendored: 2026-07-14
+
+Vendored unfingerprinted under public/ (not through propshaft) because
+foliate-js's internal imports are relative paths, which propshaft's asset
+digesting breaks. This directory is the cache-bust key — bump the short
+sha in the directory name (and the importmap pins in config/importmap.rb)
+when re-vendoring a newer commit.
+
+Trimmed from upstream: demos (reader.html, reader.js, ui/), tests/,
+rollup/ + rollup.config.js + eslint.config.js (build tooling only,
+vendor/fflate.js and vendor/zip.js are already the built output),
+package.json/package-lock.json, README.md. Everything else — all
+top-level .js files plus the vendor/ subdir (fflate.js, zip.js, and the
+full vendor/pdfjs pdf.js build incl. cmaps/standard_fonts) — is copied
+verbatim.

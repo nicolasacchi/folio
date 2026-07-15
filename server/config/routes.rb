@@ -12,6 +12,18 @@ Rails.application.routes.draw do
     end
     resources :conversions, only: [ :create ]
   end
+  # In-browser reader (web session auth — the device API is untouched).
+  get    "books/:id/read"                        => "reader#show",      as: :read_book
+  get    "books/:id/read/file"                   => "reader#file",      as: :read_book_file
+  put    "books/:id/read/position"               => "reader#update_position", as: :read_book_position
+  get    "books/:id/read/state"                  => "reader#state",           as: :read_book_state
+  get    "books/:id/read/annotations"            => "reader_annotations#index"
+  post   "books/:id/read/annotations"            => "reader_annotations#create"
+  patch  "books/:id/read/annotations/:annotation_id" => "reader_annotations#update"
+  delete "books/:id/read/annotations/:annotation_id" => "reader_annotations#destroy"
+  patch  "books/:id/read/annotations/:annotation_id/locate" => "reader_annotations#locate"
+  get    "lookup" => "lookups#show"
+
   resources :deliveries, only: [ :create, :destroy ]
   # Ask a device to delete a delivered book (rides the next manifest).
   resources :evictions, only: [ :create, :destroy ], param: :delivery_id

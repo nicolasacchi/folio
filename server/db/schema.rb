@@ -10,10 +10,12 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_14_120002) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
+    t.text "cfi"
+    t.string "color"
     t.text "content"
     t.datetime "created_at", null: false
     t.integer "device_id", null: false
@@ -21,9 +23,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
     t.string "kind", default: "highlight", null: false
     t.integer "location_end"
     t.integer "location_start"
+    t.text "note"
     t.integer "page"
     t.string "raw_author"
     t.string "raw_title", null: false
+    t.string "source", default: "clippings", null: false
     t.datetime "updated_at", null: false
     t.index ["book_id", "added_at"], name: "index_annotations_on_book_id_and_added_at"
     t.index ["book_id"], name: "index_annotations_on_book_id"
@@ -127,6 +131,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
     t.string "firmware_version"
     t.bigint "free_bytes"
     t.boolean "freeze_experiments", default: true, null: false
+    t.string "kind", default: "kindle", null: false
     t.string "kindled_version"
     t.datetime "last_seen_at"
     t.datetime "last_sync_at"
@@ -135,11 +140,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
     t.string "name", null: false
     t.string "reader_mode"
     t.datetime "reader_settings_applied_at"
+    t.boolean "reader_writeback", default: false, null: false
     t.string "serial"
     t.datetime "status_reported_at"
     t.string "token", null: false
     t.bigint "total_bytes"
     t.datetime "updated_at", null: false
+    t.index ["kind"], name: "index_devices_on_kind"
     t.index ["token"], name: "index_devices_on_token", unique: true
   end
 
@@ -157,6 +164,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
     t.index ["path"], name: "index_import_files_on_path", unique: true
     t.index ["sha256"], name: "index_import_files_on_sha256"
     t.index ["status"], name: "index_import_files_on_status"
+  end
+
+  create_table "reader_positions", force: :cascade do |t|
+    t.integer "book_id", null: false
+    t.text "cfi"
+    t.text "context"
+    t.datetime "created_at", null: false
+    t.float "fraction"
+    t.float "percent"
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["book_id", "user_id"], name: "index_reader_positions_on_book_id_and_user_id", unique: true
+    t.index ["book_id"], name: "index_reader_positions_on_book_id"
+    t.index ["user_id"], name: "index_reader_positions_on_user_id"
   end
 
   create_table "reading_states", force: :cascade do |t|
@@ -206,6 +227,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_13_160000) do
   add_foreign_key "deliveries", "devices"
   add_foreign_key "device_syncs", "devices"
   add_foreign_key "import_files", "book_files", on_delete: :nullify
+  add_foreign_key "reader_positions", "books"
+  add_foreign_key "reader_positions", "users"
   add_foreign_key "reading_states", "books"
   add_foreign_key "reading_states", "devices"
   add_foreign_key "sessions", "users"

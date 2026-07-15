@@ -3,7 +3,7 @@
 # refreshes broadcast from Delivery.
 class QueueController < ApplicationController
   def index
-    @devices = Device.order(:name).includes(
+    @devices = Device.physical.order(:name).includes(
       deliveries: { book: :book_files }
     )
     @recently_delivered = Delivery.delivered.includes(:device, book: :book_files)
