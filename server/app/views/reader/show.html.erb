@@ -26,16 +26,41 @@
 
       <div class="reader-viewport" data-reader-target="viewport"></div>
 
+      <button type="button" class="reader-page-arrow reader-page-arrow--left" data-action="click->reader#prevPage" aria-label="Previous page" tabindex="-1">
+        <%= render "reader/icon", name: "chevron-left" %>
+      </button>
+      <button type="button" class="reader-page-arrow reader-page-arrow--right" data-action="click->reader#nextPage" aria-label="Next page" tabindex="-1">
+        <%= render "reader/icon", name: "chevron-right" %>
+      </button>
+
       <div class="reader-bar reader-bar--top" data-reader-target="topBar">
-        <%= link_to "← Library", book_path(@book), class: "reader-icon-btn reader-back", data: { turbo: false } %>
+        <div class="reader-bar-nav">
+          <%= link_to book_path(@book), class: "reader-icon-btn", data: { turbo: false },
+                aria: { label: "Back to book page" }, title: "Back to book page" do %>
+            <%= render "reader/icon", name: "arrow-left" %>
+          <% end %>
+          <%= link_to root_path, class: "reader-icon-btn reader-btn-library", data: { turbo: false },
+                aria: { label: "Library" }, title: "Library" do %>
+            <%= render "reader/icon", name: "library" %>
+          <% end %>
+        </div>
         <span class="reader-title"><%= @book.title %></span>
         <div class="reader-bar-actions">
-          <button type="button" class="reader-icon-btn" data-action="reader#openToc" aria-label="Table of contents">Contents</button>
-          <button type="button" class="reader-icon-btn" data-action="reader#openAnnotations" aria-label="Highlights and notes">Notes</button>
-          <button type="button" class="reader-icon-btn" data-action="reader#openSearch" aria-label="Search in book">Search</button>
-          <button type="button" class="reader-icon-btn" data-action="reader#openSettings" aria-label="Display settings">Aa</button>
-          <button type="button" class="reader-icon-btn" data-reader-target="fullscreenButton"
-                  data-action="reader#toggleFullscreen" aria-label="Toggle full screen" hidden>⤢</button>
+          <button type="button" class="reader-icon-btn" data-action="reader#openToc" aria-label="Table of contents" title="Contents">
+            <%= render "reader/icon", name: "list" %>
+          </button>
+          <button type="button" class="reader-icon-btn" data-action="reader#openAnnotations" aria-label="Highlights and notes" title="Highlights &amp; notes">
+            <%= render "reader/icon", name: "sticky-note" %>
+          </button>
+          <button type="button" class="reader-icon-btn" data-action="reader#openSearch" aria-label="Search in book" title="Search">
+            <%= render "reader/icon", name: "search" %>
+          </button>
+          <button type="button" class="reader-icon-btn reader-icon-btn--glyph" data-action="reader#openSettings" aria-label="Display settings" title="Display settings">Aa</button>
+          <button type="button" class="reader-icon-btn reader-icon-btn--fullscreen" data-reader-target="fullscreenButton"
+                  data-action="reader#toggleFullscreen" aria-label="Toggle full screen" title="Toggle full screen" hidden>
+            <%= render "reader/icon", name: "maximize" %>
+            <%= render "reader/icon", name: "minimize" %>
+          </button>
         </div>
       </div>
 
@@ -55,7 +80,9 @@
       <nav class="reader-drawer reader-drawer--toc" data-reader-target="tocPanel" aria-label="Table of contents">
         <div class="reader-panel-header">
           <h2>Contents</h2>
-          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close">✕</button>
+          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close" title="Close">
+            <%= render "reader/icon", name: "x" %>
+          </button>
         </div>
         <div class="reader-toc-list" data-reader-target="tocList"></div>
       </nav>
@@ -63,7 +90,9 @@
       <div class="reader-drawer reader-drawer--search" data-reader-target="searchPanel" aria-label="Search in book">
         <div class="reader-panel-header">
           <h2>Search</h2>
-          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close">✕</button>
+          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close" title="Close">
+            <%= render "reader/icon", name: "x" %>
+          </button>
         </div>
         <input type="search" class="reader-search-input" placeholder="Search this book…"
                data-reader-target="searchInput" data-action="input->reader#onSearchInput">
@@ -74,7 +103,9 @@
       <nav class="reader-drawer reader-drawer--annotations" data-reader-target="annotationsPanel" aria-label="Highlights and notes">
         <div class="reader-panel-header">
           <h2>Highlights &amp; Notes</h2>
-          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close">✕</button>
+          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close" title="Close">
+            <%= render "reader/icon", name: "x" %>
+          </button>
         </div>
         <div class="reader-annotations-list" data-reader-target="annotationsList"></div>
       </nav>
@@ -82,7 +113,9 @@
       <div class="reader-sheet" data-reader-target="settingsPanel" aria-label="Display settings">
         <div class="reader-panel-header">
           <h2>Display</h2>
-          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close">✕</button>
+          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close" title="Close">
+            <%= render "reader/icon", name: "x" %>
+          </button>
         </div>
 
         <div class="reader-settings-row">
@@ -106,6 +139,38 @@
           <input type="range" id="reader-margin" min="0" max="64" step="4" value="24"
                  data-reader-target="marginSlider" data-action="input->reader#onMarginInput">
           <span data-reader-target="marginReadout">24px</span>
+        </div>
+
+        <div class="reader-settings-row">
+          <label>Font</label>
+          <div class="reader-toggle-group">
+            <button type="button" class="reader-toggle" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="publisher">Publisher</button>
+            <button type="button" class="reader-toggle" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="serif">Serif</button>
+            <button type="button" class="reader-toggle" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="sans">Sans</button>
+          </div>
+        </div>
+
+        <div class="reader-settings-row">
+          <label>Justify</label>
+          <div class="reader-toggle-group">
+            <button type="button" class="reader-toggle" data-reader-target="justifyButton"
+                    data-action="reader#setJustify" data-reader-justify-param="false">Off</button>
+            <button type="button" class="reader-toggle" data-reader-target="justifyButton"
+                    data-action="reader#setJustify" data-reader-justify-param="true">On</button>
+          </div>
+        </div>
+
+        <div class="reader-settings-row">
+          <label>Hyphenation</label>
+          <div class="reader-toggle-group">
+            <button type="button" class="reader-toggle" data-reader-target="hyphenateButton"
+                    data-action="reader#setHyphenate" data-reader-hyphenate-param="false">Off</button>
+            <button type="button" class="reader-toggle" data-reader-target="hyphenateButton"
+                    data-action="reader#setHyphenate" data-reader-hyphenate-param="true">On</button>
+          </div>
         </div>
 
         <div class="reader-settings-row">
@@ -134,7 +199,9 @@
       <div class="reader-sheet reader-note-sheet" data-reader-target="noteSheet" aria-label="Note">
         <div class="reader-panel-header">
           <h2>Note</h2>
-          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close">✕</button>
+          <button type="button" class="reader-icon-btn" data-action="reader#closePanels" aria-label="Close" title="Close">
+            <%= render "reader/icon", name: "x" %>
+          </button>
         </div>
         <div class="reader-note-sheet__body">
           <textarea class="reader-note-textarea" data-reader-target="noteTextarea" rows="4" placeholder="Add a note…"></textarea>
@@ -161,7 +228,9 @@
 
       <div class="reader-floating reader-annotation-popover" data-reader-target="annotationPopover" aria-label="Annotation">
         <button type="button" class="reader-icon-btn reader-annotation-popover__close"
-                data-action="reader#closeAnnotationPopover" aria-label="Close">✕</button>
+                data-action="reader#closeAnnotationPopover" aria-label="Close" title="Close">
+          <%= render "reader/icon", name: "x" %>
+        </button>
         <div class="reader-annotation-popover__body" data-reader-target="annotationPopoverBody"></div>
       </div>
 
@@ -172,7 +241,9 @@
           <button type="button" class="reader-lookup-tab" data-reader-target="lookupTabWikipedia"
                   data-action="reader#showLookupWikipediaTab" aria-pressed="false">Wikipedia</button>
           <button type="button" class="reader-icon-btn reader-lookup-card__close"
-                  data-action="reader#closeLookupCard" aria-label="Close">✕</button>
+                  data-action="reader#closeLookupCard" aria-label="Close" title="Close">
+            <%= render "reader/icon", name: "x" %>
+          </button>
         </div>
         <div class="reader-lookup-card__pane" data-reader-target="lookupDictionaryPane"></div>
         <div class="reader-lookup-card__pane" data-reader-target="lookupWikipediaPane" hidden></div>
