@@ -195,11 +195,13 @@ module BookSearch
   # fts5 virtual tables cannot ALTER TABLE ADD COLUMN, so a table created
   # before `category` existed is detected from its declared SQL in
   # sqlite_master (PRAGMA table_info reports fts5's internal bookkeeping
-  # columns, not the ones this app declared) and rebuilt in place: the
-  # extracted `fulltext` is expensive to regenerate (a Calibre shell-out
-  # per book) so it's carried over from the old rows, while
-  # title/author/series/category/description are repopulated fresh from
-  # the primary database via +insert_row!+, same as any other reindex.
+  # columns, not the ones this app declared) and rebuilt in place. The
+  # copy stays entirely inside SQLite (INSERT..SELECT — the production
+  # index is gigabytes of extracted fulltext, so pulling rows through
+  # Ruby at boot both blocks the deploy and risks OOM); rows keep their
+  # legacy metadata with a blank category, and index_book! refreshes
+  # every book the next time it's touched (the post-deploy rescan calls
+  # it for the whole curated tree).
   def migrate_legacy_shape!(db)
     return if db.get_first_value(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'book_search'"
@@ -215,17 +217,14 @@ module BookSearch
       )
       next if declared_sql.nil? || declared_sql.include?("category")
 
-      legacy_rows = db.execute("SELECT book_id, fulltext FROM book_search")
+      db.execute("DROP TABLE IF EXISTS book_search_migrating")
+      db.execute(SCHEMA_SQL.sub("book_search", "book_search_migrating"))
+      db.execute(<<~SQL)
+        INSERT INTO book_search_migrating (book_id, title, author, series, category, description, fulltext)
+        SELECT book_id, title, author, series, '', description, fulltext FROM book_search
+      SQL
       db.execute("DROP TABLE book_search")
-      db.execute(SCHEMA_SQL)
-
-      books = Book.where(id: legacy_rows.map { |row| row["book_id"] }).index_by(&:id)
-      legacy_rows.each do |row|
-        book = books[row["book_id"]]
-        next unless book
-
-        insert_row!(db, book, row["fulltext"].to_s)
-      end
+      db.execute("ALTER TABLE book_search_migrating RENAME TO book_search")
     end
   end
 end
