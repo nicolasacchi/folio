@@ -113,9 +113,9 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: .6rem;
-  flex-wrap: wrap;
-  padding: .6rem .9rem;
+  gap: .5rem;
+  flex-wrap: nowrap;
+  padding: .4rem .5rem;
   font-family: var(--mono);
   font-size: .75rem;
   letter-spacing: .02em;
@@ -131,16 +131,16 @@
   top: 0;
   border-bottom: 1px solid var(--line);
   transform: translateY(-100%);
-  padding-top: calc(.6rem + env(safe-area-inset-top));
-  padding-left: calc(.9rem + env(safe-area-inset-left));
-  padding-right: calc(.9rem + env(safe-area-inset-right));
+  padding-top: calc(.4rem + env(safe-area-inset-top));
+  padding-left: calc(.5rem + env(safe-area-inset-left));
+  padding-right: calc(.5rem + env(safe-area-inset-right));
 }
 
 .reader-bar--bottom {
   bottom: 0;
   border-top: 1px solid var(--line);
   transform: translateY(100%);
-  padding-bottom: calc(.6rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(.4rem + env(safe-area-inset-bottom));
   padding-left: calc(.9rem + env(safe-area-inset-left));
   padding-right: calc(.9rem + env(safe-area-inset-right));
 }
@@ -151,40 +151,144 @@
   transform: translateY(0);
 }
 
-.reader-back {
-  color: var(--ink-soft);
-  text-decoration: none;
-  white-space: nowrap;
+.reader-bar-nav,
+.reader-bar-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: .1rem;
 }
-.reader-back:hover { color: var(--accent); }
 
 .reader-title {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 2.5rem; /* one-row-fits-all budget: title always keeps a sliver even fully packed */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.reader-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: .3rem;
-}
+/* ---------- Icon buttons ----------
+   Shared by the top bar, panel-header close buttons, and the floating
+   popovers' close buttons — one borderless box style everywhere. Sized for
+   a >=44px hit area by default; .reader-bar--top tightens it below so
+   seven of these plus a readable title still fit one row at ~390px (see
+   the narrow-viewport override below). */
 
 .reader-icon-btn {
-  font-family: var(--mono);
-  font-size: .7rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
   background: transparent;
-  border: 1px solid var(--line);
-  padding: .4rem .6rem;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: .8rem;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
+  touch-action: manipulation;
+  transition: color .15s ease, background-color .15s ease;
 }
-.reader-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* display:inline-flex beats the UA [hidden] rule — same footgun as
+   .reader-loading above, and the fullscreen button relies on [hidden]
+   for its feature-detection gate (reader_controller.js). */
+.reader-icon-btn[hidden] {
+  display: none;
+}
+.reader-icon-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.reader-icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.reader-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+/* The "Aa" display-settings glyph rides the same box as the SVG icons but
+   keeps its own two-letter type sample instead of one — no uppercase
+   transform, so it reads as a size sample rather than shouty chrome. */
+.reader-icon-btn--glyph {
+  font-size: .95rem;
+}
+
+.reader-icon-btn--fullscreen .reader-icon--minimize { display: none; }
+.reader-fullscreen .reader-icon-btn--fullscreen .reader-icon--maximize,
+:fullscreen .reader-icon-btn--fullscreen .reader-icon--maximize { display: none; }
+.reader-fullscreen .reader-icon-btn--fullscreen .reader-icon--minimize,
+:fullscreen .reader-icon-btn--fullscreen .reader-icon--minimize { display: block; }
+
+/* Narrow phones: keep the full 44px hit areas (shrinking them below the
+   touch guideline on exactly the screens that need it defeats the point)
+   — instead the icons get optically smaller, the gaps collapse, and the
+   library shortcut yields its slot (the book page it leads to is one tap
+   away via the back button anyway). */
+@media (max-width: 480px) {
+  .reader-bar--top { gap: .2rem; }
+  .reader-bar--top .reader-bar-actions { gap: 0; }
+  .reader-bar--top .reader-btn-library { display: none; }
+  .reader-bar--top .reader-icon { width: 19px; height: 19px; }
+  .reader-bar--top .reader-icon-btn--glyph { font-size: .85rem; }
+}
+
+/* ---------- Desktop page-turn arrows ----------
+   The left/right tap zones (bindTapZone()) have no visible affordance,
+   which is fine for touch but leaves mouse users guessing — shown only
+   when a fine pointer is actually available, never on touch. Sit below
+   the backdrop/drawers (z-index 24+) so an open panel still covers them,
+   but above the plain viewport. */
+
+.reader-page-arrow {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .reader-page-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 50%;
+    width: 44px;
+    height: 80px;
+    transform: translateY(-50%);
+    z-index: 15;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ink-soft);
+    opacity: .35;
+    cursor: pointer;
+    transition: opacity .15s ease, color .15s ease, background-color .15s ease, border-color .15s ease;
+  }
+  .reader-page-arrow:hover,
+  .reader-page-arrow:focus-visible {
+    opacity: 1;
+    color: var(--accent);
+    background: var(--paper-raised);
+    border-color: var(--line);
+  }
+  .reader-page-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .reader-page-arrow--left { left: 0; }
+  .reader-page-arrow--right { right: 0; }
+}
+
+/* Hidden while the book is still loading, same reasoning as above — no
+   affordance for a page that isn't there yet. */
+.reader-loading:not([hidden]) ~ .reader-page-arrow {
+  display: none;
+}
 
 .reader-progress {
   flex: 1;
@@ -193,31 +297,41 @@
   height: 1.4rem;
 }
 
-/* Custom track/thumb so the slider reads consistently across browsers. */
+@media (pointer: coarse) {
+  .reader-progress { height: 2rem; }
+}
+
+/* Custom track/thumb so sliders read consistently across browsers — shared
+   by the progress bar and every settings-sheet range input (Chromium's
+   default is a chunky blue pill that clashes with everything else here). */
 .reader-progress {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
 }
-.reader-progress::-webkit-slider-runnable-track {
+.reader-progress::-webkit-slider-runnable-track,
+.reader-settings-row input[type="range"]::-webkit-slider-runnable-track {
   height: 3px;
   background: var(--line);
 }
-.reader-progress::-webkit-slider-thumb {
+.reader-progress::-webkit-slider-thumb,
+.reader-settings-row input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -6px;
-  width: 15px;
-  height: 15px;
+  margin-top: -5px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--paper-raised);
 }
-.reader-progress::-moz-range-track {
+.reader-progress::-moz-range-track,
+.reader-settings-row input[type="range"]::-moz-range-track {
   height: 3px;
   background: var(--line);
 }
-.reader-progress::-moz-range-thumb {
+.reader-progress::-moz-range-thumb,
+.reader-settings-row input[type="range"]::-moz-range-thumb {
   width: 13px;
   height: 13px;
   border-radius: 50%;
@@ -225,7 +339,15 @@
   border: 2px solid var(--paper-raised);
 }
 
+/* updateReadout() sets textContent directly (no child spans to hang two
+   zones off), so this stays one truncating string rather than a
+   chapter-left/percent-right split — the max-width keeps it from ever
+   crowding the slider when a chapter label runs long. */
 .reader-readout {
+  flex: 0 1 auto;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--ink-soft);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -342,6 +464,7 @@
   z-index: 25;
   width: min(320px, 85vw);
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--paper-raised);
   box-shadow: var(--shadow);
   transition: transform .25s ease;
@@ -381,7 +504,7 @@
   font-size: .72rem;
   color: var(--ink-soft);
 }
-.reader-search-results { padding: .5rem 0 1rem; }
+.reader-search-results { padding: .5rem 0 1rem; overscroll-behavior: contain; }
 .reader-search-group { padding: .4rem 0; }
 .reader-search-group h3 {
   margin: .6rem 1rem .2rem;
@@ -482,6 +605,7 @@
   z-index: 25;
   max-height: 80vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--paper-raised);
   border-top: 1px solid var(--line);
   box-shadow: var(--shadow);
@@ -490,6 +614,32 @@
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 .reader-sheet.is-open { transform: translateY(0); }
+
+/* >=900px: enough width that a full-bleed bottom sheet reads as an
+   oversized dropdown rather than a mobile pattern — anchor both sheets as
+   floating cards instead. Settings docks bottom-right; the note sheet
+   (sharing .reader-sheet's base rule, so its own selector must repeat
+   every property it needs to win) stays bottom-center over the page. */
+@media (min-width: 900px) {
+  .reader-sheet {
+    left: auto;
+    right: 16px;
+    bottom: 16px;
+    width: 420px;
+    max-height: min(70vh, 640px);
+    border: 1px solid var(--line);
+    transform: translateY(100%);
+  }
+  .reader-sheet.is-open { transform: translateY(0); }
+
+  .reader-note-sheet {
+    left: 50%;
+    right: auto;
+    width: min(560px, 94vw);
+    transform: translate(-50%, 100%);
+  }
+  .reader-note-sheet.is-open { transform: translate(-50%, 0); }
+}
 
 .reader-settings-row {
   display: flex;
@@ -502,6 +652,9 @@
 .reader-settings-row label { margin: 0; }
 .reader-settings-row input[type="range"] {
   flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
   accent-color: var(--accent);
 }
 .reader-settings-row span {
@@ -617,8 +770,8 @@
 
 .reader-selection-dot {
   flex: 0 0 auto;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 1.75rem;
+  height: 1.75rem;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
@@ -639,6 +792,7 @@
   width: min(320px, 92vw);
   max-height: 60vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: .8rem .9rem;
 }
 .reader-annotation-popover__close {
@@ -745,6 +899,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: .8rem .9rem;
 }
 

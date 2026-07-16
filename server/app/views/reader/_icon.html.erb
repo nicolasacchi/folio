@@ -1,0 +1,56 @@
+<%# Strict-allowlist inline SVG icons for the reader chrome. Usage: render
+    "reader/icon", name: "arrow-left". 24x24, Lucide-style stroke geometry,
+    one svg per call — styled via the shared .reader-icon class (sizing and
+    color live in reader.css). %>
+<%
+  reader_icon_names = %w[
+    arrow-left library list sticky-note search maximize minimize x chevron-left chevron-right
+  ]
+  raise ArgumentError, "Unknown reader icon: #{name.inspect}" unless reader_icon_names.include?(name)
+%>
+<svg class="reader-icon reader-icon--<%= name %>" viewBox="0 0 24 24" width="24" height="24"
+     fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <% case name
+  when "arrow-left" %>
+    <line x1="19" y1="12" x2="5" y2="12"/>
+    <polyline points="12 5 5 12 12 19"/>
+  <% when "library" %>
+    <rect x="3" y="4" width="3" height="16" rx=".5"/>
+    <rect x="8" y="4" width="3" height="16" rx=".5"/>
+    <rect x="13" y="4" width="3" height="16" rx=".5"/>
+    <rect x="17.5" y="6" width="3" height="14" rx=".5" transform="rotate(12 19 13)"/>
+  <% when "list" %>
+    <line x1="8" y1="6" x2="21" y2="6"/>
+    <line x1="8" y1="12" x2="21" y2="12"/>
+    <line x1="8" y1="18" x2="21" y2="18"/>
+    <line x1="3" y1="6" x2="3.01" y2="6"/>
+    <line x1="3" y1="12" x2="3.01" y2="12"/>
+    <line x1="3" y1="18" x2="3.01" y2="18"/>
+  <% when "sticky-note" %>
+    <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/>
+    <path d="M15 4v4a1 1 0 0 0 1 1h4"/>
+    <line x1="7" y1="13" x2="14" y2="13"/>
+    <line x1="7" y1="17" x2="12" y2="17"/>
+  <% when "search" %>
+    <circle cx="11" cy="11" r="8"/>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  <% when "maximize" %>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
+    <path d="M16 3h3a2 2 0 0 1 2 2v3"/>
+    <path d="M21 16v3a2 2 0 0 1-2 2h-3"/>
+    <path d="M3 16v3a2 2 0 0 0 2 2h3"/>
+  <% when "minimize" %>
+    <path d="M8 3v3a2 2 0 0 1-2 2H3"/>
+    <path d="M16 3v3a2 2 0 0 0 2 2h3"/>
+    <path d="M21 16h-3a2 2 0 0 0-2 2v3"/>
+    <path d="M3 16h3a2 2 0 0 1 2 2v3"/>
+  <% when "x" %>
+    <line x1="18" y1="6" x2="6" y2="18"/>
+    <line x1="6" y1="6" x2="18" y2="18"/>
+  <% when "chevron-left" %>
+    <polyline points="15 18 9 12 15 6"/>
+  <% when "chevron-right" %>
+    <polyline points="9 18 15 12 9 6"/>
+  <% end %>
+</svg>

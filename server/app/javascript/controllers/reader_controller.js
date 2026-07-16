@@ -27,7 +27,19 @@ const DEFAULT_SETTINGS = {
   lineHeight: 1.5,
   margin: 24, // px, injected into the book's own document
   theme: "light", // light | sepia | dark
-  flow: "paginated" // paginated | scrolled
+  flow: "paginated", // paginated | scrolled
+  fontFamily: "publisher", // publisher | serif | sans
+  justify: false,
+  hyphenate: true
+}
+
+// Literal stacks (not var(--serif)/var(--mono) — this is injected into the
+// book's own cross-document iframe, same reasoning as THEMES above).
+// "publisher" has no entry: buildContentCss() skips the override entirely
+// and leaves the book's own stylesheet in charge of its font.
+const FONT_FAMILY_STACKS = {
+  serif: "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif",
+  sans: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 }
 
 // Literal colors, not var(--token) — this CSS is injected into each
@@ -110,6 +122,7 @@ export default class extends Controller {
     "searchPanel", "searchInput", "searchStatus", "searchResults",
     "settingsPanel", "fontSizeReadout", "lineHeightSlider", "lineHeightReadout",
     "marginSlider", "marginReadout", "themeButton", "flowButton",
+    "fontButton", "justifyButton", "hyphenateButton",
     "fullscreenButton",
     "selectionMenu",
     "annotationPopover", "annotationPopoverBody",
@@ -1786,6 +1799,21 @@ export default class extends Controller {
     this.updateSetting("flow", event.params.flow)
   }
 
+  setFontFamily(event) {
+    this.updateSetting("fontFamily", event.params.font)
+  }
+
+  // Stimulus casts "true"/"false" data-*-param values to real booleans
+  // before they land in event.params (it JSON-parses each param), so these
+  // are already booleans here — unlike theme/font/flow's plain-string params.
+  setJustify(event) {
+    this.updateSetting("justify", event.params.justify)
+  }
+
+  setHyphenate(event) {
+    this.updateSetting("hyphenate", event.params.hyphenate)
+  }
+
   renderSettingsUI() {
     if (this.hasFontSizeReadoutTarget) this.fontSizeReadoutTarget.textContent = `${this.settings.fontSize}%`
     if (this.hasLineHeightSliderTarget) this.lineHeightSliderTarget.value = this.settings.lineHeight
@@ -1796,6 +1824,12 @@ export default class extends Controller {
       btn.classList.toggle("is-active", btn.dataset.readerThemeParam === this.settings.theme))
     this.flowButtonTargets.forEach((btn) =>
       btn.classList.toggle("is-active", btn.dataset.readerFlowParam === this.settings.flow))
+    this.fontButtonTargets.forEach((btn) =>
+      btn.classList.toggle("is-active", btn.dataset.readerFontParam === this.settings.fontFamily))
+    this.justifyButtonTargets.forEach((btn) =>
+      btn.classList.toggle("is-active", btn.dataset.readerJustifyParam === String(this.settings.justify)))
+    this.hyphenateButtonTargets.forEach((btn) =>
+      btn.classList.toggle("is-active", btn.dataset.readerHyphenateParam === String(this.settings.hyphenate)))
   }
 
   // Chrome (our own page) can use CSS custom properties; the book's
@@ -1813,15 +1847,47 @@ export default class extends Controller {
   }
 
   buildContentCss() {
-    const { fontSize, lineHeight, margin } = this.settings
+    const { fontSize, lineHeight, margin, fontFamily, justify, hyphenate } = this.settings
     const palette = THEMES[this.settings.theme] ?? THEMES.light
+    const fontStack = FONT_FAMILY_STACKS[fontFamily]
     // !important: the book's own stylesheet frequently sets these same
     // properties on html/body/a, at equal-or-higher specificity.
     return `
       html, body { background: ${palette.background} !important; color: ${palette.color} !important; }
       body { font-size: ${fontSize}% !important; line-height: ${lineHeight} !important; margin: ${margin}px !important; }
       a, a:link, a:visited { color: ${palette.link} !important; }
+      ${fontStack ? `body, body *:not(pre):not(code):not(kbd):not(samp):not(tt) { font-family: ${fontStack} !important; }` : ""}
+      ${justify ? "p { text-align: justify !important; }" : ""}
+      ${hyphenate
+        ? "html { -webkit-hyphens: auto; hyphens: auto; } body { overflow-wrap: break-word; }"
+        : "html { -webkit-hyphens: manual; hyphens: manual; }"}
+      ${this.coverImageCss()}
     `
+  }
+
+  // Calibre titlepages/cover sections are typically a single img/svg,
+  // sometimes wrapped in one div — nothing else in a normal text section
+  // matches ":only-child" all the way down, so this can't misfire there.
+  // The multicol paginated view otherwise pins that lone image inside the
+  // first column of the spread; :has() reaches the wrapper div itself
+  // (rather than just the image inside it) so column-span actually pulls
+  // the whole thing out of column flow instead of leaving an empty
+  // full-width div with a still-column-width image inside it.
+  coverImageCss() {
+    return `
+      body > img:only-child,
+      body > svg:only-child,
+      body > div:only-child:has(> img:only-child),
+      body > div:only-child:has(> svg:only-child) {
+        column-span: all;
+        display: block;
+        margin-inline: auto;
+        text-align: center;
+      }
+    `
+    // No sizing rules here: foliate's setImageSize() pins per-image
+    // max-width/max-height as inline !important on every relayout, which
+    // outranks anything a stylesheet can say.
   }
 
   // -- Fullscreen -----------------------------------------------------------
