@@ -130,27 +130,35 @@ RSpec.describe BookSearch do
 
     after { wipe_search_db! }
 
-    it "rebuilds the table on first touch, keeping stored fulltext and adding category" do
+    it "rebuilds the table on first touch, keeping every legacy row with a blank category" do
       book = create(:book, title: "Cranes of Kyōto", category: "fiction/sf")
 
       wipe_search_db!
       write_legacy_db!([ [ book.id, "Stale Title", "", "", "", "old extracted fulltext" ] ])
       described_class.reset!
 
-      # Fresh metadata (including category) comes from the book, not the
-      # stale row; the expensive-to-recompute fulltext survives untouched.
+      # The swap is a pure-SQL copy (the production index is gigabytes of
+      # fulltext, so nothing may flow through Ruby at boot): legacy rows
+      # keep their stored metadata and an empty category until the next
+      # index_book! touches them.
       expect(described_class.search("old extracted").map { |hit| hit[:book_id] }).to eq([ book.id ])
-      expect(described_class.search(book.title).map { |hit| hit[:book_id] }).to eq([ book.id ])
+      expect(described_class.search("Stale Title").map { |hit| hit[:book_id] }).to eq([ book.id ])
+      expect(described_class.search("Fantascienza", scope: :metadata)).to eq([])
+
+      # A reindex refreshes metadata + category while the stored fulltext
+      # keeps riding along (index_book! carries it over via stored_fulltext).
+      described_class.index_book!(book)
       expect(described_class.search("Fantascienza", scope: :metadata).map { |hit| hit[:book_id] }).to eq([ book.id ])
+      expect(described_class.search("old extracted").map { |hit| hit[:book_id] }).to eq([ book.id ])
     end
 
-    it "drops legacy rows whose book no longer exists instead of raising" do
+    it "keeps legacy rows whose book no longer exists without raising" do
       wipe_search_db!
       write_legacy_db!([ [ 0, "Orphan", "", "", "", "" ] ])
       described_class.reset!
 
       expect { described_class.search("orphan") }.not_to raise_error
-      expect(described_class.search("orphan")).to eq([])
+      expect(described_class.search("orphan").map { |hit| hit[:book_id] }).to eq([ 0 ])
     end
   end
 
