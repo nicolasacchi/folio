@@ -1,0 +1,173 @@
+# Folio library taxonomy — frozen v2 (2026-07-16)
+# Path: <root>/<category>/<subcategory>/<Author>/<Title>.ext
+# books.category = "category/subcategory"  (author NEVER in category)
+# category_depth: 2  — depth-3 deferred until a leaf stays >~1500 after reclass
+#
+# v1 problem: fiction/literary absorbed ~9.6k as residual dump.
+# v2: extract romance/historical/horror/thriller/adventure/poetry/drama;
+#     residual narrative → fiction/general (not a quality mark).
+#     optional fiction/literary only for curated prestige (small).
+#
+# status: frozen
+# version: 2
+
+version: 2
+root_name: books
+category_depth: 2
+author_segment: true
+skip_dir_prefixes: [".", "_"]
+
+special_dirs:
+  _inbox:
+    category: _inbox
+    description: Unclassified imports only.
+  _quarantine:
+    scanned: false
+    description: Hold dumps until metadata repair.
+
+categories:
+  fiction:
+    label: Narrativa
+    label_en: Fiction
+    subs:
+      general:
+        label: Narrativa generale
+        purpose: Residual commercial/general fiction after other genre leaves claim the book.
+      literary:
+        label: Letteraria
+        purpose: Curated prestige/literary only (Calvino, Ferrante, Saramago, McCarthy…). Keep small.
+      crime:
+        label: Gialli e mistery
+        purpose: Detection/investigation primary (gialli, police, cozy, Maigret/Poirot/Montalbano).
+      thriller:
+        label: Thriller
+        purpose: Chase/conspiracy/spy/legal/action suspense; threat drives plot (not whodunit-first).
+      romance:
+        label: Rosa e romance
+        purpose: Romantic relationship is the primary plot engine.
+      historical:
+        label: Storico
+        purpose: Past setting is load-bearing (romanzo storico).
+      sf:
+        label: Fantascienza
+        purpose: Speculative science/future/tech; Urania and Classici Urania.
+      fantasy:
+        label: Fantasy
+        purpose: Secondary world or magic-as-premise (not horror).
+      horror:
+        label: Horror
+        purpose: Fear/supernatural dread primary.
+      adventure:
+        label: Avventura
+        purpose: Quest/travel/war-adventure/pulp without stronger genre claim.
+      kids_ya:
+        label: Ragazzi e YA
+        purpose: Written for children or young adults.
+      poetry:
+        label: Poesia
+        purpose: Verse primary.
+      drama:
+        label: Teatro
+        purpose: Plays and theatrical texts.
+
+  nonfiction:
+    label: Saggistica
+    label_en: Nonfiction
+    subs:
+      biography:
+        label: Biografie e memorie
+        purpose: Life writing, memoirs, diaries.
+      history:
+        label: Storia e politica
+        purpose: History, politics, current affairs, geopolitics.
+      science:
+        label: Scienza e natura
+        purpose: Natural science, nature writing, popular science.
+      psych_society:
+        label: Mente e società
+        purpose: Psychology, sociology, behavioral econ, culture-of-mind.
+      tech_ai:
+        label: Tecnologia e IA
+        purpose: Ideas about tech/AI/surveillance (not API cookbooks).
+      philosophy:
+        label: Filosofia e religione
+        purpose: Philosophy, religion, spiritual inquiry.
+      arts:
+        label: Arte, media, cultura
+        purpose: Criticism of art/film/music/literature, media studies.
+      business:
+        label: Economia e lavoro
+        purpose: Economics, business, management, work.
+
+  practical:
+    label: Pratica
+    label_en: Practical
+    subs:
+      parenting:
+        label: Genitori e scuola
+      health:
+        label: Salute e corpo
+      travel:
+        label: Viaggi
+      tech_manuals:
+        label: Manuali tech
+      craft:
+        label: Casa, cucina, hobby
+
+  classics:
+    label: Classici
+    label_en: Classics
+    subs:
+      italian:
+        label: Classici italiani
+      world:
+        label: Classici del mondo
+
+  comics:
+    label: Fumetti e graphic
+    subs:
+      general:
+        label: Fumetti
+      manga:
+        label: Manga
+
+# First match wins (migration + classifier)
+assignment_priority:
+  - kids_ya
+  - comics
+  - classics
+  - romance
+  - horror
+  - sf
+  - fantasy
+  - thriller
+  - crime
+  - historical
+  - adventure
+  - poetry
+  - drama
+  - literary   # curated prestige only
+  - general    # residual narrative
+  - nonfiction_and_practical
+  - _inbox
+
+do_not_split:
+  - language or narrativa italiana/straniera as path
+  - soft/hard SF, cyberpunk, space opera as path
+  - cozy vs procedural vs legal as path (use crime vs thriller only)
+  - romance micro-subs (regency, erotic)
+  - magical realism, autofiction, cli-fi
+  - publisher imprints as categories
+  - century / contemporary as path
+  - depth-3 until a leaf stays >~1500 after reclass
+
+naming:
+  author_form: "First Last"
+  multi_author: "First A, First B"
+  title_file: "<Title>"
+  multi_format: same_stem
+  calibre_id_suffix: false
+
+folio:
+  scan_roots: /books
+  category_depth: 2

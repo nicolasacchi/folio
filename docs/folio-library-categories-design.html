@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="design">
+  <meta name="kb-tags" content="folio, kindle, library, categories, taxonomy, scan, rails, design">
+  <meta name="kb-status" content="planned">
+  <title>Folio — directory categories &amp; single-root library redesign</title>
+  <template id="kb-prompt">Produce a frozen taxonomy YAML plus Folio Book#category design: column, scan path parse rules, UI filter — single curated root, categories from directories, merge all books; OK to break book_files.path and full rescan. Consumer is YOUR_HOST Folio, not Komga-first.</template>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --surface: #fffdf8;
+      --fg: #1c1914;
+      --muted: #5c564c;
+      --rule: #d9d0c0;
+      --accent: #0f6b5c;
+      --accent-fg: #f4fffb;
+      --warn: #8a5a00;
+      --danger: #8b1e1e;
+      --ok: #1a5f2a;
+      --code-bg: #ebe4d6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141210;
+        --surface: #1e1b17;
+        --fg: #f0e9dc;
+        --muted: #a89f90;
+        --rule: #3a342c;
+        --accent: #3db89f;
+        --accent-fg: #0a1a16;
+        --warn: #e0a84a;
+        --danger: #f08080;
+        --ok: #6dca86;
+        --code-bg: #2a251f;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; transition: none !important; }
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font: 16px/1.65 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      max-width: 48rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.1rem 4rem;
+      color: var(--fg);
+      background: var(--bg);
+    }
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      background: var(--accent);
+      color: var(--accent-fg);
+      padding: .5rem .75rem;
+      z-index: 10;
+    }
+    .skip-link:focus { left: .5rem; top: .5rem; outline: 2px solid var(--fg); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    h1, h2, h3 {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      line-height: 1.25;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    h1 { font-size: 1.75rem; margin: 0 0 .75rem; }
+    h2 {
+      font-size: 1.2rem;
+      margin: 2.2rem 0 .7rem;
+      padding-bottom: .35rem;
+      border-bottom: 1px solid var(--rule);
+    }
+    h3 { font-size: 1.05rem; margin: 1.4rem 0 .4rem; color: var(--accent); }
+    p, li { color: var(--fg); }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    code, pre {
+      font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+      font-size: .88em;
+      background: var(--code-bg);
+    }
+    code { padding: .1em .35em; border-radius: 3px; }
+    pre {
+      padding: .85rem 1rem;
+      overflow-x: auto;
+      border-radius: 6px;
+      border: 1px solid var(--rule);
+      line-height: 1.45;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: .95rem;
+      margin: .6rem 0 1rem;
+      background: var(--surface);
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--rule);
+      padding: .45rem .55rem;
+      vertical-align: top;
+    }
+    th {
+      font-family: system-ui, sans-serif;
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: var(--surface);
+      padding: .7rem .95rem;
+      margin: 1rem 0;
+      border-radius: 0 6px 6px 0;
+    }
+    .callout.warn { border-left-color: var(--warn); }
+    .callout.danger { border-left-color: var(--danger); }
+    .callout .label {
+      font-family: system-ui, sans-serif;
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      display: block;
+      margin-bottom: .25rem;
+    }
+    .meta {
+      font-family: system-ui, sans-serif;
+      font-size: .85rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+    .meta strong { color: var(--fg); }
+    ul.toc {
+      font-family: system-ui, sans-serif;
+      font-size: .92rem;
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: .75rem 1rem .75rem 1.6rem;
+    }
+    .status {
+      display: inline-block;
+      font-family: system-ui, sans-serif;
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      padding: .2rem .5rem;
+      border-radius: 3px;
+      background: var(--accent);
+      color: var(--accent-fg);
+    }
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<main id="main">
+<header>
+  <p class="meta">
+    <span class="status">Planned</span>
+    · Folio / YOUR_HOST · 2026-07-16 ·
+    companion: <code>library-taxonomy.yml</code>
+  </p>
+  <h1 id="title">Directory categories &amp; single-root library</h1>
+  <p class="muted">
+    Design for merging the Komga/Calibre pile into one curated tree and teaching
+    Folio to treat path segments as shelves. Accepts a full rescan (broken
+    <code>book_files.path</code> is fine).
+  </p>
+</header>
+
+<nav aria-label="Contents">
+  <ul class="toc">
+    <li><a href="#goals">Goals &amp; non-goals</a></li>
+    <li><a href="#path-contract">Path contract</a></li>
+    <li><a href="#taxonomy">Frozen taxonomy v1</a></li>
+    <li><a href="#schema">Schema: <code>books.category</code></a></li>
+    <li><a href="#scan">Scan parse rules</a></li>
+    <li><a href="#ui">UI filter &amp; navigation</a></li>
+    <li><a href="#search">Search &amp; embeddings</a></li>
+    <li><a href="#migration">Cutover / migration</a></li>
+    <li><a href="#impl">Implementation checklist</a></li>
+    <li><a href="#open">Open decisions</a></li>
+  </ul>
+</nav>
+
+<section id="goals">
+  <h2>Goals &amp; non-goals</h2>
+  <h3 id="goals-yes">Goals</h3>
+  <ul>
+    <li><strong>One SCAN_ROOT</strong> — single bind mount; dumps stay outside or under non-scanned hold dirs.</li>
+    <li><strong>Categories from directories</strong> — no free-text tag soup; path is the product model.</li>
+    <li><strong>Author remains metadata</strong> (and usually a folder under the category), not the top browse axis.</li>
+    <li><strong>Folio-first</strong> (YOUR_HOST). Komga may share the tree later; do not shape layout for comic “series = folder” semantics.</li>
+    <li><strong>Full rescan OK</strong> — wipe or rebuild <code>import_files</code> / external <code>book_files</code> after the tree rewrite.</li>
+  </ul>
+  <h3 id="goals-no">Non-goals (v1)</h3>
+  <ul>
+    <li>Multi-category membership per book (one primary shelf only).</li>
+    <li>Auto-classifier in production (heuristics may assist offline migration only).</li>
+    <li>Preserving current absolute paths or Calibre <code>(id)</code> folder names in the product tree.</li>
+    <li>Importing all historical dumps on day one.</li>
+  </ul>
+</section>
+
+<section id="path-contract">
+  <h2>Path contract</h2>
+  <pre>SCAN_ROOT/
+  &lt;category&gt;/
+    [&lt;subcategory&gt;/]          # optional; max depth 2 for category segments
+      &lt;Author Name&gt;/
+        &lt;Title&gt;.epub
+        &lt;Title&gt;.mobi          # same stem = one Book, multi-format
+        [metadata.opf]       # optional; preferred metadata source
+        [cover.jpg]
+  _inbox/
+    &lt;Author or loose&gt;/…      # category = "_inbox"
+  _quarantine/               # NOT scanned</pre>
+
+  <table>
+    <thead>
+      <tr><th scope="col">Segment</th><th scope="col">Role</th><th scope="col">Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>category</code></td><td>Top shelf (required)</td><td><code>fiction</code></td></tr>
+      <tr><td><code>subcategory</code></td><td>Second shelf (optional)</td><td><code>sf</code></td></tr>
+      <tr><td><code>Author Name</code></td><td>Grouping only; <strong>not</strong> in <code>books.category</code></td><td><code>Isaac Asimov</code></td></tr>
+      <tr><td>file stem</td><td>Work identity when no OPF</td><td><code>Foundation 01 - Foundation</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="label">Rule</span>
+    <code>books.category</code> is always <code>category</code> or <code>category/subcategory</code>
+    (slash-joined, lowercase kebab keys from taxonomy). Never includes author or title segments.
+  </div>
+
+  <h3 id="path-calibre">Calibre leftover dirs</h3>
+  <p>
+    If a directory still contains <code>metadata.opf</code>, treat the whole dir as one book
+    (today’s scan behaviour). Category segments are only those <em>above</em> the author folder:
+  </p>
+  <pre>fiction/sf/Isaac Asimov/Foundation (42)/metadata.opf
+→ category = "fiction/sf"
+→ author/title from OPF (not from folder names)</pre>
+  <p class="muted">
+    Product migration should drop Calibre <code>(id)</code> leaves and use flat
+    <code>Author/Title.ext</code> under the category; OPF optional.
+  </p>
+</section>
+
+<section id="taxonomy">
+  <h2>Frozen taxonomy v1</h2>
+  <p>
+    Machine-readable source:
+    <code>docs/library-taxonomy.yml</code> (version field <code>1</code>).
+    Keys are stable path segments — rename = migration.
+  </p>
+  <table>
+    <thead>
+      <tr><th scope="col">Category</th><th scope="col">Subcategories</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>fiction</code></td><td><code>literary</code>, <code>sf</code>, <code>crime</code>, <code>fantasy</code>, <code>kids_ya</code></td></tr>
+      <tr><td><code>nonfiction</code></td><td><code>science</code>, <code>history</code>, <code>psych_society</code>, <code>tech_ai</code>, <code>philosophy</code></td></tr>
+      <tr><td><code>practical</code></td><td><code>parenting</code>, <code>health</code>, <code>travel</code>, <code>tech_manuals</code>, <code>craft</code></td></tr>
+      <tr><td><code>classics</code></td><td><code>italian</code>, <code>world</code></td></tr>
+      <tr><td><code>comics</code></td><td><code>general</code></td></tr>
+      <tr><td><code>_inbox</code></td><td>—</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <span class="label">Discipline</span>
+    Prefer a wrong-but-nearby shelf over inventing a new subcategory. Taxonomy growth is a
+    deliberate version bump, not a per-import decision.
+  </div>
+</section>
+
+<section id="schema">
+  <h2>Schema: <code>books.category</code></h2>
+  <h3 id="schema-column">Column</h3>
+  <pre>add_column :books, :category, :string
+add_index  :books, :category</pre>
+  <ul>
+    <li><strong>Type:</strong> string, nullable (uploads with no path context → <code>nil</code> or <code>_inbox</code>).</li>
+    <li><strong>Value:</strong> <code>\A[a-z0-9_]+(?:/[a-z0-9_]+)?\z</code> or empty.</li>
+    <li><strong>Not</strong> a join table in v1 — single primary shelf only.</li>
+  </ul>
+
+  <h3 id="schema-model">Model helpers</h3>
+  <pre># app/models/book.rb
+def category_parts
+  category.to_s.split("/", 2)
+end
+
+def category_root
+  category_parts.first
+end
+
+def display_category
+  category.presence || "Uncategorized"
+end</pre>
+
+  <h3 id="schema-edit">Editable?</h3>
+  <p>
+    Yes — include <code>:category</code> in <code>book_params</code>. Manual override wins until the
+    next rescan of that file’s path (scan should <strong>refresh</strong> category from path on
+    re-import of changed/new files; do not clobber on “unchanged” skip path).
+  </p>
+  <div class="callout">
+    <span class="label">Policy</span>
+    Path is source of truth for scanned books. UI edit is for edge cases; if path and DB
+    disagree after a move, rescan repairs DB.
+  </div>
+</section>
+
+<section id="scan">
+  <h2>Scan parse rules</h2>
+  <p>
+    Extend <code>Library::Scan</code> / <code>Library::Ingest</code> — category computed once per
+    group, passed into book create/update.
+  </p>
+
+  <h3 id="scan-algorithm">Algorithm</h3>
+  <pre>def category_for(path, roots:)
+  root = roots.find { |r| path.start_with?(r.to_s + "/") }
+  return nil unless root
+
+  rel = Pathname.new(path).relative_path_from(root)
+  parts = rel.each_filename.to_a
+  return "_inbox" if parts.first == "_inbox"
+  return nil if parts.first&.start_with?("_", ".")
+
+  # Drop file name
+  parts = parts[0..-2]
+
+  # Calibre leaf: Author / Title (id) / file → drop last dir if opf sibling group
+  # Author folder is always last remaining dir under category segments.
+  depth = ENV.fetch("CATEGORY_DEPTH", "2").to_i.clamp(1, 2)
+
+  if parts.size >= depth + 1
+    # category… + author [+ title-dir]
+    parts[0, depth].join("/")
+  elsif parts.size == depth
+    # category… only (loose file under subcategory — discouraged)
+    parts[0, depth].join("/")
+  elsif parts.size &gt;= 1
+    parts[0]
+  end
+end</pre>
+
+  <h3 id="scan-rules-table">Rules table</h3>
+  <table>
+    <thead>
+      <tr><th scope="col">Relative path</th><th scope="col"><code>category</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>fiction/sf/Asimov/Foundation.epub</code></td><td><code>fiction/sf</code></td></tr>
+      <tr><td><code>fiction/literary/Saramago/Blindness.epub</code></td><td><code>fiction/literary</code></td></tr>
+      <tr><td><code>classics/italian/Dante/…</code></td><td><code>classics/italian</code></td></tr>
+      <tr><td><code>_inbox/Harari/Nexus.epub</code></td><td><code>_inbox</code></td></tr>
+      <tr><td><code>_quarantine/…</code></td><td>not scanned</td></tr>
+      <tr><td>upload (no external path)</td><td><code>nil</code> or force <code>_inbox</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="scan-env">Config</h3>
+  <table>
+    <thead>
+      <tr><th scope="col">Env</th><th scope="col">Default</th><th scope="col">Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>SCAN_ROOTS</code></td><td>(required)</td><td>Single root preferred: <code>/books</code></td></tr>
+      <tr><td><code>CATEGORY_DEPTH</code></td><td><code>2</code></td><td>Max category path segments</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="scan-validation">Optional taxonomy validation</h3>
+  <p>
+    Load <code>config/library_taxonomy.yml</code> (copy of docs YAML). If
+    <code>category</code> ∉ known set and ≠ <code>_inbox</code>, log warning and still store
+    (forward-compatible) <em>or</em> map to <code>_inbox</code> when
+    <code>CATEGORY_STRICT=1</code>.
+  </p>
+
+  <h3 id="scan-group">Interaction with existing grouping</h3>
+  <ul>
+    <li>Unchanged: OPF dir → one book; same-stem formats → one book.</li>
+    <li>New: set <code>book.category</code> on create; on attach-to-existing book, if category blank, fill from path.</li>
+    <li>Do not split one OPF book across categories (impossible if one dir).</li>
+  </ul>
+</section>
+
+<section id="ui">
+  <h2>UI filter &amp; navigation</h2>
+  <h3 id="ui-index">Library index (<code>BooksController#index</code>)</h3>
+  <ul>
+    <li>Param: <code>category</code> (exact string, e.g. <code>fiction/sf</code>).</li>
+    <li>Optional: <code>category_root</code> = first segment only (<code>WHERE category = ? OR category LIKE ?</code> with <code>fiction/%</code>).</li>
+    <li>Filter chips / select: list distinct categories with counts
+      (<code>Book.group(:category).count</code>, cached with <code>library_stats</code>).</li>
+    <li>Keep existing filters (author, series, format, year, language); compose with AND.</li>
+    <li>“Keep reading” shelf: still only on fully unfiltered home (include category in the guard).</li>
+  </ul>
+
+  <h3 id="ui-nav">Navigation sketch</h3>
+  <pre>Shelves
+  Fiction ▸ Literary (120) · SF (340) · Crime …
+  Nonfiction ▸ Science · History · …
+  Practical ▸ …
+  Inbox (18)
+  Uncategorized (5)</pre>
+  <p class="muted">Phone-first: collapsible list or single select; avoid deep trees.</p>
+
+  <h3 id="ui-show">Book show / edit</h3>
+  <ul>
+    <li>Show: breadcrumb <code>Fiction / SF</code> linking to filtered index.</li>
+    <li>Edit: text field or select from taxonomy keys + free “other” only if not strict.</li>
+  </ul>
+
+  <h3 id="ui-api">Device API</h3>
+  <p>
+    v1: no change required for kindled (manifest stays flat). Optional later:
+    expose <code>category</code> on manifest items for on-device folders — <strong>out of scope</strong>
+    until Kindle UX needs it.
+  </p>
+</section>
+
+<section id="search">
+  <h2>Search &amp; embeddings</h2>
+  <ul>
+    <li><strong>FTS5:</strong> add <code>category</code> column to <code>book_search</code>; include in metadata scope match.</li>
+    <li><strong>Embeddings:</strong> prepend category label to the embed text
+      (<code>[fiction/sf] title author…</code>) so “meaning” search can bias shelves lightly.</li>
+    <li>Reindex job after migration: batch <code>IndexBookJob</code> / embed — overnight OK.</li>
+  </ul>
+</section>
+
+<section id="migration">
+  <h2>Cutover / migration</h2>
+  <h3 id="migration-disk">Disk</h3>
+  <ol>
+    <li>Create new tree (host): e.g. <code>/path/to/library/books/</code> per taxonomy.</li>
+    <li>Phase 1: hardlink/copy from main Calibre + <code>book/</code> with author normalize.</li>
+    <li>Phase 2: second Calibre with sha256 dedupe.</li>
+    <li>Phase 3: dumps optional → else leave under <code>_quarantine</code> or old paths unmounted.</li>
+  </ol>
+
+  <h3 id="migration-folio">Folio</h3>
+  <ol>
+    <li>Deploy category column + scan/UI code.</li>
+    <li>Point <code>SCAN_ROOTS=/books</code> (bind new tree only).</li>
+    <li>Reset scan ledger for external files (or full DB book_files path rebuild):
+      <ul>
+        <li>Delete <code>import_files</code> rows for old <code>/komga/…</code> paths, or</li>
+        <li>Accept missing → prune, then clean scan.</li>
+      </ul>
+    </li>
+    <li>Full scan; verify category histogram.</li>
+    <li>Run duplicate merge catalog op; author cleanup pass.</li>
+  </ol>
+
+  <div class="callout danger">
+    <span class="label">Warning</span>
+    Do not move files under the currently mounted tree while a scan runs.
+    Build the new tree beside the old one; switch the mount/env in one deploy.
+  </div>
+
+  <h3 id="migration-phases">Phased counts (approx.)</h3>
+  <table>
+    <thead>
+      <tr><th scope="col">Phase</th><th scope="col">Source</th><th scope="col">~Works</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Main Calibre + book/</td><td>~1.2–1.5k</td></tr>
+      <tr><td>2</td><td>personal_book Calibre (deduped)</td><td>+ several k unique</td></tr>
+      <tr><td>3</td><td>Dumps</td><td>optional; high noise</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="impl">
+  <h2>Implementation checklist</h2>
+  <h3 id="impl-server">Server</h3>
+  <ol>
+    <li>Migration: <code>category:string</code> + index on <code>books</code>.</li>
+    <li><code>Library::Category.from_path(path, roots:)</code> pure module + specs (table above).</li>
+    <li>Wire into <code>Library::Scan#import_group</code> / <code>Ingest#build_book</code>.</li>
+    <li><code>BooksController#index</code> filter + stats cache key include category breakdown.</li>
+    <li>Views: filter control, show breadcrumb, edit field.</li>
+    <li><code>BookSearch</code> schema + reindex path.</li>
+    <li>Embeddings text prefix.</li>
+    <li>Copy <code>library-taxonomy.yml</code> → <code>config/</code> if strict validation desired.</li>
+    <li>Compose: <code>SCAN_ROOTS=/books</code>, <code>CATEGORY_DEPTH=2</code>, bind new host path.</li>
+  </ol>
+  <h3 id="impl-specs">Specs (minimum)</h3>
+  <ul>
+    <li>Path → category matrix (incl. <code>_inbox</code>, deep author, OPF leaf).</li>
+    <li>Index filter by category and category_root.</li>
+    <li>Scan creates book with category set; unchanged skip does not clear category.</li>
+  </ul>
+</section>
+
+<section id="open">
+  <h2>Open decisions</h2>
+  <table>
+    <thead>
+      <tr><th scope="col">Topic</th><th scope="col">Options</th><th scope="col">Lean</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Uploads without path</td>
+        <td><code>nil</code> vs <code>_inbox</code></td>
+        <td><code>_inbox</code> so they appear on a shelf</td>
+      </tr>
+      <tr>
+        <td>Strict taxonomy</td>
+        <td>warn vs force <code>_inbox</code></td>
+        <td>warn in v1; strict later</td>
+      </tr>
+      <tr>
+        <td>Author form</td>
+        <td>First Last vs Last, First</td>
+        <td>First Last folders; normalize on ingest</td>
+      </tr>
+      <tr>
+        <td>kindled folders</td>
+        <td>flat vs category dirs on device</td>
+        <td>flat until needed</td>
+      </tr>
+      <tr>
+        <td>Komga</td>
+        <td>share tree vs ebook-only Folio</td>
+        <td>Folio primary; Komga optional later</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="refs">
+  <h2>References</h2>
+  <ul>
+    <li>Taxonomy: <code>docs/library-taxonomy.yml</code></li>
+    <li>Scan today: <code>server/app/services/library/scan.rb</code></li>
+    <li>OPF: <code>server/app/services/library/opf.rb</code> (no subjects → categories not from tags)</li>
+    <li>Deploy: <code>your reverse-proxy compose file</code> service <code>folio</code>, host library <code>/path/to/library</code></li>
+    <li>Live scale (pre-cutover): ~31k books, heavy dump noise, weak author quality on non-Calibre paths</li>
+  </ul>
+</section>
+</main>
+</body>
+</html>
