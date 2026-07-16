@@ -41,6 +41,15 @@
         · <span class="stamp stamp--failed">error</span> <code class="small"><%= @progress[:error] %></code>
       <% end %>
     </p>
+    <% if @progress[:state] == "done" && @progress[:counts] %>
+      <p class="meta-list small">
+        <span class="stamp stamp--ready"><%= number_with_delimiter(@progress[:counts][:imported] || 0) %> imported</span>
+        <span class="stamp"><%= number_with_delimiter(@progress[:counts][:duplicate] || 0) %> duplicate</span>
+        <% if (@progress[:counts][:relocated] || 0).positive? %>
+          <span class="stamp"><%= number_with_delimiter(@progress[:counts][:relocated]) %> relocated</span>
+        <% end %>
+      </p>
+    <% end %>
     <% if @progress[:state] == "running" %>
       <div data-controller="poll" data-poll-interval-value="5000"></div>
     <% end %>

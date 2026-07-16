@@ -76,6 +76,82 @@ RSpec.describe BookSearch do
       expect(described_class.search("extracted").map { |hit| hit[:book_id] }).to eq([ book.id ])
       expect(described_class.search("renamed").map { |hit| hit[:book_id] }).to eq([ book.id ])
     end
+
+    it "indexes the category's raw key and human labels so either finds the book" do
+      shelved = create(:book, title: "Nebula Run", category: "fiction/sf")
+      described_class.index_book!(shelved)
+
+      expect(described_class.search("sf", scope: :metadata).map { |hit| hit[:book_id] }).to eq([ shelved.id ])
+      expect(described_class.search("Fantascienza", scope: :metadata).map { |hit| hit[:book_id] })
+        .to eq([ shelved.id ])
+      expect(described_class.search("Fiction", scope: :metadata).map { |hit| hit[:book_id] }).to eq([ shelved.id ])
+    end
+
+    it "does not blow up indexing a book with no category" do
+      bare = create(:book, title: "No Shelf", category: nil)
+      expect { described_class.index_book!(bare) }.not_to raise_error
+      expect(described_class.search("shelf", scope: :metadata).map { |hit| hit[:book_id] }).to eq([ bare.id ])
+    end
+  end
+
+  describe "legacy schema migration" do
+    let(:legacy_sql) do
+      <<~SQL
+        CREATE VIRTUAL TABLE book_search USING fts5(
+          book_id UNINDEXED, title, author, series, description, fulltext,
+          tokenize = 'unicode61 remove_diacritics 2'
+        );
+      SQL
+    end
+
+    # The suite-shared db file runs in WAL mode (see open_database), which
+    # leaves -wal/-shm sidecars alongside it; wiping only the main file
+    # leaves them behind mismatched against the fresh file written below
+    # and SQLite refuses to open the result ("disk I/O error"). All specs
+    # in this group nuke every sidecar, both before writing a legacy file
+    # and afterwards, so later examples reopen a clean current-shape db.
+    def wipe_search_db!
+      described_class.reset!
+      FileUtils.rm_f(Dir.glob("#{described_class.db_path}*"))
+    end
+
+    def write_legacy_db!(rows)
+      FileUtils.mkdir_p(described_class.db_path.dirname)
+      db = SQLite3::Database.new(described_class.db_path.to_s)
+      db.execute(legacy_sql)
+      rows.each do |row|
+        db.execute(
+          "INSERT INTO book_search (book_id, title, author, series, description, fulltext) VALUES (?, ?, ?, ?, ?, ?)",
+          row
+        )
+      end
+      db.close
+    end
+
+    after { wipe_search_db! }
+
+    it "rebuilds the table on first touch, keeping stored fulltext and adding category" do
+      book = create(:book, title: "Cranes of Kyōto", category: "fiction/sf")
+
+      wipe_search_db!
+      write_legacy_db!([ [ book.id, "Stale Title", "", "", "", "old extracted fulltext" ] ])
+      described_class.reset!
+
+      # Fresh metadata (including category) comes from the book, not the
+      # stale row; the expensive-to-recompute fulltext survives untouched.
+      expect(described_class.search("old extracted").map { |hit| hit[:book_id] }).to eq([ book.id ])
+      expect(described_class.search(book.title).map { |hit| hit[:book_id] }).to eq([ book.id ])
+      expect(described_class.search("Fantascienza", scope: :metadata).map { |hit| hit[:book_id] }).to eq([ book.id ])
+    end
+
+    it "drops legacy rows whose book no longer exists instead of raising" do
+      wipe_search_db!
+      write_legacy_db!([ [ 0, "Orphan", "", "", "", "" ] ])
+      described_class.reset!
+
+      expect { described_class.search("orphan") }.not_to raise_error
+      expect(described_class.search("orphan")).to eq([])
+    end
   end
 
   describe ".migrate_from_primary!" do

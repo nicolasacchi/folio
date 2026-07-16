@@ -14,6 +14,15 @@
       <p class="kicker">In the library</p>
     <% end %>
     <h1 class="page-title"><%= @book.title %></h1>
+    <% if @book.category.present? %>
+      <p class="breadcrumb">
+        <%= link_to Library::Taxonomy.label_for(@book.category_root), root_path(category_root: @book.category_root) %>
+        <% if @book.category_parts.size > 1 %>
+          <span aria-hidden="true"> / </span>
+          <%= link_to Library::Taxonomy.sub_label_for(@book.category_root, @book.category_parts.last), root_path(category: @book.category) %>
+        <% end %>
+      </p>
+    <% end %>
     <p class="book-author">
       <% if @book.author.present? %>
         <%= link_to @book.author, root_path(author: @book.author, sort: "title") %>

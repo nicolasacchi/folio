@@ -15,6 +15,7 @@ module BookSearch
       title,
       author,
       series,
+      category,
       description,
       fulltext,
       tokenize = 'unicode61 remove_diacritics 2'
@@ -41,15 +42,31 @@ module BookSearch
     fulltext = fulltext.to_s.byteslice(0, MAX_FULLTEXT_BYTES).to_s.scrub("")
     with_db do |db|
       db.execute("DELETE FROM book_search WHERE book_id = ?", [ book.id ])
-      db.execute(
-        "INSERT INTO book_search (book_id, title, author, series, description, fulltext) VALUES (?, ?, ?, ?, ?, ?)",
-        [ book.id, book.title.to_s, book.author.to_s, book.series.to_s, book.description.to_s, fulltext ]
-      )
+      insert_row!(db, book, fulltext)
     end
   end
 
   def remove_book!(book_id)
     with_db { |db| db.execute("DELETE FROM book_search WHERE book_id = ?", [ book_id ]) }
+  end
+
+  def insert_row!(db, book, fulltext)
+    db.execute(
+      "INSERT INTO book_search (book_id, title, author, series, category, description, fulltext) " \
+      "VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [ book.id, book.title.to_s, book.author.to_s, book.series.to_s, category_text_for(book), book.description.to_s,
+        fulltext ]
+    )
+  end
+
+  # The raw taxonomy key ("fiction/sf", which the tokenizer already splits
+  # on "/" into "fiction" and "sf") plus its human labels ("Fiction",
+  # "Fantascienza") so a shelf search works whichever one the user types.
+  def category_text_for(book)
+    category = book.category
+    return "" if category.blank?
+
+    [ category, Library::Taxonomy.label_for(category) ].join(" ")
   end
 
   # Returns [{ book_id:, snippet:, rank: }] ordered by relevance.
@@ -59,14 +76,14 @@ module BookSearch
   def search(query, limit: 100, scope: :all)
     match = match_expression(query)
     return [] if match.blank?
-    match = "{title author series} : (#{match})" if scope == :metadata
+    match = "{title author series category} : (#{match})" if scope == :metadata
 
-    snippet_sql = scope == :metadata ? "NULL" : "snippet(book_search, 5, '<mark>', '</mark>', '…', 12)"
+    snippet_sql = scope == :metadata ? "NULL" : "snippet(book_search, 6, '<mark>', '</mark>', '…', 12)"
     rows = with_db do |db|
       db.execute(<<~SQL, [ match, limit ])
         SELECT book_id,
                #{snippet_sql} AS snippet,
-               bm25(book_search, 0, 10.0, 8.0, 4.0, 2.0, 1.0) AS rank
+               bm25(book_search, 0, 10.0, 8.0, 4.0, 3.0, 2.0, 1.0) AS rank
         FROM book_search
         WHERE book_search MATCH ?
         ORDER BY rank
@@ -170,7 +187,45 @@ module BookSearch
     db = SQLite3::Database.new(db_path.to_s, results_as_hash: true)
     db.busy_timeout(15_000)
     db.execute("PRAGMA journal_mode=WAL")
+    migrate_legacy_shape!(db)
     db.execute(SCHEMA_SQL)
     db
+  end
+
+  # fts5 virtual tables cannot ALTER TABLE ADD COLUMN, so a table created
+  # before `category` existed is detected from its declared SQL in
+  # sqlite_master (PRAGMA table_info reports fts5's internal bookkeeping
+  # columns, not the ones this app declared) and rebuilt in place: the
+  # extracted `fulltext` is expensive to regenerate (a Calibre shell-out
+  # per book) so it's carried over from the old rows, while
+  # title/author/series/category/description are repopulated fresh from
+  # the primary database via +insert_row!+, same as any other reindex.
+  def migrate_legacy_shape!(db)
+    return if db.get_first_value(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'book_search'"
+    ).then { |sql| sql.nil? || sql.include?("category") }
+
+    # BEGIN IMMEDIATE serializes concurrent first-boot processes (Puma
+    # workers, bin/jobs) on this shared file: whoever wins rebuilds, the
+    # rest block on the write lock, then re-check and no-op. The re-check
+    # inside the transaction is what makes the losers safe.
+    db.transaction(:immediate) do
+      declared_sql = db.get_first_value(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'book_search'"
+      )
+      next if declared_sql.nil? || declared_sql.include?("category")
+
+      legacy_rows = db.execute("SELECT book_id, fulltext FROM book_search")
+      db.execute("DROP TABLE book_search")
+      db.execute(SCHEMA_SQL)
+
+      books = Book.where(id: legacy_rows.map { |row| row["book_id"] }).index_by(&:id)
+      legacy_rows.each do |row|
+        book = books[row["book_id"]]
+        next unless book
+
+        insert_row!(db, book, row["fulltext"].to_s)
+      end
+    end
   end
 end

@@ -101,9 +101,14 @@ class Library::Scan
       Find.find(root.to_s) do |entry|
         basename = File.basename(entry)
         if File.directory?(entry)
-          Find.prune if basename.start_with?(".")
+          # "_quarantine" and any other underscore-prefixed hold dir are
+          # never scanned; "_inbox" is the one exception (see taxonomy).
+          Find.prune if basename.start_with?(".") || (basename.start_with?("_") && basename != "_inbox")
           next
         end
+
+        next if basename.start_with?(".") # e.g. a stray ".migrate_sha256.txt"
+        next if basename.match?(/\AREADME\./i) && File.dirname(entry) == root.to_s
 
         extension = File.extname(basename).delete_prefix(".").downcase
         next unless BookFile::FORMATS.include?(extension)
@@ -156,13 +161,16 @@ class Library::Scan
 
   def import_group(group)
     metadata = group.opf ? Library::Opf.parse(group.opf).presence : nil
+    # One category per group — every path in a group shares a directory
+    # (OPF dir or same-stem cluster), so the first path stands for all.
+    category = Library::Category.from_path(group.paths.first, roots: @roots)
     # A format added to an already-imported book directory (or beside an
     # already-imported same-stem file) attaches to that book instead of
     # spawning a duplicate.
     book = existing_group_book(group)
 
     group.paths.each do |path|
-      result = import_file(path, book: book, metadata: metadata, cover: group.cover)
+      result = import_file(path, book: book, metadata: metadata, cover: group.cover, category: category)
       # Attach the group's remaining formats to the same book — including
       # the already-present book when the first file was a duplicate.
       book ||= result&.book
@@ -182,18 +190,20 @@ class Library::Scan
     BookFile.where("path LIKE ?", "#{ActiveRecord::Base.sanitize_sql_like(prefix)}%").first&.book
   end
 
-  def import_file(path, book:, metadata:, cover:)
+  def import_file(path, book:, metadata:, cover:, category:)
     stat = nil
     stat = File.stat(path)
 
     result =
       if (existing = BookFile.find_by(path: path))
-        refresh_changed_file(existing, path)
+        refresh_changed_file(existing, path, category)
       else
         Library::Ingest.call(path, original_filename: File.basename(path), book: book, source: "scan",
-                             enqueue_followups: false, mode: :reference, metadata: metadata, cover_source: cover)
+                             enqueue_followups: false, mode: :reference, metadata: metadata, cover_source: cover,
+                             category: category, scan_roots: @roots)
       end
 
+    @counts[:relocated] += 1 if result.relocated?
     status = result.duplicate? ? "duplicate" : "imported"
     @counts[status.to_sym] += 1
     record(path, stat, status: status, sha256: result.book_file.sha256, book_file: result.book_file,
@@ -210,10 +220,14 @@ class Library::Scan
   end
 
   # Same path, different content (or a file that was missing and came
-  # back): refresh checksum/size and make it available again.
-  def refresh_changed_file(book_file, path)
+  # back): refresh checksum/size and make it available again. The path
+  # itself didn't move, so category is only filled in when blank, never
+  # overwritten.
+  def refresh_changed_file(book_file, path, category)
     book_file.update!(sha256: Library.sha256(path), size: File.size(path), available: true)
-    Library::Ingest::Result.new(book_file.book, book_file, false)
+    book = book_file.book
+    book.update!(category: category) if category.present? && book.category.blank?
+    Library::Ingest::Result.new(book, book_file, false)
   end
 
   # stat may be nil when the file vanished mid-scan; record the failure

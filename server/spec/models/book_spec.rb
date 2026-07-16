@@ -43,6 +43,51 @@ RSpec.describe Book, type: :model do
     end
   end
 
+  describe "category" do
+    it "accepts a nil, single-segment, or two-segment category" do
+      expect(build(:book, category: nil)).to be_valid
+      expect(build(:book, category: "fiction")).to be_valid
+      expect(build(:book, category: "fiction/sf")).to be_valid
+      expect(build(:book, category: "_inbox")).to be_valid
+    end
+
+    it "rejects author/title-shaped or uppercase values" do
+      expect(build(:book, category: "Fiction/SF")).not_to be_valid
+      expect(build(:book, category: "fiction/sf/extra")).not_to be_valid
+      expect(build(:book, category: "fiction sf")).not_to be_valid
+    end
+
+    describe "#category_parts / #category_root / #display_category" do
+      it "splits a two-segment category" do
+        book = build(:book, category: "fiction/sf")
+        expect(book.category_parts).to eq(%w[fiction sf])
+        expect(book.category_root).to eq("fiction")
+        expect(book.display_category).to eq("fiction/sf")
+      end
+
+      it "handles a blank category" do
+        book = build(:book, category: nil)
+        expect(book.category_parts).to eq([])
+        expect(book.category_root).to be_nil
+        expect(book.display_category).to eq("Uncategorized")
+      end
+    end
+
+    describe ".in_category / .in_category_root" do
+      let!(:sf_book) { create(:book, category: "fiction/sf") }
+      let!(:literary_book) { create(:book, category: "fiction/literary") }
+      let!(:history_book) { create(:book, category: "nonfiction/history") }
+
+      it ".in_category matches the exact string" do
+        expect(Book.in_category("fiction/sf")).to contain_exactly(sf_book)
+      end
+
+      it ".in_category_root matches the root segment or any of its subcategories" do
+        expect(Book.in_category_root("fiction")).to contain_exactly(sf_book, literary_book)
+      end
+    end
+  end
+
   describe "#destroy" do
     let!(:book) { create(:book) }
 

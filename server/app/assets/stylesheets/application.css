@@ -343,6 +343,51 @@ mark {
 .chip { text-decoration: none; margin-right: .4rem; }
 .chip:hover { border-color: var(--accent); }
 
+/* ---------- Shelves nav (category browse) ---------- */
+
+.shelves { margin: 0 0 1.2rem; }
+.shelves-clear { margin: 0 0 .6rem; }
+.shelf-root { border-bottom: 1px solid var(--line); }
+.shelf-root summary {
+  cursor: pointer;
+  padding: .55rem 0;
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+}
+.shelf-root-link {
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--ink);
+}
+.shelf-root-link.is-active { color: var(--accent); }
+.shelf-subs {
+  list-style: none;
+  margin: 0 0 .7rem;
+  padding: 0 0 .1rem 1.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem 1rem;
+}
+.shelf-subs a { text-decoration: none; font-size: .84rem; color: var(--ink-soft); }
+.shelf-subs a:hover, .shelf-subs a.is-active { color: var(--accent); }
+.shelf-flat {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  padding: .55rem 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.shelf-flat a { text-decoration: none; color: var(--ink); }
+.shelf-flat a.is-active { color: var(--accent); }
+
 .pager {
   display: flex;
   align-items: center;
@@ -511,6 +556,14 @@ mark {
   text-transform: uppercase;
   color: var(--ink-soft);
 }
+
+.breadcrumb {
+  font-size: .85rem;
+  color: var(--ink-soft);
+  margin: 0 0 .5rem;
+}
+.breadcrumb a { color: var(--ink-soft); text-decoration: underline; text-decoration-color: var(--line); }
+.breadcrumb a:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
 .book-description { max-width: 46rem; }
 

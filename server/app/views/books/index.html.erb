@@ -72,6 +72,8 @@
       <%= hidden_field_tag :year, @year if @year %>
       <%= hidden_field_tag :language, @language if @language %>
       <%= hidden_field_tag :added, @added.iso8601 if @added %>
+      <%= hidden_field_tag :category, @category if @category %>
+      <%= hidden_field_tag :category_root, @category_root if @category_root %>
       <%= select_tag :sort,
             options_for_select([ [ "Recently added", "recent" ], [ "By title", "title" ], [ "By author", "author" ] ], @sort),
             onchange: "this.form.requestSubmit()", "aria-label": "Sort order" %>
@@ -89,14 +91,59 @@
     <% end %>
   </div>
 
+  <% if @shelves.any? || @inbox_count.positive? || @uncategorized_count.positive? %>
+    <nav class="shelves" aria-label="Shelves">
+      <p class="section-label">Shelves</p>
+      <% if @category || @category_root %>
+        <p class="shelves-clear">
+          <%= link_to "All books", url_for(request.query_parameters.except("category", "category_root", "page")),
+                class: "btn btn--quiet" %>
+        </p>
+      <% end %>
+      <% @shelves.each do |root| %>
+        <% root_active = @category_root == root[:key] || @category == root[:key] || (@category && @category.start_with?("#{root[:key]}/")) %>
+        <details class="shelf-root" <%= "open" if root_active %>>
+          <summary>
+            <%= link_to root[:label], root_path(category_root: root[:key]),
+                  class: "shelf-root-link #{"is-active" if @category_root == root[:key]}" %>
+            <span class="muted small">(<%= number_with_delimiter(root[:total]) %>)</span>
+          </summary>
+          <ul class="shelf-subs">
+            <% root[:subs].each do |sub| %>
+              <li>
+                <%= link_to root_path(category: sub[:key]), class: "#{"is-active" if @category == sub[:key]}" do %>
+                  <%= sub[:label] %> <span class="muted">(<%= number_with_delimiter(sub[:count]) %>)</span>
+                <% end %>
+              </li>
+            <% end %>
+          </ul>
+        </details>
+      <% end %>
+      <% if @inbox_count.positive? %>
+        <p class="shelf-flat">
+          <%= link_to "Inbox", root_path(category: "_inbox"), class: "#{"is-active" if @category == "_inbox"}" %>
+          <span class="muted small">(<%= number_with_delimiter(@inbox_count) %>)</span>
+        </p>
+      <% end %>
+      <% if @uncategorized_count.positive? %>
+        <p class="shelf-flat">
+          <%= link_to "Uncategorized", root_path(category: BooksController::UNCATEGORIZED),
+                class: "#{"is-active" if @category == BooksController::UNCATEGORIZED}" %>
+          <span class="muted small">(<%= number_with_delimiter(@uncategorized_count) %>)</span>
+        </p>
+      <% end %>
+    </nav>
+  <% end %>
+
   <% active_filters = { author: @author, series: @series, format: @format,
-                        year: @year, language: @language, added: @added }.compact %>
+                        year: @year, language: @language, added: @added,
+                        category: @category, category_root: @category_root }.compact %>
   <% if active_filters.any? %>
     <p class="chips">
       <% active_filters.each do |key, value| %>
         <%= link_to url_for(request.query_parameters.except(key.to_s, "page")), class: "stamp stamp--ready chip",
               title: "Remove #{key} filter" do %>
-          <%= key %>: <%= value %> ✕
+          <%= key.to_s.tr("_", " ") %>: <%= key.in?([ :category, :category_root ]) ? category_label(value) : value %> ✕
         <% end %>
       <% end %>
     </p>

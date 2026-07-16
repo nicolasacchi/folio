@@ -24,6 +24,13 @@ class Book < ApplicationRecord
 
   validates :public_id, presence: true, uniqueness: true
   validates :title, presence: true
+  # "category" or "category/subcategory", lowercase kebab keys from
+  # docs/library-taxonomy.yml; nil/blank means uncategorized (uploads with
+  # no scan path). "_inbox" is a valid single segment.
+  validates :category, format: { with: %r{\A[a-z0-9_]+(?:/[a-z0-9_]+)?\z} }, allow_blank: true
+
+  scope :in_category, ->(category) { where(category: category) }
+  scope :in_category_root, ->(root) { where("category = ? OR category LIKE ?", root, "#{sanitize_sql_like(root)}/%") }
 
   after_destroy :remove_artifacts
 
@@ -99,6 +106,18 @@ class Book < ApplicationRecord
 
   def display_author
     author.presence || "Unknown author"
+  end
+
+  def category_parts
+    category.to_s.split("/", 2)
+  end
+
+  def category_root
+    category_parts.first
+  end
+
+  def display_category
+    category.presence || "Uncategorized"
   end
 
   private

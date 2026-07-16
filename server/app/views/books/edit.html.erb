@@ -20,6 +20,9 @@
   <%= form.label :series_index, "Series number" %>
   <%= form.number_field :series_index, step: :any %>
 
+  <%= form.label :category %>
+  <%= form.select :category, category_select_options(@book.category), include_blank: "— uncategorized —" %>
+
   <%= form.label :language %>
   <%= form.text_field :language %>
 

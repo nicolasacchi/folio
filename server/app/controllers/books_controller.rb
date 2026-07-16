@@ -7,6 +7,10 @@ class BooksController < ApplicationController
   # through descriptions and the Calibre-extracted text; "semantic" uses
   # the embedding index.
   SEARCH_MODES = %w[title full semantic].freeze
+  # ?category= sentinel for "no category at all" (nil/blank in the DB) —
+  # distinct from the param being absent, so the Shelves nav can link to
+  # it like any other shelf.
+  UNCATEGORIZED = "uncategorized"
 
   def index
     @query = params[:q].to_s.strip
@@ -29,6 +33,9 @@ class BooksController < ApplicationController
       @language = params[:language].presence
       @added = parse_date(params[:added])
       @sort = SORTS.include?(params[:sort]) ? params[:sort] : "recent"
+      # An exact category wins over a root filter when both are given.
+      @category = params[:category].presence
+      @category_root = @category ? nil : params[:category_root].presence
 
       scope = Book.all
       scope = scope.where(author: @author) if @author
@@ -37,6 +44,15 @@ class BooksController < ApplicationController
       scope = scope.where(published_year: @year) if @year
       scope = scope.where(language: @language) if @language
       scope = scope.where(created_at: @added.all_day) if @added
+      scope = if @category == UNCATEGORIZED
+        scope.where(category: [ nil, "" ])
+      elsif @category
+        scope.in_category(@category)
+      elsif @category_root
+        scope.in_category_root(@category_root)
+      else
+        scope
+      end
       scope = case @sort
       when "title" then scope.order(Arel.sql("lower(title)"), :id)
       when "author" then scope.order(Arel.sql("lower(coalesce(author, ''))"), Arel.sql("lower(title)"), :id)
@@ -55,8 +71,15 @@ class BooksController < ApplicationController
         { books: Book.count, files: BookFile.count, bytes: BookFile.sum(:size) }
       end
 
+      category_counts = Rails.cache.fetch("library_categories", expires_in: 10.minutes) do
+        Book.group(:category).count
+      end
+      @shelves = shelves_for(category_counts)
+      @inbox_count = category_counts.fetch("_inbox", 0)
+      @uncategorized_count = category_counts.fetch(nil, 0) + category_counts.fetch("", 0)
+
       # The "keep reading" shelf only heads the unfiltered front page.
-      if @page == 1 && !@author && !@series && !@format && !@year && !@language && !@added
+      if @page == 1 && !@author && !@series && !@format && !@year && !@language && !@added && !@category && !@category_root
         @currently_reading = Book.currently_reading(limit: 10)
       end
     end
@@ -139,6 +162,41 @@ class BooksController < ApplicationController
   end
 
   def book_params
-    params.expect(book: [ :title, :author, :series, :series_index, :language, :description, :published_year ])
+    params.expect(book: [ :title, :author, :series, :series_index, :language, :description, :published_year, :category ])
+  end
+
+  # Turns Book.group(:category).count ("fiction/sf" => 340, "practical" => 12, …)
+  # into an ordered root => subs tree for the Shelves nav. "_inbox" and
+  # nil/blank (uncategorized) are their own flat rows, not roots — the
+  # caller pulls those out of the raw counts directly.
+  def shelves_for(counts)
+    by_root = Hash.new(0)
+    subs_by_root = Hash.new { |h, k| h[k] = {} }
+
+    counts.each do |category, count|
+      next if category.blank? || category == "_inbox"
+
+      root, sub = category.split("/", 2)
+      by_root[root] += count
+      subs_by_root[root][sub] = count if sub
+    end
+
+    known_roots = Library::Taxonomy.categories.keys
+    ordered_roots = (known_roots & by_root.keys) + (by_root.keys - known_roots).sort
+
+    ordered_roots.map do |root|
+      known_subs = Library::Taxonomy.subs_for(root).keys
+      root_subs = subs_by_root[root]
+      ordered_subs = (known_subs & root_subs.keys) + (root_subs.keys - known_subs).sort
+
+      {
+        key: root,
+        label: Library::Taxonomy.label_for(root),
+        total: by_root[root],
+        subs: ordered_subs.map { |sub|
+          { key: "#{root}/#{sub}", label: Library::Taxonomy.sub_label_for(root, sub), count: root_subs[sub] }
+        }
+      }
+    end
   end
 end
