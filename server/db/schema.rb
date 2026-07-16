@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_14_120002) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_16_120000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -62,6 +62,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_14_120002) do
 
   create_table "books", force: :cascade do |t|
     t.string "author"
+    t.string "category"
     t.datetime "created_at", null: false
     t.text "description"
     t.datetime "enriched_at"
@@ -74,6 +75,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_14_120002) do
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.index ["author"], name: "index_books_on_author"
+    t.index ["category"], name: "index_books_on_category"
     t.index ["created_at"], name: "index_books_on_created_at"
     t.index ["public_id"], name: "index_books_on_public_id", unique: true
     t.index ["series"], name: "index_books_on_series"

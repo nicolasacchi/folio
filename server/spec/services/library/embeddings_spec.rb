@@ -60,4 +60,18 @@ RSpec.describe Library::Embeddings do
 
     expect(described_class.count).to eq(0)
   end
+
+  describe ".text_for" do
+    it "prepends the category when the book has one" do
+      book = create(:book, title: "Dune", author: "Frank Herbert", category: "fiction/sf")
+
+      expect(described_class.text_for(book)).to eq("[fiction/sf] Dune. Frank Herbert")
+    end
+
+    it "does not prepend anything when the book has no category" do
+      book = create(:book, title: "Dune", author: "Frank Herbert", category: nil)
+
+      expect(described_class.text_for(book)).to eq("Dune. Frank Herbert")
+    end
+  end
 end

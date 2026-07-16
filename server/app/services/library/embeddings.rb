@@ -45,10 +45,13 @@ module Library::Embeddings
   end
 
   def text_for(book)
-    [ book.title, book.author, book.series, book.description.to_s.byteslice(0, 1500).scrub("") ]
+    text = [ book.title, book.author, book.series, book.description.to_s.byteslice(0, 1500).scrub("") ]
       .map { |part| part.to_s.strip }
       .reject(&:empty?)
       .join(". ")
+    # Lightly biases nearest-neighbor results toward the same shelf without
+    # requiring an exact category match (see docs/folio-library-categories-design.html#search).
+    book.category.present? ? "[#{book.category}] #{text}" : text
   end
 
   def index_book!(book)

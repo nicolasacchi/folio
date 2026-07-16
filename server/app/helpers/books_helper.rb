@@ -15,4 +15,33 @@ module BooksHelper
   def format_size(bytes)
     number_to_human_size(bytes, precision: 2)
   end
+
+  # Chip/breadcrumb label for a books.category value, including the two
+  # values that aren't real taxonomy categories.
+  def category_label(value)
+    case value
+    when BooksController::UNCATEGORIZED then "Uncategorized"
+    when "_inbox" then "Inbox"
+    else Library::Taxonomy.label_for(value)
+    end
+  end
+
+  # <optgroup>-per-root select options for the edit form: taxonomy roots
+  # and their subs, plus Inbox, plus (if the book's current value isn't
+  # in the taxonomy — a renamed dir, a pre-taxonomy-bump edit) the raw
+  # current value so saving the form again can't silently drop it.
+  def category_select_options(current)
+    groups = Library::Taxonomy.categories.keys.map do |root|
+      options = [ [ Library::Taxonomy.label_for(root), root ] ] +
+        Library::Taxonomy.subs_for(root).keys.map { |sub| [ Library::Taxonomy.sub_label_for(root, sub), "#{root}/#{sub}" ] }
+      [ Library::Taxonomy.label_for(root), options ]
+    end
+    groups << [ "Other", [ [ "Inbox", "_inbox" ] ] ]
+
+    if current.present? && !Library::Taxonomy.known?(current) && current != "_inbox"
+      groups.unshift([ "Current (not in the taxonomy)", [ [ current, current ] ] ])
+    end
+
+    grouped_options_for_select(groups, current)
+  end
 end
