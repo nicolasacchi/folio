@@ -101,6 +101,19 @@ RSpec.describe Library::Scan do
     expect(Book.exists?(book.id)).to be(false)
   end
 
+  it "prunes a missing file even when it sourced a conversion, without raising" do
+    dir = write_calibre_book("Book Converted (4)", title: "Book Converted")
+    described_class.call(roots: [ root ])
+    book = Book.find_by!(title: "Book Converted")
+    create(:conversion, book: book, book_file: book.book_files.first)
+
+    FileUtils.rm_rf(dir)
+    described_class.call(roots: [ root ])
+
+    expect { described_class.prune_missing! }.not_to raise_error
+    expect(Book.exists?(book.id)).to be(false)
+  end
+
   it "does not resurrect a book the user deleted" do
     write_calibre_book("Book Three (3)", title: "Book Three")
     described_class.call(roots: [ root ])
