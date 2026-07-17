@@ -5,6 +5,11 @@ class BookFile < ApplicationRecord
   SOURCES = %w[upload converted scan].freeze
 
   belongs_to :book
+  # Book already cascades to conversions, but that only fires when the
+  # whole book is destroyed — a book_file destroyed on its own (single
+  # missing/pruned file, book survives) needs its own cascade or the FK
+  # (conversions.book_file_id, NOT NULL, no ON DELETE) raises.
+  has_many :conversions, dependent: :destroy
 
   validates :format, presence: true, inclusion: { in: FORMATS }, uniqueness: { scope: :book_id }
   validates :path, presence: true, uniqueness: true

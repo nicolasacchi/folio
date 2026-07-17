@@ -97,5 +97,15 @@ RSpec.describe Book, type: :model do
       expect { book.destroy! }
         .to change { BookSearch.search(book.title).size }.from(1).to(0)
     end
+
+    it "destroys cleanly when a file has conversion history" do
+      # book_files is declared before conversions on Book, so its
+      # dependent: :destroy callback runs first — this only stays clean
+      # because BookFile has its own has_many :conversions, dependent: :destroy.
+      file = create(:book_file, book: book)
+      create(:conversion, book: book, book_file: file)
+
+      expect { book.destroy! }.not_to raise_error
+    end
   end
 end
