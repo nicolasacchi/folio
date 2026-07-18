@@ -13,6 +13,10 @@ module Library::Embeddings
   MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
   DIMENSIONS = 384
 
+  # Every process (Puma master, Solid Queue supervisor, each worker) opens
+  # and uses only its own handle — see ForkSafeSqlite.
+  extend ForkSafeSqlite
+
   @mutex = Mutex.new
 
   module_function
@@ -107,16 +111,6 @@ module Library::Embeddings
     0
   end
 
-  def with_db(&block)
-    @mutex.synchronize do
-      # Forked children (Solid Queue workers) inherit a closed handle —
-      # see BookSearch.with_db.
-      @db = nil if @db&.closed?
-      @db ||= open_database
-      block.call(@db)
-    end
-  end
-
   def open_database
     require "sqlite_vec"
     FileUtils.mkdir_p(db_path.dirname)
@@ -142,6 +136,7 @@ module Library::Embeddings
     @mutex.synchronize do
       @db&.close
       @db = nil
+      @db_pid = nil
       @embedder = nil
       @available = nil
     end

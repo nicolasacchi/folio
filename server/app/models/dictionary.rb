@@ -43,6 +43,10 @@ module Dictionary
 
   MAX_GLOSSES = 3
 
+  # Every process (Puma master, Solid Queue supervisor, each worker) opens
+  # and uses only its own handle — see ForkSafeSqlite.
+  extend ForkSafeSqlite
+
   @mutex = Mutex.new
 
   module_function
@@ -209,14 +213,7 @@ module Dictionary
     @mutex.synchronize do
       @db&.close
       @db = nil
-    end
-  end
-
-  def with_db
-    @mutex.synchronize do
-      @db = nil if @db&.closed?
-      @db ||= open_database
-      yield @db
+      @db_pid = nil
     end
   end
 
