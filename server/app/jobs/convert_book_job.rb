@@ -38,5 +38,13 @@ class ConvertBookJob < ApplicationJob
     IndexBookJob.set(queue: :conversion).perform_later(book.id) unless had_fulltext
   rescue Calibre::Error, Library::Ingest::UnsupportedFormat => error
     conversion.mark_failed!(error.message)
+  rescue StandardError => error
+    # Unlike the two expected errors above, this file wasn't necessarily
+    # unconvertible — leaving the conversion "running" would block every
+    # future auto-retry (ensure_epub_conversion / ConversionsController
+    # both skip while an active conversion exists). Mark it failed but
+    # re-raise so ActiveJob/SolidQueue still records and can retry the job.
+    conversion&.mark_failed!(error.message)
+    raise
   end
 end

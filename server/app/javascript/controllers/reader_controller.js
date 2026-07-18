@@ -429,6 +429,13 @@ export default class extends Controller {
         return
       }
     }
+
+    // Don't steal keys from the search input, note textarea, etc. — Escape
+    // above still closes panels while typing; only page-turn navigation is
+    // skipped here.
+    const el = event.target
+    if (el && (el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return
+
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
     if (!this.view) return
 
@@ -1965,6 +1972,10 @@ export default class extends Controller {
       this.handleWritebackDecision(data?.writeback, body)
     } catch (error) {
       console.error("[reader] failed to save position", error)
+      // Re-queue for the next debounced/pagehide flush so a transient
+      // network/5xx failure doesn't drop reading progress — unless a newer
+      // relocate already queued a fresher position, which wins.
+      if (!this.pendingPosition) this.pendingPosition = position
     }
   }
 
