@@ -25,6 +25,10 @@ module BookSearch
   # Cap stored fulltext so a single huge book cannot bloat the index.
   MAX_FULLTEXT_BYTES = 2_000_000
 
+  # Every process (Puma master, Solid Queue supervisor, each worker) opens
+  # and uses only its own handle — see ForkSafeSqlite.
+  extend ForkSafeSqlite
+
   @mutex = Mutex.new
 
   module_function
@@ -168,17 +172,7 @@ module BookSearch
     @mutex.synchronize do
       @db&.close
       @db = nil
-    end
-  end
-
-  def with_db
-    @mutex.synchronize do
-      # sqlite3-ruby closes inherited handles in forked children (Solid
-      # Queue workers fork off the Puma master, which opened the handle
-      # at boot) — reopen instead of failing on the dead object.
-      @db = nil if @db&.closed?
-      @db ||= open_database
-      yield @db
+      @db_pid = nil
     end
   end
 
