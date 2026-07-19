@@ -26,5 +26,13 @@ class EnsureKindleFormatJob < ApplicationJob
 
     conversion = book.conversions.create!(book_file: source, target_format: TARGET_FORMAT)
     ConvertBookJob.perform_later(conversion.id)
+  rescue ActiveRecord::RecordNotUnique
+    # The active-scope check above is a cheap fast path, but it's still
+    # check-then-act — the partial unique index on (book_id, target_format)
+    # (see the add_unique_index_on_active_conversions migration) is the real
+    # guard. Losing this race means another worker just inserted the active
+    # conversion for this book/target; its own perform already enqueued the
+    # ConvertBookJob, so there's nothing left to do here.
+    nil
   end
 end

@@ -34,4 +34,21 @@ RSpec.describe EnsureKindleFormatJob do
 
     expect { described_class.perform_now(book.id) }.not_to change(Conversion, :count)
   end
+
+  it "treats losing the create! race to another worker as a no-op instead of raising" do
+    book = create(:book)
+    create(:book_file, :on_disk, book: book, format: "epub")
+    # Simulate two workers both passing the active-scope pre-check before
+    # either commits: book.conversions.create! is stubbed to raise the same
+    # error the partial unique index (index_conversions_on_active_book_target)
+    # raises when a concurrent worker's insert lands first.
+    allow(Book).to receive(:find_by).with(id: book.id).and_return(book)
+    allow(book.conversions).to receive(:create!).and_raise(
+      ActiveRecord::RecordNotUnique.new("UNIQUE constraint failed: index_conversions_on_active_book_target")
+    )
+
+    expect { described_class.perform_now(book.id) }.not_to raise_error
+    expect(Conversion.count).to eq(0)
+    expect(ConvertBookJob).not_to have_been_enqueued
+  end
 end

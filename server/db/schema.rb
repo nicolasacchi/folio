@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_16_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_19_120000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -93,6 +93,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_16_120000) do
     t.string "target_format", null: false
     t.datetime "updated_at", null: false
     t.index ["book_file_id"], name: "index_conversions_on_book_file_id"
+    t.index ["book_id", "target_format"], name: "index_conversions_on_active_book_target", unique: true, where: "status IN ('pending', 'running')"
     t.index ["book_id"], name: "index_conversions_on_book_id"
   end
 
