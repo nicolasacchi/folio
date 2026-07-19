@@ -23,7 +23,7 @@ class DevicesController < ApplicationController
   def create
     device = Device.new(device_params)
     if device.save
-      redirect_to devices_path, notice: "Device added. Token: #{device.token}"
+      redirect_to devices_path, notice: "Device added. Token: #{device.raw_token}"
     else
       redirect_to devices_path, alert: device.errors.full_messages.to_sentence
     end

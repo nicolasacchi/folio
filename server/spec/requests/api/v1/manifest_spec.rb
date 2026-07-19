@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 manifest", type: :request do
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token } }
+  let(:headers) { { "X-Api-Token" => device.raw_token } }
 
   it "rejects requests without a device token" do
     get "/api/v1/manifest"

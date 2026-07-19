@@ -4,7 +4,7 @@ RSpec.describe "API v1 queue version", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token } }
+  let(:headers) { { "X-Api-Token" => device.raw_token } }
 
   def version
     get "/api/v1/queue_version", headers: headers

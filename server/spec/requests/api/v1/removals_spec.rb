@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 removals", type: :request do
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token } }
+  let(:headers) { { "X-Api-Token" => device.raw_token } }
   let!(:book) { create(:book) }
   let!(:delivery) do
     create(:delivery, :delivered, book: book, device: device).tap { |d| d.request_eviction!("finished") }
@@ -22,7 +22,7 @@ RSpec.describe "API v1 removals", type: :request do
 
   it "rejects acks for another device's delivery" do
     other = create(:device)
-    post "/api/v1/removals/#{delivery.id}/ack", headers: { "X-Api-Token" => other.token }
+    post "/api/v1/removals/#{delivery.id}/ack", headers: { "X-Api-Token" => other.raw_token }
 
     expect(response).to have_http_status(:not_found)
     expect(delivery.reload).not_to be_removed

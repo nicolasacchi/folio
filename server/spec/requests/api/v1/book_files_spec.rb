@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 book files", type: :request do
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token } }
+  let(:headers) { { "X-Api-Token" => device.raw_token } }
   let!(:book) { create(:book) }
   let!(:azw3) { create(:book_file, :on_disk, book: book, format: "azw3") }
   let!(:epub) { create(:book_file, :on_disk, book: book, format: "epub") }

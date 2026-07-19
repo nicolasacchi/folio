@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 thumbnails", type: :request do
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token } }
+  let(:headers) { { "X-Api-Token" => device.raw_token } }
   let!(:book) { create(:book) }
   let!(:delivery) { create(:delivery, book: book, device: device) }
   let(:thumbnail_path) { Rails.root.join("tmp", "thumbnails_spec_#{book.id}.jpg") }
