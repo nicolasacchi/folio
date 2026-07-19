@@ -12,16 +12,20 @@ class BooksController < ApplicationController
   # it like any other shelf.
   UNCATEGORIZED = "uncategorized"
 
+  # Over-fetch each ranked list before RRF fusion so the fused, deduped
+  # top SEMANTIC_RESULTS still has that many results even when the two
+  # lists don't fully overlap.
+  SEMANTIC_RESULTS = 24
+
   def index
     @query = params[:q].to_s.strip
     if @query.present?
-      @semantic_available = Library::Embeddings.available? && Library::Embeddings.count.positive?
+      @semantic_available = Library::Embeddings.available? &&
+        (Library::Embeddings.count.positive? || Library::Embeddings.chunk_count.positive?)
       @mode = SEARCH_MODES.include?(params[:mode]) ? params[:mode] : "title"
       @mode = "title" if @mode == "semantic" && !@semantic_available
       if @mode == "semantic"
-        hits = Library::Embeddings.nearest(text: @query, limit: 24)
-        books = Book.includes(:book_files).where(id: hits.map(&:first)).index_by(&:id)
-        @semantic_books = hits.filter_map { |id, _| books[id] }
+        @semantic_books, @semantic_snippets = hybrid_search(@query)
       else
         @hits = Book.search(@query, scope: @mode == "full" ? :all : :metadata)
       end
@@ -145,6 +149,37 @@ class BooksController < ApplicationController
   end
 
   private
+
+  # "meaning" search: fuses FTS (BM25, scope: :all so it also digs through
+  # descriptions and extracted fulltext) with chunk-vector results via
+  # Reciprocal Rank Fusion (Library::HybridSearch.fuse), so a query
+  # benefits from both exact-term matches and semantic similarity to a
+  # passage buried inside a book. Degrades in stages: no chunk vectors
+  # indexed yet for anything the vector side would have found -> falls
+  # back to the coarser book-level (metadata-only) vector; only reached at
+  # all once @semantic_available has confirmed Library::Embeddings is
+  # available (see #index) — embeddings being unavailable entirely routes
+  # the request to plain FTS ("title" mode) before this method runs.
+  #
+  # Returns [books_in_fused_order, { book_id => snippet }] — the snippet
+  # is the FTS match highlight where there is one, else the nearest
+  # matching chunk's text, shown in the view as a "why this result" line.
+  def hybrid_search(query, limit: SEMANTIC_RESULTS)
+    fts_hits = BookSearch.search(query, scope: :all, limit: limit)
+    fts_ids = fts_hits.map { |hit| hit[:book_id] }
+    snippets = fts_hits.each_with_object({}) { |hit, acc| acc[hit[:book_id]] = hit[:snippet] if hit[:snippet].present? }
+
+    vector_hits = Library::Embeddings.nearest_chunks(text: query, limit: limit)
+    vector_hits = Library::Embeddings.nearest(text: query, limit: limit).map { |id, distance| [ id, distance, nil ] } if vector_hits.empty?
+    vector_ids = vector_hits.map(&:first)
+    vector_hits.each { |id, _distance, snippet| snippets[id] ||= snippet if snippet.present? }
+
+    fused_ids = Library::HybridSearch.fuse(fts_ids, vector_ids).first(limit)
+    # Single batched load, ordered to match the fused ranking (not
+    # whatever order the DB happens to return `WHERE id IN (...)` rows in).
+    books = Book.includes(:book_files).where(id: fused_ids).index_by(&:id)
+    [ fused_ids.filter_map { |id| books[id] }, snippets ]
+  end
 
   def similar_books
     return [] unless Library::Embeddings.available? && Library::Embeddings.count.positive?

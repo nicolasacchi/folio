@@ -31,17 +31,18 @@
         <%= link_to "Back to all books", root_path %>
       </div>
     <% else %>
-      <div class="shelf">
-        <% @semantic_books.each do |book| %>
-          <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
-            <%= render "cover", book: book %>
-            <span class="shelf-caption">
-              <span class="t"><%= book.title %></span>
-              <span class="a"><%= book.display_author %></span>
-            </span>
-          <% end %>
+      <% @semantic_books.each do |book| %>
+        <%= link_to book_path(book), class: "search-hit" do %>
+          <%= render "cover", book: book %>
+          <span class="grow">
+            <span class="search-hit-title"><%= book.title %></span>
+            <span class="book-author"> — <%= book.display_author %></span>
+            <% if @semantic_snippets[book.id].present? %>
+              <span class="search-hit-snippet"><%= sanitize(@semantic_snippets[book.id], tags: %w[mark]) %></span>
+            <% end %>
+          </span>
         <% end %>
-      </div>
+      <% end %>
     <% end %>
   <% elsif @hits.empty? %>
     <div class="empty-state">

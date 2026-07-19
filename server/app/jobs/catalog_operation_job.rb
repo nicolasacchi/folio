@@ -19,6 +19,7 @@ class CatalogOperationJob < ApplicationJob
     when "merge_duplicates" then merge_duplicates
     when "enrich_all" then enrich_all
     when "embed_all" then embed_all
+    when "embed_chunks_all" then embed_chunks_all
     else raise ArgumentError, "unknown catalog operation: #{operation}"
     end
   end
@@ -105,6 +106,30 @@ class CatalogOperationJob < ApplicationJob
       write_progress(operation: "embed_all", state: "running", embedded: embedded) if (embedded % 640).zero?
     end
     write_progress(operation: "embed_all", state: "done", embedded: embedded, finished_at: Time.current.to_i)
+  end
+
+  # (Re)builds chunk-level vectors (see Library::Embeddings#index_book_chunks!)
+  # for every book with extracted fulltext. Much heavier per book than
+  # embed_all's single metadata vector — up to MAX_CHUNKS_PER_BOOK embed
+  # calls instead of one — so over a real catalog this can run for a
+  # while; it's why the backfill is its own explicitly user-triggered
+  # button rather than something IndexBookJob fans out to automatically
+  # for books already indexed before this feature existed.
+  def embed_chunks_all
+    unless Library::Embeddings.available?
+      write_progress(operation: "embed_chunks_all", state: "failed", error: "embedding model not available")
+      return
+    end
+
+    book_ids = BookSearch.book_ids_with_fulltext
+    embedded = 0
+    write_progress(operation: "embed_chunks_all", state: "running", embedded: 0, total: book_ids.size)
+    Book.where(id: book_ids).find_each do |book|
+      Library::Embeddings.index_book_chunks!(book)
+      embedded += 1
+      write_progress(operation: "embed_chunks_all", state: "running", embedded: embedded, total: book_ids.size) if (embedded % 100).zero?
+    end
+    write_progress(operation: "embed_chunks_all", state: "done", embedded: embedded, total: book_ids.size, finished_at: Time.current.to_i)
   end
 
   def write_progress(**attributes)

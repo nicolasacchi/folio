@@ -89,6 +89,8 @@
         · <%= number_with_delimiter(@catalog_progress[:merged]) %> / <%= number_with_delimiter(@catalog_progress[:groups]) %> groups merged
       <% elsif @catalog_progress[:operation] == "embed_all" && @catalog[:books] %>
         · <%= number_with_delimiter(@catalog_progress[:embedded]) %> / <%= number_with_delimiter(@catalog[:books]) %> embedded
+      <% elsif @catalog_progress[:operation] == "embed_chunks_all" && @catalog_progress[:total] %>
+        · <%= number_with_delimiter(@catalog_progress[:embedded]) %> / <%= number_with_delimiter(@catalog_progress[:total]) %> books chunked
       <% else %>
         <%# convert_all/index_fulltext/enrich_all only track jobs fanned out
             here, not how many have finished on the conversion queue — see
@@ -109,6 +111,9 @@
     <span class="stamp"><%= number_with_delimiter(@catalog[:queued]) %> jobs queued</span>
     <% if @catalog[:embedded] %>
       <span class="stamp"><%= number_with_delimiter(@catalog[:embedded]) %> / <%= number_with_delimiter(@catalog[:books]) %> embedded</span>
+    <% end %>
+    <% if @catalog[:chunk_book_count] %>
+      <span class="stamp"><%= number_with_delimiter(@catalog[:chunk_book_count]) %> / <%= number_with_delimiter(@catalog[:books]) %> chunk-indexed</span>
     <% end %>
     <% if @catalog[:failed_conversions].positive? %>
       <span class="stamp stamp--failed"><%= number_with_delimiter(@catalog[:failed_conversions]) %> failed conversions</span>
@@ -131,6 +136,11 @@
       <%= button_to "Rebuild semantic vectors", catalog_embed_all_path,
             class: "btn",
             form: { data: { turbo_frame: "_top", turbo_confirm: "Re-embed the whole catalog for semantic search and similar-books? Takes a few minutes; runs locally." } } %>
+    <% end %>
+    <% if @catalog[:chunk_book_count] %>
+      <%= button_to "Build chunk-level vectors", catalog_embed_chunks_all_path,
+            class: "btn",
+            form: { data: { turbo_frame: "_top", turbo_confirm: "Build chunk-level semantic vectors (for search that finds a concept inside a book, not just its metadata) across every book with extracted full text? Much heavier than the metadata rebuild above — expect it to take a while on a large catalog. Safe to re-run; runs in the background." } } %>
     <% end %>
     <%= button_to "Cancel queued work (#{number_with_delimiter(@catalog[:queued])})", catalog_cancel_queued_path,
           class: "btn btn--danger", disabled: @catalog[:queued].zero?,

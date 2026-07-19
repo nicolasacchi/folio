@@ -11,6 +11,12 @@ class IndexBookJob < ApplicationJob
     return unless book
 
     BookSearch.index_book!(book, fulltext: extract_fulltext(book))
+    # Chunk-level vectors are derived from the fulltext this job just
+    # wrote, so keep them queued from the same place fulltext indexing
+    # runs (uploads, the reindex button, the index_fulltext batch op) —
+    # on their own :indexing-queue job so the (heavier) chunk embedding
+    # never blocks fulltext extraction itself.
+    EmbedBookChunksJob.perform_later(book.id) if Library::Embeddings.available?
   end
 
   private
