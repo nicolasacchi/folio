@@ -43,4 +43,15 @@ RSpec.describe "Book detail page", type: :request do
       expect(response.body).not_to include("conversion-error")
     end
   end
+
+  describe "annotation location labels" do
+    it "explains the Kindle-location abbreviation" do
+      book = create(:book)
+      create(:annotation, book: book, device: create(:device), location_start: 100, location_end: 120)
+
+      get book_path(book)
+
+      expect(response.body).to include(%(<abbr title="Kindle location, not a page number">loc.</abbr>))
+    end
+  end
 end

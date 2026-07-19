@@ -70,4 +70,35 @@ RSpec.describe "Device settings", type: :request do
       }.to change(Device, :count).by(-1)
     end
   end
+
+  # Library::EvictionPlanner's criteria (finished/never opened/dormant) are
+  # otherwise bare tokens on the page — see EvictionPlanner's header comment
+  # for the thresholds these hints/legend must stay in sync with.
+  describe "eviction reason explanations" do
+    it "explains the suggested-removal criteria with a legend and a tooltip on each reason" do
+      device = create(:device, free_bytes: 300.megabytes, total_bytes: 8_000_000_000, low_space_threshold_mb: 500)
+      book = create(:book)
+      create(:book_file, book: book, format: "azw3", size: 250.megabytes)
+      create(:reading_state, book: book, device: device, progress_percent: 98, content_mtime: 2.days.ago)
+      create(:delivery, :delivered, book: book, device: device, delivered_at: 2.weeks.ago)
+
+      get device_path(device)
+
+      expect(response.body).to include("How suggestions are chosen")
+      expect(response.body).to include(%(title="Reading progress is 95% or higher."))
+    end
+
+    it "hints at an algorithmic reason queued for removal, but not a manually requested one" do
+      device = create(:device)
+      dormant_delivery = create(:delivery, :delivered, book: create(:book), device: device)
+      dormant_delivery.request_eviction!("dormant 50 days")
+      manual_delivery = create(:delivery, :delivered, book: create(:book), device: device)
+      manual_delivery.request_eviction!("requested from web")
+
+      get device_path(device)
+
+      expect(response.body).to include(%(<span title="Last opened more than 45 days ago.">dormant 50 days</span>))
+      expect(response.body).to include(%(<span>requested from web</span>))
+    end
+  end
 end

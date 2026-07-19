@@ -396,18 +396,6 @@ mark {
   margin-top: 2rem;
 }
 
-/* ---------- Series list ---------- */
-
-.series-row {
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  padding: .65rem 0;
-  border-bottom: 1px solid var(--line);
-  text-decoration: none;
-}
-.series-row .grow { flex: 1; }
-
 /* ---------- Duplicates ---------- */
 
 .duplicate-cover { width: 3.4rem; flex: none; }
