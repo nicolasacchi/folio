@@ -30,6 +30,13 @@ pub fn collect(document_dir: &Path) -> DeviceInfo {
     }
 }
 
+/// Free bytes on the filesystem holding `path` — a single statvfs syscall,
+/// cheap enough to call before every download to avoid failing mid-write on
+/// ENOSPC.
+pub fn free_bytes(path: &Path) -> Option<u64> {
+    statvfs(path).map(|(free, _total)| free)
+}
+
 /// (free, total) in bytes for the filesystem holding `path`.
 fn statvfs(path: &Path) -> Option<(u64, u64)> {
     let c_path = CString::new(path.as_os_str().as_encoded_bytes()).ok()?;
@@ -111,6 +118,12 @@ mod tests {
         let (free, total) = statvfs(Path::new("/tmp")).expect("statvfs on /tmp");
         assert!(total > 0);
         assert!(free <= total);
+    }
+
+    #[test]
+    fn free_bytes_matches_statvfs() {
+        let (free, _total) = statvfs(Path::new("/tmp")).expect("statvfs on /tmp");
+        assert_eq!(free_bytes(Path::new("/tmp")), Some(free));
     }
 
     #[test]

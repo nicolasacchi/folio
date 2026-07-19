@@ -7,6 +7,7 @@
 //! local sidecar that produced them).
 
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -15,6 +16,36 @@ use crate::config::Config;
 use crate::state::{BookState, State};
 use crate::hardening::{self, ReaderStatus};
 use crate::{device, lipc, sdr};
+
+/// Extra headroom (beyond the item's own size) required before starting a
+/// download: the `.sdr` sidecar, catalog bookkeeping, and other books mid-
+/// sync all draw down the same filesystem.
+const DOWNLOAD_MARGIN_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Joins `name` onto `base`, but only when `name` is a single ordinary path
+/// component: not absolute, not empty, no `/` separators, and not `.`/`..`.
+/// The server hands us filenames it expects us to trust; this is the
+/// defense-in-depth check that stops a malicious or buggy manifest from
+/// writing (or deleting) outside `base` via an absolute path or a `../`
+/// traversal. Returns `None` — never a path outside `base` — on rejection.
+fn contained_join(base: &Path, name: &str) -> Option<PathBuf> {
+    if name.is_empty() {
+        return None;
+    }
+    let candidate = Path::new(name);
+    if candidate.is_absolute() {
+        return None;
+    }
+    let mut components = candidate.components();
+    let first = components.next()?;
+    if components.next().is_some() {
+        return None; // more than one component => the name contained a separator
+    }
+    match first {
+        std::path::Component::Normal(_) => Some(base.join(name)),
+        _ => None, // "." or ".."
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct SyncReport {
@@ -93,7 +124,14 @@ fn process_removal(
     state: &mut State,
     removal: &Removal,
 ) -> Result<(), ApiError> {
-    let path = config.document_dir.join(&removal.filename);
+    let Some(path) = contained_join(&config.document_dir, &removal.filename) else {
+        eprintln!(
+            "refusing removal for unsafe filename {:?} (must be a plain name under {})",
+            removal.filename,
+            config.document_dir.display()
+        );
+        return Err(ApiError::UnsafePath(removal.filename.clone()));
+    };
     let sdr_dir = sdr::sdr_dir_for(&path);
 
     if let Some(book_state) = state.books.get(&removal.id) {
@@ -108,7 +146,16 @@ fn process_removal(
     fs::remove_file(&path).ok(); // may already be gone
     fs::remove_dir_all(&sdr_dir).ok();
     if let Some(thumbnail) = &removal.thumbnail_filename {
-        fs::remove_file(config.thumbnail_dir.join(thumbnail)).ok();
+        match contained_join(&config.thumbnail_dir, thumbnail) {
+            Some(thumbnail_path) => {
+                fs::remove_file(thumbnail_path).ok();
+            }
+            None => eprintln!(
+                "refusing to remove unsafe thumbnail filename {:?} (must be a plain name under {})",
+                thumbnail,
+                config.thumbnail_dir.display()
+            ),
+        }
     }
     lipc::refresh_file(&path); // drop the catalog row
 
@@ -210,7 +257,15 @@ fn sync_item(
     // Download the book when it's new, changed on the server, or the local
     // file vanished. Formats never overwrite each other: filename comes
     // from the manifest.
-    let destination = config.document_dir.join(&item.filename);
+    let Some(destination) = contained_join(&config.document_dir, &item.filename) else {
+        eprintln!(
+            "refusing to sync unsafe filename {:?} for {:?} (must be a plain name under {})",
+            item.filename,
+            item.title,
+            config.document_dir.display()
+        );
+        return Err(ApiError::UnsafePath(item.filename.clone()));
+    };
     let needs_download = match &book_state {
         Some(existing) => existing.sha256 != item.sha256 || !existing.path.exists(),
         None => true,
@@ -219,6 +274,20 @@ fn sync_item(
     if needs_download {
         if !config.auto_download {
             return Ok(());
+        }
+        if let Some(free) = device::free_bytes(&config.document_dir) {
+            let required = item.size.saturating_add(DOWNLOAD_MARGIN_BYTES);
+            if free < required {
+                eprintln!(
+                    "skipping {} ({} bytes + {} margin needed, only {} free on {})",
+                    item.title,
+                    item.size,
+                    DOWNLOAD_MARGIN_BYTES,
+                    free,
+                    config.document_dir.display()
+                );
+                return Ok(());
+            }
         }
         eprintln!("downloading {} -> {}", item.title, destination.display());
         let part = client.download_book_part(item, &destination)?;
@@ -288,7 +357,15 @@ fn install_thumbnail(
         return Ok(()); // book not downloaded yet
     };
 
-    let destination = config.thumbnail_dir.join(&thumbnail.filename);
+    let Some(destination) = contained_join(&config.thumbnail_dir, &thumbnail.filename) else {
+        eprintln!(
+            "refusing unsafe thumbnail filename {:?} for {:?} (must be a plain name under {})",
+            thumbnail.filename,
+            item.title,
+            config.thumbnail_dir.display()
+        );
+        return Err(ApiError::UnsafePath(thumbnail.filename.clone()));
+    };
     let current_size = fs::metadata(&destination).map(|m| m.len()).ok();
     let ours = book_state.thumbnail_filename.as_deref() == Some(thumbnail.filename.as_str())
         && current_size == Some(book_state.thumbnail_size);
@@ -441,5 +518,49 @@ mod tests {
         assert!(!existing.path.exists());
 
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn contained_join_allows_plain_filenames() {
+        let base = Path::new("/mnt/us/documents/PrivateCloud");
+        assert_eq!(
+            contained_join(base, "Some Book.azw3"),
+            Some(base.join("Some Book.azw3"))
+        );
+        assert_eq!(
+            contained_join(base, "thumbnail_uuid_EBOK_portrait.jpg"),
+            Some(base.join("thumbnail_uuid_EBOK_portrait.jpg"))
+        );
+    }
+
+    #[test]
+    fn contained_join_rejects_parent_traversal() {
+        let base = Path::new("/mnt/us/documents/PrivateCloud");
+        assert_eq!(contained_join(base, "../etc/passwd"), None);
+    }
+
+    #[test]
+    fn contained_join_rejects_absolute_paths() {
+        let base = Path::new("/mnt/us/documents/PrivateCloud");
+        assert_eq!(contained_join(base, "/abs/path"), None);
+    }
+
+    #[test]
+    fn contained_join_rejects_embedded_separators() {
+        let base = Path::new("/mnt/us/documents/PrivateCloud");
+        assert_eq!(contained_join(base, "a/b"), None);
+    }
+
+    #[test]
+    fn contained_join_rejects_dot_dot() {
+        let base = Path::new("/mnt/us/documents/PrivateCloud");
+        assert_eq!(contained_join(base, ".."), None);
+    }
+
+    #[test]
+    fn contained_join_rejects_empty_and_current_dir() {
+        let base = Path::new("/mnt/us/documents/PrivateCloud");
+        assert_eq!(contained_join(base, ""), None);
+        assert_eq!(contained_join(base, "."), None);
     }
 }
