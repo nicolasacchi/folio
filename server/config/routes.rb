@@ -39,6 +39,8 @@ Rails.application.routes.draw do
 
   get "series", to: "series#index", as: :series_index
 
+  resources :smart_shelves
+
   get "reading", to: "reading#index", as: :reading
 
   get "notes", to: "annotations#index", as: :annotations

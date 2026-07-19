@@ -1,0 +1,6 @@
+<% content_for :title, "Edit #{@smart_shelf.name} — Folio" %>
+
+<p class="kicker">Card catalog</p>
+<h1 class="page-title">Edit “<%= @smart_shelf.name %>”</h1>
+
+<%= render "form", smart_shelf: @smart_shelf, url: smart_shelf_path(@smart_shelf) %>

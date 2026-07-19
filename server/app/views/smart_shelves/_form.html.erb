@@ -1,0 +1,48 @@
+<% if smart_shelf.errors.any? %>
+  <div class="flash flash--alert" role="alert">
+    <%= smart_shelf.errors.full_messages.to_sentence %>
+  </div>
+<% end %>
+
+<%= form_with model: smart_shelf, url: url, method: (smart_shelf.persisted? ? :patch : :post),
+      data: { controller: "smart-shelf-conditions" } do |form| %>
+  <%= form.label :name, "Name" %>
+  <%= form.text_field :name, placeholder: "Sci-fi by Asimov" %>
+
+  <p class="section-label">Match</p>
+  <%= select_tag "smart_shelf[match]",
+        options_for_select([ [ "All conditions (AND)", "all" ], [ "Any condition (OR)", "any" ] ],
+          smart_shelf.match_any? ? "any" : "all") %>
+
+  <p class="section-label">Conditions</p>
+  <div data-smart-shelf-conditions-target="rows">
+    <% (smart_shelf.conditions.presence || [ {} ]).each do |condition| %>
+      <%= render "condition_row", condition: condition.symbolize_keys %>
+    <% end %>
+  </div>
+  <template data-smart-shelf-conditions-target="template">
+    <%= render "condition_row", condition: {} %>
+  </template>
+  <p><button type="button" class="btn btn--quiet" data-action="smart-shelf-conditions#add">Add condition</button></p>
+
+  <details class="muted small">
+    <summary>Which operators go with which field?</summary>
+    <ul>
+      <% SmartShelf::FIELDS.each do |key, spec| %>
+        <li>
+          <b><%= spec[:label] %></b>:
+          <%= spec[:operators].keys.map { |op| SmartShelf::OPERATOR_LABELS.fetch(op, op) }.join(", ") %>
+        </li>
+      <% end %>
+    </ul>
+    <p>
+      “Between” and range values take two comma-separated bounds (e.g.
+      <code>1950,1960</code> or <code>2023-01-01,2023-06-01</code>).
+      “Is present”/“is absent” conditions ignore the value field.
+    </p>
+  </details>
+
+  <div class="actions">
+    <%= form.submit smart_shelf.persisted? ? "Save changes" : "Create smart shelf", class: "btn btn--primary" %>
+  </div>
+<% end %>

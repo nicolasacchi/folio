@@ -1,0 +1,16 @@
+<%# Shared book-tile grid — used by the main library shelf
+    (books/index.html.erb) and any other page that renders a page of
+    Book records the same way (see smart_shelves/show.html.erb). Callers
+    are expected to have eager-loaded :book_files and :conversions on
+    `books`, so #conversion_failed_without_deliverable? below never N+1s. %>
+<div class="shelf">
+  <% books.each do |book| %>
+    <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
+      <%= render "books/cover", book: book, flagged: book.conversion_failed_without_deliverable? %>
+      <span class="shelf-caption">
+        <span class="t"><%= book.title %></span>
+        <span class="a"><%= book.display_author %></span>
+      </span>
+    <% end %>
+  <% end %>
+</div>

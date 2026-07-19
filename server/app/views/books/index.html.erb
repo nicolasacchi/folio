@@ -100,6 +100,9 @@
   <% if @shelves.any? || @inbox_count.positive? || @uncategorized_count.positive? %>
     <nav class="shelves" aria-label="Shelves">
       <p class="section-label">Shelves</p>
+      <p class="shelves-clear">
+        <%= link_to "Smart shelves →", smart_shelves_path, class: "btn btn--quiet" %>
+      </p>
       <% if @category || @category_root %>
         <p class="shelves-clear">
           <%= link_to "All books", url_for(request.query_parameters.except("category", "category_root", "page")),
@@ -190,28 +193,7 @@
       <% end %>
     </div>
   <% else %>
-    <div class="shelf">
-      <% @books.each do |book| %>
-        <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
-          <%= render "cover", book: book, flagged: book.conversion_failed_without_deliverable? %>
-          <span class="shelf-caption">
-            <span class="t"><%= book.title %></span>
-            <span class="a"><%= book.display_author %></span>
-          </span>
-        <% end %>
-      <% end %>
-    </div>
-
-    <% if @last_page > 1 %>
-      <nav class="pager" aria-label="Pagination">
-        <% if @page > 1 %>
-          <%= link_to "← Prev", url_for(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
-        <% end %>
-        <span class="muted small">page <%= @page %> of <%= number_with_delimiter(@last_page) %></span>
-        <% if @page < @last_page %>
-          <%= link_to "Next →", url_for(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
-        <% end %>
-      </nav>
-    <% end %>
+    <%= render "shelf_grid", books: @books %>
+    <%= render "pager", page: @page, last_page: @last_page %>
   <% end %>
 <% end %>

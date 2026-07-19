@@ -1,0 +1,31 @@
+<% content_for :title, "#{@smart_shelf.name} — Folio" %>
+
+<p class="kicker">Smart shelf</p>
+<h1 class="page-title"><%= @smart_shelf.name %></h1>
+
+<div class="actions">
+  <%= link_to "Edit rules", edit_smart_shelf_path(@smart_shelf), class: "btn btn--quiet" %>
+  <%= button_to "Delete", smart_shelf_path(@smart_shelf), method: :delete, class: "btn btn--danger",
+        form: { data: { turbo_confirm: "Remove “#{@smart_shelf.name}”? Books themselves are untouched." } } %>
+</div>
+
+<div class="toolbar">
+  <%= form_with url: smart_shelf_path(@smart_shelf), method: :get, class: "toolbar-form" do %>
+    <%= select_tag :sort,
+          options_for_select([ [ "Recently added", "recent" ], [ "By title", "title" ], [ "By author", "author" ] ], @sort),
+          onchange: "this.form.requestSubmit()", "aria-label": "Sort order" %>
+    <noscript><button class="btn btn--quiet" type="submit">Apply</button></noscript>
+  <% end %>
+  <span class="muted small toolbar-stats"><%= number_with_delimiter(@total) %> books</span>
+</div>
+
+<% if @books.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No books match this shelf's rules yet.<br>
+    <%= link_to "Edit the rules", edit_smart_shelf_path(@smart_shelf) %>
+  </div>
+<% else %>
+  <%= render "books/shelf_grid", books: @books %>
+  <%= render "books/pager", page: @page, last_page: @last_page %>
+<% end %>

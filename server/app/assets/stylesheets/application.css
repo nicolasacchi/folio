@@ -584,6 +584,16 @@ mark {
 }
 .file-row .grow, .device-row .grow, .conversion-row .grow { flex: 1; min-width: 8rem; }
 
+.condition-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  margin: 0 0 .6rem;
+}
+.condition-row select { max-width: 14rem; }
+.condition-row input[type="text"] { flex: 1; min-width: 10rem; }
+
 .conversion-error { margin: -.5rem 0 .7rem; }
 .conversion-error summary {
   cursor: pointer;

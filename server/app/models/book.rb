@@ -11,6 +11,12 @@ class Book < ApplicationRecord
   # cannot parse.
   READABLE_FORMATS = %w[epub azw3 azw mobi prc fb2 cbz txt pdf].freeze
 
+  # Progress percent above which a book counts as "finished" rather than
+  # "currently reading" — used by .currently_reading (drops it off that
+  # shelf) and by SmartShelf's read_state condition (see
+  # SmartShelf.read_state_scope), so the two stay in lockstep.
+  READING_FINISHED_THRESHOLD = 96
+
   has_many :book_files, dependent: :destroy
   has_many :conversions, dependent: :destroy
   has_many :reading_states, dependent: :destroy
@@ -102,7 +108,7 @@ class Book < ApplicationRecord
       book = books[row.book_id]
       next unless book
       state = states[row.book_id].max_by(&:content_mtime)
-      next if state.progress_percent && state.progress_percent > 96
+      next if state.progress_percent && state.progress_percent > READING_FINISHED_THRESHOLD
       [ book, state ]
     }.first(limit)
   end
