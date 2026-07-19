@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 manifest (v3 fields)", type: :request do
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token } }
+  let(:headers) { { "X-Api-Token" => device.raw_token } }
   let!(:book) { create(:book, title: "Ready") }
   let!(:azw3) { create(:book_file, :on_disk, book: book, format: "azw3") }
   let!(:delivery) { create(:delivery, book: book, device: device) }

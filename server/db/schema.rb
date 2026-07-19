@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_19_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_19_130000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -146,11 +146,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_120000) do
     t.boolean "reader_writeback", default: false, null: false
     t.string "serial"
     t.datetime "status_reported_at"
-    t.string "token", null: false
+    t.string "token_digest", null: false
     t.bigint "total_bytes"
     t.datetime "updated_at", null: false
     t.index ["kind"], name: "index_devices_on_kind"
-    t.index ["token"], name: "index_devices_on_token", unique: true
+    t.index ["token_digest"], name: "index_devices_on_token_digest", unique: true
   end
 
   create_table "import_files", force: :cascade do |t|

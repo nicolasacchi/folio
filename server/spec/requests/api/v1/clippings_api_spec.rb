@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 clippings", type: :request do
   let!(:device) { create(:device) }
-  let(:headers) { { "X-Api-Token" => device.token, "CONTENT_TYPE" => "text/plain" } }
+  let(:headers) { { "X-Api-Token" => device.raw_token, "CONTENT_TYPE" => "text/plain" } }
 
   let(:body) do
     "The Salt Road (Ada Author)\r\n" \

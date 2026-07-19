@@ -15,7 +15,7 @@ class Api::V1::BaseController < ActionController::API
   private
 
   def authenticate_device!
-    @current_device = Device.find_by(token: device_token) if device_token.present?
+    @current_device = Device.authenticate_by_token(device_token)
     return render json: { error: "unauthorized" }, status: :unauthorized unless @current_device
 
     @current_device.touch_last_seen!

@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe "API v1 device status", type: :request do
   let!(:device) { create(:device, low_space_threshold_mb: 500) }
-  let(:headers) { { "X-Api-Token" => device.token, "CONTENT_TYPE" => "application/json" } }
+  let(:headers) { { "X-Api-Token" => device.raw_token, "CONTENT_TYPE" => "application/json" } }
 
   it "rejects requests without a token" do
     post "/api/v1/device/status"

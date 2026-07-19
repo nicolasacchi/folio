@@ -256,10 +256,14 @@
 
 <p class="section-label">Token</p>
 <div class="device-row">
-  <span class="token-box grow" data-controller="clipboard" data-clipboard-text-value="<%= @device.token %>">
-    <%= @device.token %>
-    <button type="button" class="top-link" data-action="clipboard#copy" title="Copy token">copy</button>
-  </span>
+  <% if @device.raw_token.present? %>
+    <span class="token-box grow" data-controller="clipboard" data-clipboard-text-value="<%= @device.raw_token %>">
+      <%= @device.raw_token %>
+      <button type="button" class="top-link" data-action="clipboard#copy" title="Copy token">copy</button>
+    </span>
+  <% else %>
+    <span class="grow small muted">Token is hidden after creation — only its digest is stored. Remove this device and add a new one to get a fresh token.</span>
+  <% end %>
   <%= button_to "Remove device", device_path(@device), method: :delete, class: "btn btn--danger",
         form: { data: { turbo_confirm: "Remove #{@device.name}? Its token stops working immediately." } } %>
 </div>

@@ -5,10 +5,15 @@ class Device < ApplicationRecord
   has_many :device_syncs, dependent: :destroy
   has_many :annotations, dependent: :destroy
 
+  # Holds the plaintext token in memory only, right after generation — it
+  # is never persisted (see #assign_token). Populated on create so the UI
+  # can display it exactly once; nil on every subsequently loaded record.
+  attr_accessor :raw_token
+
   before_validation :assign_token, on: :create
 
   validates :name, presence: true, uniqueness: true
-  validates :token, presence: true, uniqueness: true
+  validates :token_digest, presence: true, uniqueness: true
   validates :low_space_threshold_mb, numericality: { greater_than: 0 }
 
   broadcasts_refreshes_to ->(_device) { "devices" }
@@ -18,10 +23,32 @@ class Device < ApplicationRecord
   scope :physical, -> { where(kind: "kindle") }
   scope :web, -> { where(kind: "web") }
 
+  # We store only this digest, never the plaintext token (see #assign_token
+  # and #authenticate_by_token) — a leaked database dump can't be replayed
+  # against the device API. Must stay byte-identical between the plaintext
+  # -> digest migration backfill and runtime lookups here.
+  def self.digest_token(raw)
+    Digest::SHA256.hexdigest(raw)
+  end
+
+  # Device API auth entry point (see Api::V1::BaseController) — looks a
+  # device up by the digest of the raw token the daemon sent, never by
+  # the raw token itself (we don't have it to compare against).
+  def self.authenticate_by_token(raw)
+    return nil if raw.blank?
+
+    find_by(token_digest: digest_token(raw))
+  end
+
   # The one Device row the web reader writes annotations/positions under.
   # Never appears in device-management UI (see Device.physical usages).
   def self.web_reader!
-    find_or_create_by!(kind: "web") { |d| d.name = "Folio Web"; d.token = SecureRandom.hex(24) }
+    find_or_create_by!(kind: "web") do |d|
+      d.name = "Folio Web"
+      raw = SecureRandom.hex(24)
+      d.raw_token = raw
+      d.token_digest = digest_token(raw)
+    end
   end
 
   def touch_last_seen!
@@ -108,6 +135,10 @@ class Device < ApplicationRecord
   private
 
   def assign_token
-    self.token ||= SecureRandom.hex(20)
+    return if token_digest.present?
+
+    raw = SecureRandom.hex(20)
+    self.raw_token = raw
+    self.token_digest = self.class.digest_token(raw)
   end
 end

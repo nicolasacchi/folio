@@ -5,7 +5,7 @@ RSpec.describe "API v1 reading states", type: :request do
   let!(:other_device) { create(:device, name: "kindle-b") }
   let!(:book) { create(:book) }
   let!(:delivery) { create(:delivery, book: book, device: device) }
-  let(:headers) { { "X-Api-Token" => device.token, "CONTENT_TYPE" => "application/gzip" } }
+  let(:headers) { { "X-Api-Token" => device.raw_token, "CONTENT_TYPE" => "application/gzip" } }
 
   describe "PUT /api/v1/books/:public_id/reading_state" do
     it "stores the bundle and its content mtime" do
@@ -57,10 +57,10 @@ RSpec.describe "API v1 reading states", type: :request do
       create(:delivery, book: book, device: other_device)
       put "/api/v1/books/#{book.public_id}/reading_state",
         params: "old-bundle",
-        headers: { "X-Api-Token" => device.token, "CONTENT_TYPE" => "application/gzip", "X-Sdr-Mtime" => "1000" }
+        headers: { "X-Api-Token" => device.raw_token, "CONTENT_TYPE" => "application/gzip", "X-Sdr-Mtime" => "1000" }
       put "/api/v1/books/#{book.public_id}/reading_state",
         params: "new-bundle",
-        headers: { "X-Api-Token" => other_device.token, "CONTENT_TYPE" => "application/gzip", "X-Sdr-Mtime" => "2000" }
+        headers: { "X-Api-Token" => other_device.raw_token, "CONTENT_TYPE" => "application/gzip", "X-Sdr-Mtime" => "2000" }
 
       get "/api/v1/books/#{book.public_id}/reading_state", headers: headers
 
