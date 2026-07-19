@@ -87,6 +87,24 @@ Rails.application.routes.draw do
     get "entries/:public_id/thumbnail", to: "downloads#thumbnail", as: :entry_thumbnail
   end
 
+  # KOReader's built-in progress-sync ("kosync") protocol. A user points
+  # KOReader's "Custom sync server" setting at this Folio instance's
+  # `https://<host>/kosync/` (trailing slash — KOReader's Spore client
+  # appends these paths to that base URL verbatim) and these routes serve
+  # exactly the paths the client calls: `/users/create`, `/users/auth`,
+  # `/syncs/progress`, `/syncs/progress/:document`, `/healthcheck`. Its own
+  # top-level namespace, not nested under /api/v1 or /opds: different auth
+  # (x-auth-user/x-auth-key against KosyncCredential, not a device token or
+  # HTTP Basic against User) — see Kosync::BaseController.
+  namespace :kosync do
+    post "users/create",             to: "users#create"
+    get  "users/auth",               to: "users#auth"
+    put  "syncs/progress",           to: "syncs#update", as: :sync_progress
+    get  "syncs/progress/:document", to: "syncs#show", as: :sync_progress_document,
+      constraints: { document: /[^\/]+/ }
+    get  "healthcheck",              to: "health#show"
+  end
+
   namespace :api do
     namespace :v1 do
       get "manifest", to: "manifests#show"
