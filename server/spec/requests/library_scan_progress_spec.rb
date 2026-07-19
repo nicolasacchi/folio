@@ -56,4 +56,28 @@ RSpec.describe "Library scan progress", type: :request do
 
     expect(response.body).not_to include("imported")
   end
+
+  describe "catalog counts" do
+    before do
+      # Let the @catalog block in #show actually run instead of the
+      # pre-seeded stub above.
+      Rails.cache.delete("catalog_counts")
+      # queued: SolidQueue::Job.where(...).count hits the same
+      # no-queue-database-in-test wall as cancel_queued (see catalog_spec.rb) —
+      # same verify_partial_doubles dance to stub it out.
+      RSpec::Mocks.configuration.verify_partial_doubles = false
+      allow(SolidQueue::Job).to receive(:where).and_return(double(count: 0))
+      RSpec::Mocks.configuration.verify_partial_doubles = true
+    end
+
+    it "counts fulltext_missing off the has_fulltext flag rather than scanning the FTS index" do
+      create(:book, has_fulltext: true)
+      create(:book, has_fulltext: false)
+      create(:book, has_fulltext: false)
+
+      get library_scan_path
+
+      expect(response.body).to include("Index full text (2)")
+    end
+  end
 end

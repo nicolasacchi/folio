@@ -1,7 +1,7 @@
 # Extracts text from the best available file and (re)indexes the book in
 # the FTS5 search table.
 class IndexBookJob < ApplicationJob
-  queue_as :default
+  queue_as :indexing
 
   # Formats ranked by how clean their extracted text is.
   TEXT_SOURCE_PREFERENCE = %w[txt epub azw3 mobi azw prc fb2 docx html htmlz odt rtf lit pdf].freeze
