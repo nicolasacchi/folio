@@ -1,0 +1,34 @@
+<% content_for :title, "Smart shelves — Folio" %>
+
+<p class="kicker">Card catalog</p>
+<h1 class="page-title">Smart shelves</h1>
+<p class="muted small">
+  Saved rule sets that resolve to a live set of books — e.g. “Sci-fi by
+  Asimov” or “Unread from 2023”. New matches show up automatically as your
+  library changes.
+</p>
+
+<% if @smart_shelves.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No smart shelves yet.<br>
+    <%= link_to "Create your first smart shelf", new_smart_shelf_path %>
+  </div>
+<% else %>
+  <% @smart_shelves.each do |shelf| %>
+    <div class="device-row">
+      <span class="grow">
+        <%= link_to shelf.name, smart_shelf_path(shelf), class: "device-name" %><br>
+        <span class="small muted">
+          <%= pluralize(shelf.conditions.size, "condition") %> (<%= shelf.match_any? ? "any" : "all" %>)
+          · <%= pluralize(shelf.books.count, "book") %>
+        </span>
+      </span>
+      <%= link_to "Edit", edit_smart_shelf_path(shelf), class: "btn btn--quiet" %>
+      <%= button_to "Delete", smart_shelf_path(shelf), method: :delete, class: "btn btn--danger",
+            form: { data: { turbo_confirm: "Remove “#{shelf.name}”? Books themselves are untouched." } } %>
+    </div>
+  <% end %>
+<% end %>
+
+<p class="section-label"><%= link_to "New smart shelf", new_smart_shelf_path, class: "btn btn--primary" %></p>

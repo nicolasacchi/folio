@@ -1,0 +1,16 @@
+<%# Shared prev/next pager — see _shelf_grid.html.erb; `page`/`last_page`
+    describe the current controller's own pagination (e.g.
+    BooksController#index or SmartShelvesController#show), and the links
+    are built off the current request's own query params + path, so this
+    works unmodified for any controller/action. %>
+<% if last_page > 1 %>
+  <nav class="pager" aria-label="Pagination">
+    <% if page > 1 %>
+      <%= link_to "← Prev", url_for(request.query_parameters.merge("page" => page - 1)), class: "btn btn--quiet" %>
+    <% end %>
+    <span class="muted small">page <%= page %> of <%= number_with_delimiter(last_page) %></span>
+    <% if page < last_page %>
+      <%= link_to "Next →", url_for(request.query_parameters.merge("page" => page + 1)), class: "btn btn--quiet" %>
+    <% end %>
+  </nav>
+<% end %>

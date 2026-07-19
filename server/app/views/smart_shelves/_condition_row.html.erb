@@ -1,0 +1,21 @@
+<%# One condition row: field + operator + value, all plain (unnamed-index)
+    array inputs — see SmartShelvesController#smart_shelf_params. Used for
+    each saved condition, for the one blank starter row on a new shelf,
+    and (wrapped in a <template>) as the row the Stimulus controller
+    clones when "Add condition" is clicked. %>
+<div class="condition-row" data-smart-shelf-conditions-target="row">
+  <select name="smart_shelf[condition_field][]" aria-label="Field">
+    <option value="">Field…</option>
+    <% SmartShelf::FIELDS.each do |key, spec| %>
+      <option value="<%= key %>" <%= "selected" if condition[:field] == key %>><%= spec[:label] %></option>
+    <% end %>
+  </select>
+  <select name="smart_shelf[condition_op][]" aria-label="Operator">
+    <option value="">Operator…</option>
+    <% SmartShelf.operator_options.each do |op, label| %>
+      <option value="<%= op %>" <%= "selected" if condition[:op] == op %>><%= label %></option>
+    <% end %>
+  </select>
+  <%= text_field_tag "smart_shelf[condition_value][]", condition[:value], id: nil, placeholder: "value (blank for present/absent)", "aria-label": "Value" %>
+  <button type="button" class="btn btn--quiet" data-action="smart-shelf-conditions#remove">Remove</button>
+</div>
