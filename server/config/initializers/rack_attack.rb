@@ -43,6 +43,24 @@ class Rack::Attack
     end
   end
 
+  # /kosync is reachable by anyone who knows the URL (open registration by
+  # default — see KosyncCredential.open_registration?), unlike /api/v1
+  # which requires a pre-provisioned device token, so it gets its own
+  # ceiling rather than sharing the device API's. Keyed by the kosync
+  # username header, the only stable identity even the unauthenticated
+  # register/login calls carry; falls back to IP otherwise. KOReader's own
+  # push is client-debounced to ~25s (KOSyncQueue) and a pull happens at
+  # most once per book open, so a real client stays far under this even
+  # syncing several books back-to-back.
+  KOSYNC_LIMIT = 120
+  KOSYNC_PERIOD = 1.minute
+
+  throttle("kosync/user", limit: KOSYNC_LIMIT, period: KOSYNC_PERIOD) do |req|
+    if req.path.start_with?("/kosync/")
+      req.get_header("HTTP_X_AUTH_USER").presence || req.ip
+    end
+  end
+
   # Let a throttled client know when to retry instead of hammering
   # immediately (same spirit as the Retry-After the API already sends on a
   # busy-database 503 — see Api::V1::BaseController).

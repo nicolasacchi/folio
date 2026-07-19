@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_19_141000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_20_120000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -173,6 +173,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_141000) do
     t.index ["status"], name: "index_import_files_on_status"
   end
 
+  create_table "kosync_credentials", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key_digest", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id"
+    t.string "username", null: false
+    t.index ["user_id"], name: "index_kosync_credentials_on_user_id"
+    t.index ["username"], name: "index_kosync_credentials_on_username", unique: true
+  end
+
+  create_table "kosync_progresses", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "device"
+    t.string "device_id"
+    t.string "document", null: false
+    t.integer "kosync_credential_id", null: false
+    t.text "metadata"
+    t.float "percentage", null: false
+    t.text "progress", null: false
+    t.integer "synced_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["kosync_credential_id", "document"], name: "index_kosync_progresses_on_credential_and_document", unique: true
+    t.index ["kosync_credential_id"], name: "index_kosync_progresses_on_kosync_credential_id"
+  end
+
   create_table "reader_positions", force: :cascade do |t|
     t.integer "book_id", null: false
     t.text "cfi"
@@ -235,6 +260,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_141000) do
   add_foreign_key "deliveries", "devices"
   add_foreign_key "device_syncs", "devices"
   add_foreign_key "import_files", "book_files", on_delete: :nullify
+  add_foreign_key "kosync_credentials", "users"
+  add_foreign_key "kosync_progresses", "kosync_credentials"
   add_foreign_key "reader_positions", "books"
   add_foreign_key "reader_positions", "users"
   add_foreign_key "reading_states", "books"
