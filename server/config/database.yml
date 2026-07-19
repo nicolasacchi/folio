@@ -7,7 +7,12 @@
 default: &default
   adapter: sqlite3
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-  timeout: 5000
+  # busy_timeout (ms): how long a writer waits for the write lock before
+  # raising SQLite3::BusyException. The stock 5s was too low under batch
+  # indexing/embedding load — writers (including Solid Queue's own process
+  # heartbeat on the queue db) hit StatementTimeout and, missing enough
+  # heartbeats, got pruned mid-job. 15s rides out those contention spikes.
+  timeout: 15000
 
 development:
   primary:
