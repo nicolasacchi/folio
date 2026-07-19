@@ -11,7 +11,7 @@ class LibraryScansController < ApplicationController
       {
         books: Book.count,
         to_convert: Book.count - deliverable,
-        fulltext_missing: Book.count - BookSearch.book_ids_with_fulltext.size,
+        fulltext_missing: Book.where(has_fulltext: false).count,
         duplicate_groups: Library::DuplicateGroups.count,
         to_enrich: Book.where(description: [ nil, "" ]).where(enriched_at: nil).count,
         embedded: Library::Embeddings.available? ? Library::Embeddings.count : nil,

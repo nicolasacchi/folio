@@ -44,6 +44,7 @@ module BookSearch
   def index_book!(book, fulltext: nil)
     fulltext ||= stored_fulltext(book.id)
     fulltext = fulltext.to_s.byteslice(0, MAX_FULLTEXT_BYTES).to_s.scrub("")
+    present = fulltext.present?
     with_db do |db|
       # DELETE+INSERT is a re-index, not two independent writes: without a
       # transaction, a crash (or a concurrent reader) between the two
@@ -55,10 +56,19 @@ module BookSearch
         insert_row!(db, book, fulltext)
       end
     end
+    # Deliberately outside with_db: this is a write on the PRIMARY
+    # connection, not the FTS one, so it must not run while this process
+    # holds BookSearch's mutex (that would serialize primary writes behind
+    # FTS ones for no reason) and a failure here must not roll back — or
+    # get rolled back by — the FTS write above. book_ids_with_fulltext
+    # used to be a full scan of the multi-GB fulltext column just to size
+    # this count; has_fulltext keeps it a cheap indexed lookup instead.
+    Book.where(id: book.id).update_all(has_fulltext: present)
   end
 
   def remove_book!(book_id)
     with_db { |db| db.execute("DELETE FROM book_search WHERE book_id = ?", [ book_id ]) }
+    Book.where(id: book_id).update_all(has_fulltext: false)
   end
 
   def insert_row!(db, book, fulltext)

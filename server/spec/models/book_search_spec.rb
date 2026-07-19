@@ -106,6 +106,44 @@ RSpec.describe BookSearch do
       expect(described_class.search("original").map { |hit| hit[:book_id] }).to eq([ book.id ])
       expect(described_class.search("replacement")).to eq([])
     end
+
+    it "sets the book's has_fulltext flag when indexed with non-empty text" do
+      described_class.index_book!(book, fulltext: "some extracted words")
+
+      expect(book.reload.has_fulltext).to be(true)
+    end
+
+    it "clears the book's has_fulltext flag when indexed with nil text" do
+      book.update_column(:has_fulltext, true)
+
+      described_class.index_book!(book, fulltext: nil)
+
+      expect(book.reload.has_fulltext).to be(false)
+    end
+
+    it "clears the book's has_fulltext flag when indexed with blank text" do
+      book.update_column(:has_fulltext, true)
+
+      described_class.index_book!(book, fulltext: "   ")
+
+      expect(book.reload.has_fulltext).to be(false)
+    end
+  end
+
+  describe ".remove_book!" do
+    it "clears the book's has_fulltext flag" do
+      book = create(:book, has_fulltext: true)
+      described_class.index_book!(book, fulltext: "extracted text")
+      expect(book.reload.has_fulltext).to be(true)
+
+      described_class.remove_book!(book.id)
+
+      expect(book.reload.has_fulltext).to be(false)
+    end
+
+    it "does not raise when the book no longer exists in the primary database" do
+      expect { described_class.remove_book!(0) }.not_to raise_error
+    end
   end
 
   describe "legacy schema migration" do
@@ -227,6 +265,14 @@ RSpec.describe BookSearch do
         # memory — reusing this (as the old closed?-only guard could) is
         # exactly the bug.
         inherited_db = described_class.instance_variable_get(:@db)
+        # index_book! also writes has_fulltext on the PRIMARY connection,
+        # which needs a real reconnect after fork (Solid Queue's supervisor
+        # handles that for real workers). This example is only about the
+        # FTS handle's own pid-keyed fork safety, and the primary write
+        # would otherwise fight the parent's still-open RSpec transaction
+        # for the primary database's write lock — stub it out here; the
+        # has_fulltext behavior itself is covered under ".index_book!" above.
+        allow(Book).to receive(:where).and_return(double(update_all: nil))
         described_class.index_book!(book, fulltext: "written by the child")
         child_db = described_class.instance_variable_get(:@db)
         {
