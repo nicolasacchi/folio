@@ -47,7 +47,7 @@
       <span class="stamp stamp--pending">removing</span>
       <span class="grow small">
         <%= link_to delivery.book.title, book_path(delivery.book) %>
-        <% if delivery.evict_reason.present? %><span class="muted">· <%= delivery.evict_reason %></span><% end %>
+        <% if delivery.evict_reason.present? %><span class="muted">· <%= eviction_reason_span(delivery.evict_reason) %></span><% end %>
       </span>
       <%= button_to "Keep", eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet" %>
     </div>

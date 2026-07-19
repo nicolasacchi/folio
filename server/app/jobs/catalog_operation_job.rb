@@ -74,7 +74,7 @@ class CatalogOperationJob < ApplicationJob
       end
       write_progress(operation: "merge_duplicates", state: "running", merged: merged, groups: groups.size) if (index % 50).zero?
     end
-    write_progress(operation: "merge_duplicates", state: "done", merged: merged, finished_at: Time.current.to_i)
+    write_progress(operation: "merge_duplicates", state: "done", merged: merged, groups: groups.size, finished_at: Time.current.to_i)
   end
 
   # Queue an external-catalog lookup for every book still missing

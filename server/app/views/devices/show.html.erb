@@ -125,9 +125,19 @@
     <%= @device.low_space_threshold_mb %> MB free after the queue lands.
     <% if @device.auto_evict? %>Auto-remove is on — these go out on the next sync.<% end %>
   </p>
+  <details class="conversion-error">
+    <summary>How suggestions are chosen</summary>
+    <p class="small muted">
+      Candidates are picked in this order, largest first within each group:
+      <b>finished</b> (read to <%= Library::EvictionPlanner::FINISHED_PERCENT.to_i %>% or more),
+      then <b>never opened</b> (delivered over <%= Library::EvictionPlanner::NEVER_OPENED_AFTER.inspect %> ago with no reading activity),
+      then <b>dormant</b> (last opened over <%= Library::EvictionPlanner::DORMANT_AFTER.inspect %> ago).
+      Anything read or delivered recently is never suggested.
+    </p>
+  </details>
   <% @plan.each do |suggestion| %>
     <div class="file-row">
-      <span class="stamp stamp--pending"><%= suggestion.reason %></span>
+      <%= eviction_reason_span(suggestion.reason, css_class: "stamp stamp--pending") %>
       <span class="grow small">
         <%= link_to suggestion.book.title, book_path(suggestion.book) %>
         <span class="muted">· <%= format_size(suggestion.size) %></span>
@@ -150,7 +160,7 @@
       <span class="stamp stamp--pending">removing</span>
       <span class="grow small">
         <%= link_to delivery.book.title, book_path(delivery.book) %>
-        <% if delivery.evict_reason.present? %><span class="muted">· <%= delivery.evict_reason %></span><% end %>
+        <% if delivery.evict_reason.present? %><span class="muted">· <%= eviction_reason_span(delivery.evict_reason) %></span><% end %>
       </span>
       <%= button_to "Keep", eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet" %>
     </div>
@@ -247,7 +257,7 @@
       <span class="grow small muted">
         <%= link_to delivery.book.title, book_path(delivery.book) %>
         · removed <%= time_ago_in_words(delivery.removed_at) %> ago
-        <% if delivery.evict_reason.present? %> · <%= delivery.evict_reason %><% end %>
+        <% if delivery.evict_reason.present? %> · <%= eviction_reason_span(delivery.evict_reason) %><% end %>
       </span>
       <%= button_to "Send again", deliveries_path(book_id: delivery.book_id, device_id: @device.id), class: "btn btn--quiet" %>
     </div>

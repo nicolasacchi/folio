@@ -135,7 +135,7 @@
       <p class="annotation-content"><%= annotation.content %></p>
       <footer class="small muted">
         <span class="stamp <%= annotation.kind == "note" ? "stamp--pending" : "stamp--ready" %>"><%= annotation.kind %></span>
-        <% if annotation.location_label %><%= annotation.location_label %> · <% end %><%
+        <% if annotation.location_label %><%= location_label_html(annotation) %> · <% end %><%
         %><% if annotation.added_at %><%= l annotation.added_at.to_date, format: :long %> · <% end %><%
         %><%= annotation.device.name %>
       </footer>

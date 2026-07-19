@@ -83,12 +83,27 @@
   <p class="section-label">Catalog operations</p>
   <% if @catalog_progress %>
     <p class="meta-list small">
-      last batch: <b><%= @catalog_progress[:operation] %></b> · <%= @catalog_progress[:state] %>
-      <% if @catalog_progress[:queued] %> · <%= number_with_delimiter(@catalog_progress[:queued]) %> queued<% end %>
-      <% if @catalog_progress[:merged] %> · <%= number_with_delimiter(@catalog_progress[:merged]) %> merged<% end %>
-      <% if @catalog_progress[:embedded] %> · <%= number_with_delimiter(@catalog_progress[:embedded]) %> embedded<% end %>
+      last batch: <b><%= catalog_operation_label(@catalog_progress[:operation]) %></b>
+      <span class="<%= catalog_state_stamp_class(@catalog_progress[:state]) %>"><%= @catalog_progress[:state] %></span>
+      <% if @catalog_progress[:operation] == "merge_duplicates" && @catalog_progress[:groups] %>
+        · <%= number_with_delimiter(@catalog_progress[:merged]) %> / <%= number_with_delimiter(@catalog_progress[:groups]) %> groups merged
+      <% elsif @catalog_progress[:operation] == "embed_all" && @catalog[:books] %>
+        · <%= number_with_delimiter(@catalog_progress[:embedded]) %> / <%= number_with_delimiter(@catalog[:books]) %> embedded
+      <% else %>
+        <%# convert_all/index_fulltext/enrich_all only track jobs fanned out
+            here, not how many have finished on the conversion queue — see
+            "Ledger" above and the button counts below for where things
+            stand right now. %>
+        <% if @catalog_progress[:queued] %> · <%= number_with_delimiter(@catalog_progress[:queued]) %> jobs queued so far<% end %>
+        <% if @catalog_progress[:merged] %> · <%= number_with_delimiter(@catalog_progress[:merged]) %> merged<% end %>
+        <% if @catalog_progress[:embedded] %> · <%= number_with_delimiter(@catalog_progress[:embedded]) %> embedded<% end %>
+      <% end %>
       <% if @catalog_progress[:error] %> · <span class="stamp stamp--failed"><%= @catalog_progress[:error] %></span><% end %>
+      <% if @catalog_progress[:finished_at] %> · finished <%= time_ago_in_words(Time.zone.at(@catalog_progress[:finished_at])) %> ago<% end %>
     </p>
+    <% if @catalog_progress[:state] == "running" %>
+      <div data-controller="poll" data-poll-interval-value="4000"></div>
+    <% end %>
   <% end %>
   <p class="meta-list small">
     <span class="stamp"><%= number_with_delimiter(@catalog[:queued]) %> jobs queued</span>

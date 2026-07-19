@@ -44,7 +44,7 @@
         <% else %>
           <span title="Not matched to a catalog book"><%= annotation.raw_title %></span>
         <% end %>
-        <% if annotation.location_label %> · <%= annotation.location_label %><% end %>
+        <% if annotation.location_label %> · <%= location_label_html(annotation) %><% end %>
         <% if annotation.added_at %> · <%= l annotation.added_at.to_date, format: :long %><% end %>
         · <%= annotation.device.name %>
       </footer>

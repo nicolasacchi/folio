@@ -10,11 +10,14 @@
   </div>
 <% else %>
   <p class="muted small"><%= pluralize(@series.size, "series") %></p>
-  <div class="series-list">
+  <div class="shelf">
     <% @series.each do |name, count| %>
-      <%= link_to root_path(series: name), class: "series-row" do %>
-        <span class="grow"><%= name %></span>
-        <span class="stamp"><%= count %></span>
+      <%= link_to root_path(series: name), class: "shelf-item", title: name do %>
+        <%= render "books/cover", book: @covers[name] %>
+        <span class="shelf-caption">
+          <span class="t"><%= name %></span>
+          <span class="a"><%= pluralize(count, "book") %></span>
+        </span>
       <% end %>
     <% end %>
   </div>

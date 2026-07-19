@@ -9,49 +9,66 @@
   or delete the surplus edition from its page.
 </p>
 
-<% if @groups.empty? %>
+<% unless @has_duplicates %>
   <div class="empty-state">
     <span class="fleuron">❧</span>
     No duplicate editions found.
   </div>
 <% else %>
   <div class="toolbar">
-    <p class="muted small" style="margin: 0;"><%= number_with_delimiter(@total_groups) %> groups</p>
+    <%= form_with url: duplicates_path, method: :get, class: "toolbar-form" do %>
+      <%= select_tag :sort,
+            options_for_select([ [ "By title", "title" ], [ "Largest groups first", "size" ] ], @sort),
+            onchange: "this.form.requestSubmit()", "aria-label": "Sort order" %>
+      <%= select_tag :conflicts,
+            options_for_select([ [ "All groups", "" ], [ "Format conflicts only", "1" ] ], @conflicts_only ? "1" : ""),
+            onchange: "this.form.requestSubmit()", "aria-label": "Filter" %>
+      <noscript><button class="btn btn--quiet" type="submit">Apply</button></noscript>
+    <% end %>
+    <span class="muted small toolbar-stats"><%= number_with_delimiter(@total_groups) %> groups</span>
     <%= button_to "Merge all groups", catalog_merge_duplicates_path, class: "btn",
           form: { data: { turbo_confirm: "Merge every duplicate-editions group into its best edition (most formats, then cover, then oldest)? Conflicting formats stay put; source-folder files are never touched." } } %>
   </div>
 
-  <% @groups.each do |group| %>
-    <p class="section-label"><%= group.first.title %> — <%= group.first.display_author %></p>
-    <% group.each do |book| %>
-      <div class="file-row">
-        <%= link_to book_path(book), class: "duplicate-cover" do %>
-          <%= render "books/cover", book: book %>
-        <% end %>
-        <span class="grow small">
-          <%= link_to book.title, book_path(book) %><br>
-          <span class="muted mono small">
-            <%= book.formats.map(&:upcase).join(" · ") %> ·
-            <%= format_size(book.book_files.sum(&:size)) %> ·
-            added <%= l book.created_at.to_date %>
+  <% if @groups.empty? %>
+    <div class="empty-state">
+      <span class="fleuron">❧</span>
+      No groups match this filter.<br>
+      <%= link_to "Clear filter", duplicates_path %>
+    </div>
+  <% else %>
+    <% @groups.each do |group| %>
+      <p class="section-label"><%= group.first.title %> — <%= group.first.display_author %></p>
+      <% group.each do |book| %>
+        <div class="file-row">
+          <%= link_to book_path(book), class: "duplicate-cover" do %>
+            <%= render "books/cover", book: book %>
+          <% end %>
+          <span class="grow small">
+            <%= link_to book.title, book_path(book) %><br>
+            <span class="muted mono small">
+              <%= book.book_files.map(&:format).sort.map(&:upcase).join(" · ") %> ·
+              <%= format_size(book.book_files.sum(&:size)) %> ·
+              added <%= l book.created_at.to_date %>
+            </span>
           </span>
-        </span>
-        <%= button_to "Merge others into this", merge_duplicates_path(target_id: book.id, source_ids: (group - [ book ]).map(&:id)),
-              class: "btn btn--quiet",
-              form: { data: { turbo_confirm: "Merge #{group.size - 1} other edition(s) into “#{book.title}”? Non-conflicting formats move over; emptied books are deleted." } } %>
-      </div>
+          <%= button_to "Merge others into this", merge_duplicates_path(target_id: book.id, source_ids: (group - [ book ]).map(&:id)),
+                class: "btn btn--quiet",
+                form: { data: { turbo_confirm: merge_preview_summary(group, book) } } %>
+        </div>
+      <% end %>
     <% end %>
-  <% end %>
 
-  <% if @last_page > 1 %>
-    <nav class="pager" aria-label="Pagination">
-      <% if @page > 1 %>
-        <%= link_to "← Prev", url_for(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
-      <% end %>
-      <span class="muted small">page <%= @page %> of <%= number_with_delimiter(@last_page) %></span>
-      <% if @page < @last_page %>
-        <%= link_to "Next →", url_for(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
-      <% end %>
-    </nav>
+    <% if @last_page > 1 %>
+      <nav class="pager" aria-label="Pagination">
+        <% if @page > 1 %>
+          <%= link_to "← Prev", url_for(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
+        <% end %>
+        <span class="muted small">page <%= @page %> of <%= number_with_delimiter(@last_page) %></span>
+        <% if @page < @last_page %>
+          <%= link_to "Next →", url_for(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
+        <% end %>
+      </nav>
+    <% end %>
   <% end %>
 <% end %>

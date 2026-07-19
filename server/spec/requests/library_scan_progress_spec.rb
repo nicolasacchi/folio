@@ -80,4 +80,50 @@ RSpec.describe "Library scan progress", type: :request do
       expect(response.body).to include("Index full text (2)")
     end
   end
+
+  describe "catalog operation progress" do
+    it "labels the operation and shows a real fraction for merge_duplicates (tracked by the job itself)" do
+      Rails.cache.write(CatalogOperationJob::PROGRESS_CACHE_KEY,
+        operation: "merge_duplicates", state: "running", merged: 34, groups: 210)
+
+      get library_scan_path
+
+      expect(response.body).to include("Merge duplicates")
+      expect(response.body).to include("34 / 210 groups merged")
+      expect(response.body).to include('data-controller="poll"')
+    end
+
+    it "shows a real fraction for embed_all against the catalog's book count" do
+      Rails.cache.write("catalog_counts", {
+        books: 500, to_convert: 0, fulltext_missing: 0, duplicate_groups: 0,
+        to_enrich: 0, embedded: 120, queued: 0, failed_conversions: 0
+      })
+      Rails.cache.write(CatalogOperationJob::PROGRESS_CACHE_KEY,
+        operation: "embed_all", state: "running", embedded: 120)
+
+      get library_scan_path
+
+      expect(response.body).to include("Semantic reindex")
+      expect(response.body).to include("120 / 500 embedded")
+    end
+
+    it "labels a fan-out count as jobs queued so far, not completed work, for convert_all" do
+      Rails.cache.write(CatalogOperationJob::PROGRESS_CACHE_KEY,
+        operation: "convert_all", state: "running", queued: 1500)
+
+      get library_scan_path
+
+      expect(response.body).to include("Convert to Kindle format")
+      expect(response.body).to include("1,500 jobs queued so far")
+    end
+
+    it "does not poll once the batch operation is done" do
+      Rails.cache.write(CatalogOperationJob::PROGRESS_CACHE_KEY,
+        operation: "convert_all", state: "done", queued: 1500, finished_at: Time.current.to_i)
+
+      get library_scan_path
+
+      expect(response.body).not_to include('data-controller="poll"')
+    end
+  end
 end
