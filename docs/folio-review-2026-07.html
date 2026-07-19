@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="review">
+  <meta name="kb-tags" content="folio, kindle, rails, rust, review, security, performance, architecture, ux, status:open">
+  <title>Folio — full project review (architecture, security, performance, UX, ecosystem) 2026-07</title>
+  <template id="kb-prompt">Review the kindle-private-cloud project (Folio Rails server + kindled Rust daemon) across every direction — architecture, security, data/performance, the Rust daemon, testing/ops, product/UX, and ecosystem positioning — looking for improvements and new ideas. Seven grok-4.5 reviewer workers each went deep on one lens; every finding was then adversarially re-verified against the actual source by a separate agent, and the headline claims were hand-checked. This artifact is the detailed findings register; the companion roadmap artifact prioritises the work.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 54rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2, h3, h4 { line-height: 1.25; }
+    h2 { margin-top: 2.4rem; border-bottom: 2px solid #eee; padding-bottom: .3rem; }
+    h3 { margin-top: 1.8rem; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    code { padding: 0 .2em; border-radius: 3px; }
+    pre { padding: .8rem; overflow-x: auto; border-radius: 5px; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    td, th { text-align: left; border-bottom: 1px solid #ddd; padding: .45rem .5rem; vertical-align: top; }
+    th { background: #fafafa; }
+    .note { border-left: 3px solid #0b57d0; background: #f0f4ff; padding: .6rem .9rem; margin: 1rem 0; }
+    .finding { border: 1px solid #e5e5e5; border-radius: 6px; padding: .3rem .9rem .7rem; margin: 1rem 0; }
+    .finding h4 { margin: .7rem 0 .3rem; }
+    .meta { font-size: .82em; color: #555; }
+    .sev { display: inline-block; font-size: .72em; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .1rem .45rem; border-radius: 3px; color: #fff; vertical-align: middle; }
+    .crit { background: #b3261e; } .high { background: #d9730d; } .med { background: #b58900; } .low { background: #6b7280; }
+    .v { font-size: .74em; font-weight: 700; padding: .05rem .4rem; border-radius: 3px; vertical-align: middle; }
+    .vc { background: #d7f5dd; color: #0a5a28; } .vp { background: #fff3cd; color: #7a5c00; } .vw { background: #f8d7da; color: #842029; } .vu { background: #e2e3e5; color: #41464b; }
+    .ev { font-family: ui-monospace, monospace; font-size: .8em; color: #444; word-break: break-word; }
+    .evd { font-size: .88em; color: #333; }
+    .good { border-left: 3px solid #0a5a28; background: #f0fbf3; padding: .6rem .9rem; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+<h1 id="top">Folio — full project review, July 2026</h1>
+
+<p><strong>Scope.</strong> A whole-project review of <code>kindle-private-cloud</code>
+— the Folio Rails&nbsp;8 server (<code>server/</code>, ~6k lines Ruby: 16 models,
+11 jobs, ~20 controllers, an 18-file <code>app/services/library</code> layer) and
+the <code>kindled</code> Rust daemon (<code>kindled/</code>, ~2k lines) that runs on a
+jailbroken Kindle. Live at <code>kindle.scc.im</code> behind Traefik; single-user,
+self-hosted, SQLite-only, Solid Queue running inside Puma.</p>
+
+<div class="note">
+<strong>How this was produced.</strong> Seven independent <code>grok-4.5</code>
+reviewer workers each went deep on one lens (Rails architecture, server security,
+data&nbsp;&amp;&nbsp;performance, the Rust daemon, testing&nbsp;&amp;&nbsp;ops,
+product&nbsp;&amp;&nbsp;UX, and ecosystem positioning). <strong>Every finding was
+then adversarially re-checked against the actual source by a separate verification
+agent</strong>, and the highest-impact claims were hand-verified line-by-line. Each
+finding below carries that verdict:
+<span class="v vc">CONFIRMED</span> matches the source as stated,
+<span class="v vp">PARTLY</span> has a real kernel but a materially wrong detail
+(corrected inline),
+<span class="v vw">WRONG</span> is contradicted by the source, and
+<span class="v vu">UNVERIFIED</span> was not machine-checked (lower-severity items;
+treat as reviewer opinion). Grok proposed ~72 "new ideas"; those that already
+exist in the repo were filtered out during verification and are not presented as
+new.
+</div>
+
+<h2 id="verdict">Overall verdict</h2>
+
+<p>Folio is <strong>well-engineered for what it is</strong>: a thoughtful,
+single-purpose system with genuinely hard problems solved correctly — the 5.19
+cover-tile fix (joint MOBI6+KF8 transcode), fork-safe pid-keyed SQLite handles,
+a byte-identical KRDS codec with round-trip tests, safe <code>Open3</code> Calibre
+invocation, per-device send queues with an eviction planner, and a real
+two-way reading-position sync. The verification pass repeatedly downgraded grok's
+severity claims — several "critical" flags were overstated for a single-user box.
+The review found <strong>no remote-unauthenticated compromise</strong> and no data-loss
+bug in the steady state.</p>
+
+<p>The real risks cluster in three places: (1)&nbsp;<strong>operational fragility</strong>
+— there is no automated backup for the SQLite set and the CI never actually runs;
+(2)&nbsp;<strong>authorization breadth</strong> — a device token reaches the whole
+library, not just its queue, and any web user is effectively a co-admin; and
+(3)&nbsp;<strong>scale cliffs</strong> that are invisible today but bite around a few
+thousand books. None are emergencies for a single-user deployment; all are cheap
+to fix now and expensive to fix after a data-loss scare or a library that has grown
+10×.</p>
+
+<table>
+<tr><th>Lens</th><th>Findings</th><th>Headline issue (verified)</th></tr>
+<tr><td><a href="#rails">Rails architecture</a></td><td>11</td><td>Duplicate conversions can race in without a DB constraint</td></tr>
+<tr><td><a href="#security">Server security</a></td><td>17</td><td>Device API file access is not delivery-scoped (IDOR)</td></tr>
+<tr><td><a href="#data">Data &amp; performance</a></td><td>19</td><td>No automated SQLite backup; catalog aggregates don't scale</td></tr>
+<tr><td><a href="#kindled">kindled (Rust)</a></td><td>18</td><td>Manifest paths are joined without traversal guards; no retry backoff</td></tr>
+<tr><td><a href="#testing">Testing &amp; ops</a></td><td>15</td><td>CI is nested under <code>server/</code> and never runs; it also runs the wrong test suite</td></tr>
+<tr><td><a href="#ux">Product &amp; UX</a></td><td>20</td><td>Conversion errors truncated; reader "preparing" state has no feedback</td></tr>
+<tr><td><a href="#ecosystem">Ecosystem</a></td><td>15</td><td>No OPDS and no KOReader sync — Folio is Kindle-only by construction</td></tr>
+</table>
+
+<p>What follows is the full register. The <a href="folio-roadmap-2026-07.html">companion
+roadmap artifact</a> sequences the fixes and the new directions into phases.</p>
+
+<div class="good">
+<strong>Patterns worth protecting</strong> (the roadmap should not regress these):
+the fork-safe pid-keyed side-DB handles; the FTS index living in its own database;
+argv-array Calibre invocation (no shell injection); filename sanitisation and
+zip-slip prevention on upload; auth rate-limiting on the web login/reset endpoints;
+CSRF on by default; the tight reader CSP; and the round-trip-tested KRDS codec.
+</div>
+
+<h2 id="rails">1. Rails architecture &amp; code quality</h2>
+<p class="evd">The server is idiomatic Rails 8 with good eager-loading discipline
+and excellent per-job error handling. The issues are about
+<em>enforcement</em>: invariants held by convention (timestamps, Ruby-only checks)
+rather than by the database.</p>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Duplicate conversions can be queued for the same book/format</h4>
+<p class="evd">No DB uniqueness on <code>(book_id, target_format)</code>.
+<code>EnsureKindleFormatJob</code> checks for an active conversion, then
+<code>create!</code>s — a classic check-then-act race two workers can both win,
+producing duplicate Calibre runs. A partial unique index (on active statuses) is
+the fix.</p>
+<p class="ev">ensure_kindle_format_job.rb:16,22 · conversion.rb:19 (scope :active) · schema.rb:85-97 (no unique index)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vp">PARTLY</span> <code>book_files.sha256</code> uniqueness is enforced nowhere</h4>
+<p class="evd">Grok claimed "Ruby validation only"; verification found it stronger —
+there is <em>no</em> uniqueness at all, only <code>validates :sha256, presence: true</code>,
+and the index is non-unique. Content-level dedup is therefore best-effort. (This is
+partly by design — the same bytes can legitimately back two logical books — so the
+fix is to decide the intended invariant, not blindly add a unique index.)</p>
+<p class="ev">book_file.rb:16 · schema.rb:60</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vp">PARTLY</span> <code>Book.currently_reading</code> issues a redundant second query</h4>
+<p class="evd">Two queries over <code>reading_states</code> where one window-function
+query would do. Verification corrected the framing: this is a fixed ~4 queries, not
+a true N+1, and the second fetch is <em>not</em> strictly redundant (it re-selects
+the winning rows). Real but modest; worth folding into one SQL statement.</p>
+<p class="ev">book.rb:84-97</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> <code>annotations.source</code> has a default but no validation</h4>
+<p class="evd">Schema defaults <code>source</code> to <code>clippings</code> but nothing
+constrains it to <code>{clippings, web}</code>. Code branches on the value; a stray
+value would silently mis-route. One-line <code>inclusion</code> validation.</p>
+<p class="ev">annotation.rb (no source validation) · schema.rb:30</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Divergent conversion source-preference lists</h4>
+<p class="evd"><code>EnsureKindleFormatJob::CONVERSION_SOURCE_PREFERENCE</code> and
+<code>Conversion::SOURCE_PREFERENCE</code> hold different values — a maintenance
+trap where editing one silently diverges behaviour. Consolidate to one constant.</p>
+<p class="ev">ensure_kindle_format_job.rb:10 vs conversion.rb:10</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Delivery state machine is timestamp-convention, not enforced</h4>
+<p class="evd">Delivery lifecycle is computed from which of <code>delivered_at</code>/
+<code>evict_requested_at</code>/<code>removed_at</code> are set, with no explicit
+status column or transition guard. It works, but nothing prevents an invalid
+combination. Fine for now; document the state graph or add an explicit enum before
+the logic grows.</p>
+<p class="ev">delivery.rb:33-56 · schema.rb:99-111</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vp">PARTLY</span> Prepared-copy cleanup exists but the destroy hook misses one path</h4>
+<p class="evd">Grok claimed "no cleanup logic"; that is wrong —
+<code>KindlePrep</code> deletes stale prepared files on rebuild and
+<code>Library.remove_book_artifacts</code> cleans them on book destroy. The real
+gap (confirmed by the data lens) is narrower: destroying a <em>single
+book_file</em> removes only its original, not its prepared variant, and there is no
+global GC sweep. See the data-layer finding below.</p>
+<p class="ev">kindle_prep.rb:88 · book_file.rb:101-103 · library.rb (remove_book_artifacts)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vu">UNVERIFIED</span> <code>MergeBooks</code> relies on implicit cascade deletes</h4>
+<p class="evd"><code>MergeBooks.call</code> moves <code>book_files</code> then
+<code>source.destroy!</code>, trusting <code>dependent:</code> declarations. Adding a
+new association to <code>Book</code> without a <code>dependent:</code> would silently
+orphan rows on merge. Make the cascade explicit or add a test that asserts it.</p>
+<p class="ev">merge_books.rb:39 · book.rb:14-19</p>
+</div>
+
+<p class="evd"><strong>Also flagged (lower severity):</strong> a race window inside
+<code>EnsureKindleFormatJob</code> conversion creation (same root cause as the unique-index
+gap); <code>similar_books</code> misses an <code>includes(:book_files)</code> eager-load;
+and the "device token shown in flash" item, which is really a UX/security concern (see
+those lenses — verification noted the claimed leak-to-URL vectors are wrong, since a flash
+renders in the HTML body, not the URL).</p>
+
+<h2 id="security">2. Server security</h2>
+<p class="evd">Realistic posture for a single-user, internet-exposed box behind
+Traefik TLS: <strong>no remote-unauthenticated compromise found</strong>, and several
+good controls are in place (safe Calibre argv, zip-slip prevention, web-auth rate
+limits, CSRF, host allowlist, tight reader CSP). The gaps are authorization-breadth
+and defense-in-depth, sharpened by the fact that Folio is deliberately <em>not</em>
+behind Authelia — its full auth surface faces the internet.</p>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Device API file/thumbnail/state access is not delivery-scoped (IDOR)</h4>
+<p class="evd"><code>find_book!</code> loads <em>any</em> book by <code>public_id</code>
+with no check that <code>current_device</code> has a delivery for it. Hand-verified:
+<code>BookFilesController#show</code> calls
+<code>current_device.deliveries.find_by(book:)&amp;.update!</code> — the <code>&amp;.</code>
+means that when there is no delivery it simply skips the timestamp and <em>still</em>
+<code>send_file</code>s the bytes. So any valid device token can download the entire
+library's files, covers, and reading-state bundles, not just its own queue. The
+manifest listing is correctly scoped; the file endpoints are not. Combined with
+plaintext token storage on the Kindle's world-readable FAT partition, a single token
+leak exfiltrates everything. Fix is small: scope the lookup through
+<code>current_device.deliveries</code>.</p>
+<p class="ev">base_controller.rb:29-34 · book_files_controller.rb:3-15 · reading_states_controller.rb:8-49 · thumbnails_controller.rb:6-11 · (contrast) manifests_controller.rb:12</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Device tokens stored and compared as plaintext</h4>
+<p class="evd"><code>devices.token</code> is a plaintext <code>SecureRandom.hex(20)</code>
+(160 bits — brute-force-proof, so timing-safe compare is secondary) but auth is a
+direct <code>find_by(token:)</code>. A DB read, backup leak, or SQL dump yields usable
+credentials for every device including the synthetic web device. Hash at rest
+(look up by digest, show the plaintext once).</p>
+<p class="ev">base_controller.rb:18-27 · device.rb:110-111 · schema.rb:148-152</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> No rate limiting on the device API</h4>
+<p class="evd">Web login/reset are throttled (10/3min); the device API is not. An
+authenticated caller can repeatedly POST up to ~20&nbsp;MB reading-state bodies and
+10&nbsp;MB clippings with no throttle — a disk/CPU DoS against the single SQLite
+host. Add Rack::Attack or a Traefik rate-limit middleware on <code>/api/v1</code>.</p>
+<p class="ev">sessions_controller.rb:3 · reading_states_controller.rb:5,32-34 · clippings_controller.rb:5-9</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Any web user is effectively a co-admin</h4>
+<p class="evd">Only <code>UsersController</code> is admin-gated. Any authenticated user
+can mint long-lived device API tokens, delete devices/books, run catalog-wide Calibre
+jobs, and prune the library. "Invite a reader" is really "invite a co-administrator
+of the library and every Kindle." If multi-user is ever real, split
+<code>reader</code> vs <code>librarian</code> roles.</p>
+<p class="ev">users_controller.rb:6 (sole require_admin!) · devices_controller.rb (no admin check) · catalog_controller.rb:7-47</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Sessions never expire; admin password reset doesn't revoke them</h4>
+<p class="evd">The session cookie is <code>cookies.signed.permanent</code> (20-year jar)
+with no idle/absolute timeout. Self-service reset correctly
+<code>sessions.destroy_all</code>, but an <em>admin</em> resetting another user's
+password does not — a stolen cookie survives the password change. Add a session
+lifetime and revoke on any password change.</p>
+<p class="ev">authentication.rb:41-44 · passwords_controller.rb:21-22 · users_controller.rb:29-40</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Reader book content is still same-origin with the session</h4>
+<p class="evd">The reader applies a tight CSP (<code>script-src 'self'</code>, no
+<code>unsafe-inline</code>/<code>eval</code>), which is the right primary defence and
+already documented as an incomplete fix by the authors. But foliate-js iframes are
+<code>allow-same-origin allow-scripts</code> and blob docs inherit the page origin, so
+a CSP bypass in vendored reader JS would share the app origin with session cookies.
+The complete fix is a separate book-serving origin.</p>
+<p class="ev">reader_controller.rb:10-37,90-99</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vu">UNVERIFIED</span> Untrusted ebook bytes are always fed to Calibre/custom parsers</h4>
+<p class="evd">Invocation is safe (argv, no shell), but the <em>trust boundary</em> is
+wide: any uploader or anything writable under the scanned tree triggers privileged
+parsing (Calibre + custom MOBI/OPF/KRDS parsers) as uid&nbsp;1000 with write access to
+<code>storage/</code>. Calibre has a history of memory-safety bugs on malicious
+documents. Low likelihood for a single-user library of self-owned books, but the
+mitigation (resource limits / seccomp on the conversion path) is cheap insurance.</p>
+<p class="ev">calibre.rb:13-15,38-59 · uploads_controller.rb:10-11 · scan.rb:29-33</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vu">UNVERIFIED</span> SMTP TLS certificate verification disabled by default</h4>
+<p class="evd"><code>openssl_verify_mode</code> defaults to <code>none</code>; password-reset
+links travel that channel. This deploy uses protonmail-bridge on the Docker network
+(low practical MITM risk), but the app default is unsafe for any real remote MTA.
+Set verify-peer.</p>
+<p class="ev">production.rb:72-81</p>
+</div>
+
+<p class="evd"><strong>Lower-severity (verification-noted, mostly opinion):</strong>
+enrichment HTTP client follows redirects with no host allowlist (SSRF-class, but
+inputs come from Open Library/Google Books, not users); no app-level upload
+size/count caps; device tokens shown in HTML with no rotate endpoint; generated user
+passwords echoed in a flash; no global CSP outside the reader; cookie <code>secure:</code>
+not set explicitly (mitigated by <code>force_ssl</code>); and the deliberate choice to
+keep Folio off Authelia — a documented tradeoff, not a bug.</p>
+
+<h2 id="data">3. Data layer &amp; performance</h2>
+<p class="evd">The multi-DB layout (primary / queue / cache / cable), fork-safe
+handles, and out-of-band FTS DB are solid foundations. The problems are the ones that
+stay invisible until the library is large: no backup, full-catalog aggregates, and
+queue contention.</p>
+
+<div class="finding">
+<h4><span class="sev crit">Critical</span> <span class="v vc">CONFIRMED</span> No automated backup or recovery path for the SQLite set</h4>
+<p class="evd">The primary, queue, cache, cable, FTS and dictionary databases are
+single bind-mounted files under <code>/home/nik/folio/storage</code> with no scheduled
+<code>.backup</code>, no Litestream, and no restore drill. A corrupt page or an
+<code>rm</code> loses the entire catalog, reading history, annotations, and delivery
+state. This is the single highest-value fix in the whole review. Litestream (continuous
+replication) or an hourly <code>sqlite3 .backup</code> to a second disk plus a tested
+one-line restore.</p>
+<p class="ev">Absence confirmed: no litestream/.backup references in server/lib, config, app · schema files under server/db/</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> The Catalog page rebuilds full-catalog aggregates that don't scale</h4>
+<p class="evd">Hand-verified. <code>LibraryScansController#show</code> caches for only
+1&nbsp;minute; each miss runs <code>BookSearch.book_ids_with_fulltext</code> (scans
+<code>length(fulltext)</code> across the multi-GB FTS content under the process-wide
+mutex), <code>Library::DuplicateGroups.count</code> (full <code>pluck</code> + Ruby
+<code>group_by</code>), several full-table counts and a Solid Queue job scan. At a few
+thousand books this takes seconds per miss and competes for the write lock. Add a
+<code>books.has_fulltext</code> flag and counter caches so the page reads cheap
+columns.</p>
+<p class="ev">library_scans_controller.rb:9-20 · book_search.rb:113-116 · duplicate_groups.rb:14-24</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Cancelling the queue leaves running conversions stuck forever</h4>
+<p class="evd">Hand-verified. <code>catalog#cancel_queued</code> destroys queued jobs and
+<code>Conversion.where(status: "pending").destroy_all</code>, but never touches rows
+already in <code>running</code>. Since <code>scope :active</code> includes
+<code>running</code>, <code>EnsureKindleFormatJob</code> then sees a phantom active
+conversion and never re-queues that book. Needs a stuck-conversion sweeper (reset
+<code>running</code> rows with no live job) and to include <code>running</code> in the
+cancel path.</p>
+<p class="ev">catalog_controller.rb:33-48 · conversion.rb:2,19,28</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Full-text extraction runs on the default 3-thread queue</h4>
+<p class="evd"><code>IndexBookJob</code> is <code>queue_as :default</code>, so heavy
+fulltext extraction competes with everything else on the shared worker pool inside
+Puma, pressuring the SQLite write lock that the device API also needs. Move indexing
+(and other bulk jobs) to a dedicated low-priority queue.</p>
+<p class="ev">index_book_job.rb:4</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Prepared delivery copies orphaned on single-file destroy; no global GC</h4>
+<p class="evd">Destroying one <code>book_file</code> removes its original but not its
+prepared variant, and there is no periodic sweep for orphaned prepared/cover files.
+Over time <code>prepared_files/</code> grows unbounded. Add a destroy hook for the
+prepared path plus a recurring GC that reconciles disk against the DB.</p>
+<p class="ev">book_file.rb:101-103 · schema.rb:49-52</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> FTS <code>index_book!</code> DELETE+INSERT is not transactional</h4>
+<p class="evd">The reindex deletes then inserts without wrapping in an IMMEDIATE
+transaction, so a crash between the two leaves a book missing from search until the
+next reindex. Wrap it; consider external-content FTS to halve storage.</p>
+<p class="ev">book_search.rb (index_book!)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Missing / weak indexes vs real query patterns</h4>
+<p class="evd">Several hot query paths (enrichment candidates, delivery lookups,
+annotation matching) lack covering indexes. Add targeted indexes matched to the
+<code>WHERE</code>/<code>ORDER BY</code> the controllers and jobs actually issue.</p>
+<p class="ev">schema.rb vs controllers/services/jobs query patterns</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Solid Queue + Puma multi-process write contention on the primary DB</h4>
+<p class="evd">Jobs run inside Puma (<code>SOLID_QUEUE_IN_PUMA</code>), so bulk work and
+web/device requests contend for the single primary-DB write lock. The repo already
+supports running a sidecar worker (<code>bin/jobs</code>); splitting the queue out is a
+deployment change, not new code, and is the pressure valve when the library grows.</p>
+<p class="ev">puma.rb:38 · bin/jobs (exists)</p>
+</div>
+
+<p class="evd"><strong>Also flagged (lower severity, unverified):</strong> the
+embeddings <code>busy_timeout</code> (5s) is inconsistent with the 15s global policy;
+the scan ledger is loaded wholesale into memory each run; storage multiplies
+(original + converted + prepared + covers + FTS); <code>ApplicationJob</code> has no
+discard/retry policy for dead records; <code>devices.name</code> uniqueness isn't
+DB-enforced; annotation search is an unindexed substring scan; and the legacy FTS
+migrate path drops the category column on copy (a latent bug worth a quick check).
+The reviewer's ordered "what breaks first at 5k books / 3 devices": CPU wall on the
+single-threaded conversion queue, then disk, then catalog-UI latency, then the primary
+write lock — the device path stays healthy longest thanks to per-device queues.</p>
+
+<h2 id="kindled">4. The kindled Rust daemon</h2>
+<p class="evd">Compact, careful, and correct in its happy path (SHA-256 verify,
+atomic rename via <code>.part</code>, ack-after-delete ordering). The gaps are
+resilience under adversity: no retry backoff, no download resume, and paths from the
+manifest are trusted. Several of grok's "critical" flags were downgraded by
+verification.</p>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Manifest item/thumbnail/removal paths are joined without traversal guards</h4>
+<p class="evd">Hand-verified. <code>config.document_dir.join(&amp;item.filename)</code>
+(and the thumbnail and removal equivalents) trust the server-supplied filename. Rust's
+<code>Path::join</code> lets an absolute path or <code>../</code> components escape
+<code>/mnt/us/documents/PrivateCloud</code>. The server is the user's own, so this is
+defense-in-depth — but a compromised or buggy server could write anywhere the daemon's
+user can, on a device where that matters. Canonicalise and reject any path that
+escapes the base directory.</p>
+<p class="ev">sync.rs:96,213,291 · api.rs:159-164</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev crit">Critical→High</span> <span class="v vp">PARTLY</span> No retry/backoff for transient API failures</h4>
+<p class="evd">Grok flagged critical; verification downgraded it. True: no HTTP call has
+retry logic and a manifest-fetch failure aborts the pass. But per-item errors do
+<em>not</em> fail the whole pass, and the claimed "5-minute stall" consequence was
+wrong — the daemon just retries next poll. Still worth adding exponential backoff so
+a flaky network doesn't waste a poll cycle or hammer the server.</p>
+<p class="ev">api.rs:127-287 · sync.rs:32,36-44 · main.rs:116</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> No resume for interrupted downloads</h4>
+<p class="evd">A download that dies mid-stream restarts from zero next pass (no HTTP
+Range resume). Fine for small books on Wi-Fi; wasteful for large files on a flaky
+Kindle radio. Add range-resume on the <code>.part</code> file.</p>
+<p class="ev">api.rs:152-192 · sync.rs:224-234</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Thumbnail paths are not validated either</h4>
+<p class="evd">Same traversal class as the manifest paths, on the cover-download path.
+Covered by the same canonicalisation fix.</p>
+<p class="ev">sync.rs:291</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> SDR tar unpacking doesn't validate archive integrity or contain paths</h4>
+<p class="evd">The <code>.sdr</code> bundle is unpacked without integrity checks or a
+tar-slip guard, and not atomically. A corrupt or malicious bundle could write outside
+the target or leave a half-applied state. Unpack into a temp dir, validate, then
+atomically swap.</p>
+<p class="ev">sdr.rs (unpack path)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> State-file corruption silently reverts to default</h4>
+<p class="evd">A corrupt <code>state.json</code> is silently replaced with defaults —
+the daemon forgets what it has and re-downloads everything, and any un-acked removals
+are lost. Keep a backup chain and log loudly on parse failure.</p>
+<p class="ev">state.rs (load path)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Reading-state watermark is vulnerable to clock skew</h4>
+<p class="evd">Latest-mtime-wins across devices assumes synchronised clocks. Two
+Kindles with skewed clocks can let a stale position overwrite a newer one. Low
+probability, real consequence (lost reading position). Consider a logical counter
+alongside mtime, or at least detect large skew.</p>
+<p class="ev">sync.rs (watermark logic) · sdr.rs</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vp">PARTLY</span> Partial-download files on disk-full — corrected</h4>
+<p class="evd">Grok claimed <code>.part</code> files accumulate; verification found they
+don't (retries reuse the same path and rename on success). What's real: no disk-space
+precheck before a download, and no backoff on repeated failure. Add a statvfs
+precheck (the server already computes eviction shortfall — mirror it device-side).</p>
+<p class="ev">api.rs:192 · main.rs:116</p>
+</div>
+
+<p class="evd"><strong>Also flagged (lower severity, unverified):</strong> config
+validation only checks <code>SERVER_URL</code> presence (verification noted intervals
+are runtime-clamped, so it's less bad than claimed); hardening-policy report assumes
+command availability and reports on state not command success; sidecar backup naming
+can collide; hard-coded clippings size limit and 1.5s catalog-refresh delay; no
+manifest pagination/backpressure; and a LIPC refresh called on a non-existent path.
+The removal ack handshake and a pre-sync disk check were both proposed as new but
+partially exist already (ack-after-delete ordering is correct; the server-side
+eviction planner covers half the disk story).</p>
+
+<h2 id="testing">5. Testing, CI &amp; operations</h2>
+<p class="evd">There is a real RSpec suite (~400 examples across models, jobs, requests,
+services) — but the CI that should guard it is misconfigured on two axes, and the ops
+story has the same backup gap the data lens found.</p>
+
+<div class="finding">
+<h4><span class="sev crit">Critical</span> <span class="v vc">CONFIRMED</span> The GitHub Actions workflow is nested under <code>server/</code> and never runs</h4>
+<p class="evd">Hand-verified: there is no <code>.github/workflows</code> at the repo root;
+the workflow lives at <code>server/.github/workflows/ci.yml</code>, where GitHub never
+looks. So <strong>CI has never run on any push</strong>. Move it to the repo root.</p>
+<p class="ev">server/.github/workflows/ci.yml exists; repo-root .github/workflows absent</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev crit">Critical</span> <span class="v vc">CONFIRMED</span> Even if it ran, CI runs Minitest, not the real RSpec suite</h4>
+<p class="evd">Hand-verified: <code>config/ci.rb</code> runs <code>bin/rails test</code>
+(Minitest) and <code>db:seed:replant</code>, while the actual ~400-example suite is
+RSpec. The green checkmark would exercise an empty Minitest scaffold. Point CI at
+<code>rspec</code> (and add the <code>cargo</code> tests).</p>
+<p class="ev">config/ci.rb:11-12 · server/spec/ (rspec) vs server/test/ (minitest scaffold)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Healthchecks only prove Puma booted</h4>
+<p class="evd"><code>/up</code> and <code>/healthz</code> return 200 as long as Rails is
+up — they don't prove Solid Queue is processing, Calibre is present, or the SQLite
+write path works. Solid Queue could be dead (no conversions, no deliveries) while the
+container reports healthy. Add a deep health endpoint: a trivial SQLite write plus an
+optional Solid Queue process check.</p>
+<p class="ev">routes.rb (/up, /healthz → rails/health#show)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> No SQLite backup/restore procedure in-repo</h4>
+<p class="evd">Same gap as the data lens, from the ops angle: production DBs are single
+bind-mounted files with no documented backup or restore drill. Script both.</p>
+<p class="ev">docs/kindled-operations-runbook.html (no backup section) · compose volume storage:</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> The conversion happy-path and Calibre wrapper are effectively untested</h4>
+<p class="evd">The most failure-prone subsystem — the Calibre CLI wrapper and a
+successful conversion — has no success-path spec. Add one with a stubbed Calibre that
+writes a temp file, so the pipeline's contract is pinned.</p>
+<p class="ev">server/spec/ (no convert success spec) · calibre.rb</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> 7 of 10 jobs and several production controllers have no specs</h4>
+<p class="evd">Job-layer coverage is thin, and catalog, conversions, duplicates,
+evictions, passwords, series, sessions, uploads and the API thumbnails controller have
+no request specs (verification corrected one claim — <code>library_scans</code> <em>is</em>
+covered). Add request smoke specs for the batch/upload/auth paths.</p>
+<p class="ev">spec/requests inventory · spec/jobs inventory</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> No kindled CI; cross-compile image unpinned; no toolchain pin</h4>
+<p class="evd">The Rust daemon has no CI, the musl cross image tag floats, and there is
+no <code>rust-toolchain.toml</code>. A silent upstream change could break the ARMv7
+build reproducibly only by luck. Pin the cross image by digest and add a toolchain
+file; run <code>cargo test</code> in CI.</p>
+<p class="ev">kindled/build-kindle.sh · Cargo.toml (no pinned toolchain)</p>
+</div>
+
+<p class="evd"><strong>Also flagged (lower severity):</strong> no pre-commit/pre-push
+hooks, no coverage reporting, no VCR/WebMock for the enrichment HTTP calls; the
+<code>server/test</code> Minitest scaffold is vestigial and creates dual-harness
+confusion (delete it, drop the test_unit railtie); the Dockerfile is solid but
+<code>thruster</code> is unused and specs are excluded from the image (fine); the README
+example count is stale and there is no deploy-rollback story; logging is STDOUT-only
+with no error tracking or metrics; and a spot-check of five runbook claims found them
+accurate against current code. Upgrade-cadence risk is moderate — an alpha
+<code>sqlite-vec</code> gem and a floating cross image are the two watch items.</p>
+
+<h2 id="ux">6. Product &amp; UX</h2>
+<p class="evd">The web app is genuinely nice — phone-first, live-updating, a real
+in-browser reader with two-way sync. The debt is in <em>feedback surfaces</em>:
+long-running operations (conversion, delivery prep) and failure states are
+under-communicated, and a few interactions have accessibility gaps.</p>
+
+<div class="finding">
+<h4><span class="sev crit">Critical</span> <span class="v vc">CONFIRMED</span> Conversion error messages are truncated with no way to see the full output</h4>
+<p class="evd">When a conversion fails, the stored error is byte-clipped to 4000 chars
+and the UI shows only a fragment — the user can't see why Calibre failed or act on it.
+Expose the full log in a modal/drawer.</p>
+<p class="ev">conversion.rb:37 (byteslice 4000) · books/show views</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev crit">Critical</span> <span class="v vc">CONFIRMED</span> The reader "Preparing" state has no progress indicator or timeout</h4>
+<p class="evd">Opening a book that needs on-demand conversion shows a bare
+"preparing" state with no spinner, ETA, or timeout — indistinguishable from a hang. A
+progress indicator (even indeterminate) plus a timeout/fallback message.</p>
+<p class="ev">reader views / reader_controller.js</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Conversion failures aren't visible in the shelf view</h4>
+<p class="evd">A failed conversion is only discoverable by drilling into the book —
+the library shelf gives no badge. Surface a failed-state indicator on the tile.</p>
+<p class="ev">books/index views vs conversion status</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> "Keep Reading" disappears when any library filter is applied</h4>
+<p class="evd">The currently-reading rail vanishes as soon as the user filters the
+library, losing their primary entry point. Make it persistent (or a separate,
+always-present surface).</p>
+<p class="ev">books/index (currently_reading section conditional on unfiltered)</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> Search-mode active state isn't announced to screen readers</h4>
+<p class="evd">Toggling search mode changes behaviour with no ARIA announcement — an
+accessibility gap. Add <code>aria-live</code>/<code>aria-pressed</code> semantics.</p>
+<p class="ev">search Stimulus controller / index view</p>
+</div>
+
+<p class="evd"><strong>Also flagged:</strong> eviction reason tokens ("finished",
+"dormant N days") have no tooltip explaining the criteria (verification noted the day
+count <em>is</em> embedded, so it's partial); annotation location labels read
+"page X · loc. Y–Z" but the unit isn't documented; the duplicates page has no
+sort/filter and the merge action has no conflict preview; batch catalog operations show
+aggregate state but no per-job progress; the FTS snippet window is small (verification
+corrected the misread argument — it's a 12-token window on column 6); delivery-state
+button labels are jargon-y; the reader loses position when switching paginated↔scrolled;
+the series index is text-only (no cover grid); empty states show bare command syntax;
+progress bars clamp to a 2% minimum (visually ambiguous at true-zero); and the reader
+annotation popover isn't responsive for long notes on mobile. One grok "new idea" —
+a reader sync-status indicator — was <span class="v vw">WRONG</span>: the
+<code>syncBanner</code>/<code>syncToast</code> slots are already populated by
+<code>reader_controller.js</code>.</p>
+
+<h2 id="ecosystem">7. Ecosystem positioning &amp; new directions</h2>
+<p class="evd">Folio is deliberately Kindle-native — that's its whole thesis. The
+ecosystem lens asks what it gives up by being <em>only</em> that, and where mid-2026
+self-hosted reading tools have gone. The biggest openings: speak OPDS (unlock every
+other reader), speak KOReader's sync protocol (become the sync hub, not just a Kindle
+pipeline), and deepen the embeddings it already computes.</p>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> No OPDS 1.2 / 2.0 catalog endpoints</h4>
+<p class="evd">Folio's library is reachable only through its own web UI and the
+device API. An OPDS feed would let KOReader, Marvin, Thorium, Panels, and Calibre
+itself browse and pull from Folio directly — a large reach increase for a small,
+well-specified feature.</p>
+<p class="ev">routes.rb (no /opds) — Folio side; OPDS 1.2/2.0 spec — ecosystem</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev high">High</span> <span class="v vc">CONFIRMED</span> No KOReader progress-sync (kosync) server protocol</h4>
+<p class="evd">Folio has a sophisticated two-way position sync — but only for its own
+Kindle path. Implementing the small, documented kosync API would make Folio the
+self-hosted progress-sync server for KOReader users across all their devices, a
+natural adjacency to what it already does.</p>
+<p class="ev">reader_positions/reading_states — Folio side; KOReader kosync protocol — ecosystem</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> Semantic vectors ignore fulltext (shallow "meaning" search)</h4>
+<p class="evd"><code>embed_book_job</code> embeds only title/author/description-level
+text, not chunked fulltext, so "semantic search" can't find a concept buried in a
+book's body. Chunked fulltext embeddings + hybrid (BM25 + vector) search would make it
+real — and the FTS content it needs already exists.</p>
+<p class="ev">embed_book_job.rb · book_search.rb (fulltext) — the ingredients are present</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev med">Medium</span> <span class="v vc">CONFIRMED</span> <code>auto_evict</code> can delete books from a device with no human confirm</h4>
+<p class="evd">When a device's <code>auto_evict</code> flag is set, a device-status POST
+triggers <code>auto_evict!</code> which queues removals automatically. Convenient, but
+it deletes content off the Kindle without a confirmation step. Hand-verified. Consider
+a "propose, then one-tap apply" default (the manual planner UI already exists) rather
+than silent auto-removal.</p>
+<p class="ev">device_statuses_controller.rb:9,85 · eviction_planner.rb</p>
+</div>
+
+<div class="finding">
+<h4><span class="sev low">Low</span> <span class="v vc">CONFIRMED</span> Multi-user web accounts share one global library with no ACL</h4>
+<p class="evd">All users see all books; there are no per-user shelves or visibility
+rules. Fine for a family sharing a library; a blocker for any wider multi-tenant use.
+(Same root as the security "co-admin" finding.)</p>
+<p class="ev">books scoped globally, not per-user</p>
+</div>
+
+<p class="evd"><strong>Other ecosystem gaps (unverified, lower priority):</strong> no
+Kobo device path; Komga integration is mount-only rather than API-level (no read-progress
+bridge); enrichment is Open Library + Google Books only (no Hardcover/ISBNdb); no
+rule-based "smart shelves"; the dictionary is static offline glosses (en/it) with no
+vocab-notebook capture; and no social/shelf sync (Bookwyrm/Goodreads). These feed the
+"new directions" half of the roadmap.</p>
+
+<h2 id="method">Appendix — method &amp; confidence</h2>
+<p class="evd">Seven grok-4.5 reviewers (high-judgment variant), each with a
+self-contained brief and read-only access, ran in parallel over the repo. Each lens's
+findings were piped to a separate verification agent that opened the cited evidence and
+returned a per-claim verdict; the security lens was re-run after its first attempt
+exhausted context. I then hand-verified the highest-impact claims directly against the
+source (device-API IDOR, manifest path join, stuck-conversion cancel, catalog aggregate
+query, CI location and suite, backup absence). Verification <em>downgraded</em> more
+claims than it upgraded — several "critical" flags were single-user-context
+overstatements — which is the expected and healthy direction. Treat
+<span class="v vc">CONFIRMED</span> items as actionable, <span class="v vp">PARTLY</span>
+with the correction noted, and <span class="v vu">UNVERIFIED</span> lower-severity items
+as reviewer opinion to sanity-check before acting.</p>
+
+<p class="evd">Continue to the <a href="folio-roadmap-2026-07.html">recommended
+roadmap</a>.</p>
+
+</body>
+</html>
