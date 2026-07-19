@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="roadmap">
+  <meta name="kb-tags" content="folio, kindle, rails, rust, roadmap, planning, opds, koreader, semantic-search, status:open">
+  <title>Folio — recommended roadmap (fixes + new directions) 2026-07</title>
+  <template id="kb-prompt">From the full project review of kindle-private-cloud, produce a recommended, sequenced roadmap: the fixes ordered by value-for-effort into phases (safety net first, then authorization, then scale, then daemon resilience, then UX), followed by the genuinely new directions (OPDS, KOReader sync, deep semantic search over highlights, smart shelves, local-LLM summaries). Every item traces to a verified finding in the companion review artifact.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 54rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2, h3, h4 { line-height: 1.25; }
+    h2 { margin-top: 2.4rem; border-bottom: 2px solid #eee; padding-bottom: .3rem; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    code { padding: 0 .2em; border-radius: 3px; }
+    pre { padding: .8rem; overflow-x: auto; border-radius: 5px; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    td, th { text-align: left; border-bottom: 1px solid #ddd; padding: .45rem .5rem; vertical-align: top; }
+    th { background: #fafafa; }
+    .note { border-left: 3px solid #0b57d0; background: #f0f4ff; padding: .6rem .9rem; margin: 1rem 0; }
+    .phase { border: 1px solid #e5e5e5; border-radius: 8px; padding: .2rem 1rem 1rem; margin: 1.5rem 0; }
+    .phase h3 { margin-top: 1rem; }
+    .tag { display: inline-block; font-size: .72em; font-weight: 700; padding: .1rem .45rem; border-radius: 3px; color: #fff; vertical-align: middle; }
+    .p0 { background: #b3261e; } .p1 { background: #d9730d; } .p2 { background: #b58900; } .p3 { background: #0b8043; } .p4 { background: #6b7280; }
+    .eff { font-size: .78em; color: #444; font-weight: 600; }
+    .item { margin: .9rem 0; padding-left: .2rem; }
+    .item .h { font-weight: 600; }
+    .why { font-size: .92em; color: #333; }
+    .lnk { font-size: .82em; color: #555; }
+    ul.tight li { margin: .3rem 0; }
+    .big { font-size: 1.05em; }
+  </style>
+</head>
+<body>
+<h1 id="top">Folio — recommended roadmap</h1>
+
+<p>This sequences the <a href="folio-review-2026-07.html">full review</a> into work
+you can actually schedule. Every item traces back to a verified finding. Ordering is
+<strong>value-for-effort with dependencies respected</strong>, not severity alone — a
+cheap fix that removes an existential risk beats an expensive one that polishes an
+edge.</p>
+
+<div class="note">
+<strong>Read this first.</strong> Folio is a single-user, self-hosted system that
+already works well. Nothing here is an emergency. But two facts dominate the ordering:
+there is <strong>no backup</strong> (one bad disk = total loss), and <strong>CI has
+never run</strong> (every change ships unguarded). Fix those two before anything else —
+they are each an afternoon, and they change the risk profile of every subsequent
+change. After that, the sequence de-risks authorization, then buys scale headroom, then
+hardens the daemon, then pays down UX debt, and finally opens the new directions that
+make Folio more than a Kindle pipeline.</p>
+</div>
+
+<h2 id="tiers">The phases at a glance</h2>
+<table>
+<tr><th>Phase</th><th>Theme</th><th>Why now</th><th>Rough size</th></tr>
+<tr><td><span class="tag p0">P0</span></td><td>Safety net</td><td>Remove the two "silent catastrophe" risks: no backup, dead CI</td><td>~1–2 days</td></tr>
+<tr><td><span class="tag p1">P1</span></td><td>Correctness &amp; authorization</td><td>Confirmed bugs + close the device-token blast radius</td><td>~3–5 days</td></tr>
+<tr><td><span class="tag p2">P2</span></td><td>Scale headroom</td><td>Fix the cliffs before the library hits thousands of books</td><td>~4–6 days</td></tr>
+<tr><td><span class="tag p3">P3</span></td><td>Daemon resilience &amp; UX debt</td><td>kindled robustness + the worst feedback gaps</td><td>~1–2 weeks</td></tr>
+<tr><td><span class="tag p4">P4</span></td><td>New directions</td><td>OPDS, KOReader sync, deep semantic search — reach &amp; capability</td><td>project-sized</td></tr>
+</table>
+
+<div class="phase">
+<h3 id="p0"><span class="tag p0">P0</span> Safety net — do this week</h3>
+
+<div class="item">
+<div class="h">Automated SQLite backup + a tested restore <span class="eff">· effort S–M</span></div>
+<p class="why">The whole system state — catalog, reading history, annotations, delivery
+queues — lives in a handful of unreplicated files. Add <strong>Litestream</strong>
+(continuous streaming replication to a second disk or object store) or, minimally, an
+hourly <code>sqlite3 .backup</code> of each database to a separate volume, plus a
+one-command restore documented and <em>actually run once</em> in a drill. This is the
+highest-value item in the entire review.</p>
+<p class="lnk">Fixes: data #1 (critical, confirmed), testing/ops "no backup" (high, confirmed).</p>
+</div>
+
+<div class="item">
+<div class="h">Make CI real: move it to the repo root and run RSpec <span class="eff">· effort S</span></div>
+<p class="why">Move <code>server/.github/workflows/ci.yml</code> → <code>.github/workflows/</code>
+(GitHub never looks under <code>server/</code>), and point it at <code>rspec</code> instead
+of the empty Minitest scaffold. Add the <code>cargo build --target armv7</code> +
+<code>cargo test</code> step for kindled. Delete the vestigial <code>server/test</code>
+tree to end the dual-harness confusion. Now every push is guarded by the ~400 specs that
+already exist.</p>
+<p class="lnk">Fixes: testing/ops #1 and #2 (both critical, confirmed).</p>
+</div>
+
+<div class="item">
+<div class="h">Deep health endpoint <span class="eff">· effort S</span></div>
+<p class="why">Add a <code>/healthz/deep</code> that does a trivial SQLite write and
+checks a Solid Queue process heartbeat, so "container healthy" stops meaning "Puma
+booted" while conversions and deliveries are silently dead. Wire it to the compose
+healthcheck.</p>
+<p class="lnk">Fixes: testing/ops "healthchecks only prove Puma boots" (high, confirmed).</p>
+</div>
+</div>
+
+<div class="phase">
+<h3 id="p1"><span class="tag p1">P1</span> Correctness &amp; authorization</h3>
+
+<div class="item">
+<div class="h">Scope the device API to deliveries (close the IDOR) <span class="eff">· effort S</span></div>
+<p class="why">In <code>find_book!</code> (and the file/thumbnail/reading-state
+controllers), look the book up <em>through</em> <code>current_device.deliveries</code>
+instead of globally, so a token only reaches its own queued books. Update the specs that
+currently assert unscoped download. Small change, removes the "one leaked token =
+whole library" property — especially valuable given tokens sit in plaintext on the
+Kindle's FAT partition.</p>
+<p class="lnk">Fixes: security #1 (high, confirmed, hand-verified).</p>
+</div>
+
+<div class="item">
+<div class="h">Stuck-conversion sweeper + fix <code>cancel_queued</code> <span class="eff">· effort S</span></div>
+<p class="why">A recurring job that resets <code>running</code> conversions with no live
+Solid Queue job back to a re-queueable state, and make <code>cancel_queued</code> also
+clear <code>running</code> rows. Without this, one cancelled-mid-run conversion blocks
+that book from ever converting again.</p>
+<p class="lnk">Fixes: data #3 (high, confirmed, hand-verified).</p>
+</div>
+
+<div class="item">
+<div class="h">Unique constraint on active conversions <span class="eff">· effort M</span></div>
+<p class="why">Add a partial unique index on <code>(book_id, target_format)</code> over
+active statuses so the check-then-<code>create!</code> race can't produce duplicate
+Calibre runs. Audit for existing dupes first.</p>
+<p class="lnk">Fixes: rails #1 (high, confirmed).</p>
+</div>
+
+<div class="item">
+<div class="h">Prepared-copy destroy hook + orphan GC <span class="eff">· effort M</span></div>
+<p class="why">Add an <code>after_destroy</code> that removes the prepared variant when a
+single <code>book_file</code> is destroyed, plus a recurring sweep that reconciles
+<code>prepared_files/</code> and covers against the DB. Stops unbounded disk growth.</p>
+<p class="lnk">Fixes: data #5 (high, confirmed) + rails prepared-cleanup (medium).</p>
+</div>
+
+<div class="item">
+<div class="h">Token &amp; session hardening bundle <span class="eff">· effort S–M</span></div>
+<ul class="tight">
+<li>Hash device tokens at rest (look up by SHA-256; show the plaintext once on creation, in a copy/QR affordance, not a flash line).</li>
+<li>Add a session lifetime and revoke sessions on <em>any</em> password change (admin-initiated included).</li>
+<li>Rate-limit <code>/api/v1</code> (Rack::Attack or a Traefik middleware) — cap body sizes and request rate.</li>
+<li>SMTP verify-peer on; pin an enrichment redirect allowlist.</li>
+</ul>
+<p class="lnk">Fixes: security #2, #3, #5, SMTP, SSRF-class (all confirmed/medium).</p>
+</div>
+
+<div class="item">
+<div class="h">Cheap model-integrity guards <span class="eff">· effort S</span></div>
+<p class="why">Add the <code>annotations.source</code> inclusion validation, consolidate
+the two divergent conversion-source-preference constants into one, and wrap FTS
+<code>index_book!</code> in an IMMEDIATE transaction. Three small edits that each close a
+latent inconsistency.</p>
+<p class="lnk">Fixes: rails #4, #5; data FTS-transaction (medium, confirmed).</p>
+</div>
+</div>
+
+<div class="phase">
+<h3 id="p2"><span class="tag p2">P2</span> Scale headroom — before the library gets big</h3>
+
+<div class="item">
+<div class="h">Materialise catalog aggregates <span class="eff">· effort M</span></div>
+<p class="why">The Catalog page's 1-minute-cached aggregates scan multi-GB FTS content
+and full-table <code>pluck</code>+<code>group_by</code> on every miss. Add a
+<code>books.has_fulltext</code> boolean (maintained by the index job) and counter caches
+for the dashboard numbers, so the page reads cheap indexed columns instead of scanning.</p>
+<p class="lnk">Fixes: data #2 (high, confirmed, hand-verified).</p>
+</div>
+
+<div class="item">
+<div class="h">Queue discipline for bulk work <span class="eff">· effort S–M</span></div>
+<p class="why">Move <code>IndexBookJob</code> (and other bulk jobs) off <code>:default</code>
+onto a dedicated low-priority queue; serialise Calibre work onto a single-concurrency
+conversion queue; add <code>limits_concurrency</code>/unique-job guards to
+<code>PrepareKindleFileJob</code> so the manifest self-heal can't enqueue duplicates.
+Keeps bulk work from starving the device API's write lock.</p>
+<p class="lnk">Fixes: data #4 (high), manifest self-heal (medium), Calibre serialisation.</p>
+</div>
+
+<div class="item">
+<div class="h">Targeted indexes + WAL/integrity recurring job <span class="eff">· effort S–M</span></div>
+<p class="why">Add covering indexes matched to the real hot queries (enrichment
+candidates, delivery lookups, annotation matching), and a recurring job that runs
+<code>PRAGMA wal_checkpoint(TRUNCATE)</code> and <code>integrity_check</code> so WAL
+growth and silent corruption surface early.</p>
+<p class="lnk">Fixes: data "missing indexes" (medium), plus operational hygiene.</p>
+</div>
+
+<div class="item">
+<div class="h">Option: split Solid Queue out of Puma <span class="eff">· effort S (deploy)</span></div>
+<p class="why">When bulk jobs start contending with requests, run the existing
+<code>bin/jobs</code> as a sidecar container and unset <code>SOLID_QUEUE_IN_PUMA</code>.
+No code change — just compose. Keep this in the back pocket as the pressure valve.</p>
+<p class="lnk">Addresses: data "Solid Queue + Puma contention" (medium). Already supported in-repo.</p>
+</div>
+</div>
+
+<div class="phase">
+<h3 id="p3"><span class="tag p3">P3</span> Daemon resilience &amp; UX debt</h3>
+
+<h4>kindled (Rust)</h4>
+<div class="item">
+<div class="h">Path containment on every manifest-derived join <span class="eff">· effort S</span></div>
+<p class="why">Canonicalise <code>item.filename</code>, <code>thumbnail.filename</code> and
+removal paths and reject anything that escapes the base directory (absolute paths,
+<code>../</code>). Defense-in-depth against a buggy/compromised server writing outside
+<code>PrivateCloud</code>.</p>
+<p class="lnk">Fixes: kindled #1, #4 (high, confirmed, hand-verified).</p>
+</div>
+<div class="item">
+<div class="h">Retry backoff, download resume, atomic SDR unpack, state backup chain <span class="eff">· effort M–L</span></div>
+<ul class="tight">
+<li>Exponential backoff on API calls (don't waste a poll on a flaky network).</li>
+<li>HTTP Range resume on the <code>.part</code> file for interrupted downloads + a statvfs precheck.</li>
+<li>Unpack <code>.sdr</code> into a temp dir, validate, atomic swap.</li>
+<li>Keep a backup chain for <code>state.json</code> and log loudly on parse failure instead of silently resetting.</li>
+<li>Add crash/restart telemetry so an upstart restart-storm is visible server-side.</li>
+</ul>
+<p class="lnk">Fixes: kindled #2, #3, SDR, state-corruption, disk-full (confirmed/medium–high).</p>
+</div>
+
+<h4>Web UX</h4>
+<div class="item">
+<div class="h">Communicate long operations and failures <span class="eff">· effort M</span></div>
+<ul class="tight">
+<li>Expose the full conversion log in a modal/drawer (stop truncating to a fragment).</li>
+<li>Reader "preparing" state: progress indicator + timeout/fallback message.</li>
+<li>Surface failed-conversion badges on the library shelf, not just the detail page.</li>
+<li>Make "Keep Reading" persist across filters.</li>
+<li>Add screen-reader announcements for search-mode state (a11y).</li>
+</ul>
+<p class="lnk">Fixes: UX #1, #2 (critical), #3, #4, #5 (high) — all confirmed.</p>
+</div>
+<div class="item">
+<div class="h">Second-tier UX polish <span class="eff">· effort M</span></div>
+<p class="why">Eviction-reason tooltips with criteria; duplicates page sort/filter +
+merge conflict preview; per-job progress on batch operations; preserve reader position
+across paginated↔scrolled; a cover-grid series index; document the annotation location
+unit. Batch as a "reading-app polish" sprint.</p>
+<p class="lnk">Fixes: the medium/low UX register.</p>
+</div>
+</div>
+
+<div class="phase">
+<h3 id="p4"><span class="tag p4">P4</span> New directions — the ideas worth building</h3>
+<p class="why big">These are the genuinely new capabilities (each verified as
+<em>not</em> already in the repo). Ordered by strategic value for the effort. They turn
+Folio from "my Kindle's private backend" into "the hub for how I read."</p>
+
+<div class="item">
+<div class="h">1. OPDS 1.2 / 2.0 catalog <span class="eff">· effort M</span></div>
+<p class="why">A read-only OPDS feed (with acquisition links reusing the existing
+download endpoints) instantly makes Folio's whole library browsable and pullable from
+KOReader, Marvin, Thorium, Panels, and Calibre — without building a client for each. The
+single highest reach-per-effort feature available. Auth via HTTP Basic or a scoped
+token.</p>
+<p class="lnk">From: ecosystem #1 (high, confirmed). Prereq: a token/basic-auth scheme for OPDS clients.</p>
+</div>
+
+<div class="item">
+<div class="h">2. KOReader progress-sync (kosync) server <span class="eff">· effort M</span></div>
+<p class="why">Folio already has the hard part — a two-way position model and merge
+logic. Exposing the small, documented kosync HTTP API makes Folio the self-hosted
+progress-sync server for KOReader across all a user's devices, a direct extension of what
+it does for the Kindle. Pairs naturally with OPDS (browse from KOReader, sync back to
+Folio).</p>
+<p class="lnk">From: ecosystem #2 (high, confirmed). Prereq: map kosync's document-hash keying onto <code>reader_positions</code>.</p>
+</div>
+
+<div class="item">
+<div class="h">3. Deep semantic search: chunked fulltext embeddings + hybrid ranking <span class="eff">· effort M</span></div>
+<p class="why">Today's embeddings cover only book-level metadata, so "semantic search"
+can't find a concept inside a book. Chunk the fulltext Folio already extracts, embed the
+chunks (the <code>informers</code> + <code>sqlite-vec</code> stack is in place), and blend
+vector hits with the existing BM25 FTS for true hybrid search. Turns a shallow feature
+into a real one using ingredients that already exist.</p>
+<p class="lnk">From: ecosystem #3 (medium, confirmed). Prereq: chunking + a vectors-per-chunk table.</p>
+</div>
+
+<div class="item">
+<div class="h">4. Smart shelves (rule-based collections) + per-book vocab notebook <span class="eff">· effort M / S</span></div>
+<p class="why">Saved rules (by author, tag, year, read-state, "has highlights") that
+materialise as dynamic shelves — a big browsing win at scale and a natural home for the
+taxonomy work already started. And a per-book vocabulary notebook that captures the
+dictionary lookups the reader already makes (the offline en/it dictionary is built)
+into an exportable study list.</p>
+<p class="lnk">From: ecosystem smart-shelves + vocab-notebook (confirmed new). Prereq: persist lookups; a rules DSL.</p>
+</div>
+
+<div class="item">
+<div class="h">5. Local-LLM layer: RAG over highlights + book/chapter summaries <span class="eff">· effort L</span></div>
+<p class="why">With chunked embeddings (item 3) in place, an optional local LLM (e.g.
+Ollama) can answer questions over a user's own highlights and notes, and generate
+chapter/book summaries on demand. Privacy-preserving by construction — everything stays
+on the self-hosted box, matching Folio's whole ethos. Gate it behind an opt-in so the
+base system stays dependency-light.</p>
+<p class="lnk">From: ecosystem RAG + summaries (confirmed new). Prereq: item 3; an optional local-LLM adapter.</p>
+</div>
+
+<div class="item">
+<div class="h">6. Deeper Komga bridge, more enrich providers, social scrobble <span class="eff">· effort S–L</span></div>
+<p class="why">Longer-horizon adjacencies: a two-way read-progress bridge to the Komga
+library Folio already mounts (API-level, not just files); a Hardcover/ISBNdb enrichment
+provider for better metadata coverage; an optional Bookwyrm scrobble for reading status.
+Each is independent and low-commitment; pick by appetite.</p>
+<p class="lnk">From: ecosystem Komga/enrich/Bookwyrm (confirmed new).</p>
+</div>
+
+<p class="why"><strong>Deliberately parked:</strong> a Kobo Sync subset (XL, only if a
+Kobo enters the picture) and multi-user library ACLs (real work, only worth it if Folio
+goes beyond a family). Both are noted in the review; neither pays off yet.</p>
+</div>
+
+<h2 id="close">Suggested first cut</h2>
+<p>If you want a concrete two-week slice: <strong>all of P0</strong> (backup + CI +
+deep health — an afternoon or two), then <strong>the P1 device-API scoping, the
+stuck-conversion sweeper, and the token/session hardening bundle</strong>. That removes
+the only existential risk (no backup), makes every future change safe to ship (CI),
+closes the widest authorization gap, and kills the most annoying confirmed bug — for a
+few days of work. Everything after that is genuine improvement on an already-healthy
+system, and the P4 directions are where Folio gets more interesting: OPDS and KOReader
+sync first, then the semantic-search-over-highlights line that its existing embedding
+stack is already reaching toward.</p>
+
+<p class="lnk">Companion: the <a href="folio-review-2026-07.html">full review with every
+finding, verdict, and evidence citation</a>.</p>
+
+</body>
+</html>
