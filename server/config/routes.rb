@@ -77,6 +77,9 @@ Rails.application.routes.draw do
   # (same endpoint name the Python prototype used).
   get "up" => "rails/health#show", as: :rails_health_check
   get "healthz" => "rails/health#show"
+  # Deeper check (DB write + Solid Queue heartbeat) for humans/monitors —
+  # the daemon itself only relies on the plain /healthz above.
+  get "healthz/deep" => "health#deep"
 
   # PWA files so the web UI can be installed to a phone's home screen.
   get "manifest" => "rails/pwa#manifest", as: :pwa_manifest

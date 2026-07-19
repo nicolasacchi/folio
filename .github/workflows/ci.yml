@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      RAILS_ENV: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libvips calibre
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          working-directory: server
+          bundler-cache: true
+
+      - name: "Style: Ruby"
+        run: bin/rubocop
+
+      - name: "Security: Gem audit"
+        run: bin/bundler-audit
+
+      - name: "Security: Brakeman code analysis"
+        run: bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error
+
+      - name: "Tests: RSpec"
+        run: bundle exec rspec
+
+  kindled:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kindled
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build
+
+      - name: Test
+        run: cargo test
