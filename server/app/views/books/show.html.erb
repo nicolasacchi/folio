@@ -190,6 +190,16 @@
         </span>
         <span class="small muted"><%= time_ago_in_words(conversion.created_at) %> ago</span>
       </div>
+      <%# Full Calibre output (up to 4000 bytes, see Conversion#mark_failed!) —
+          the row above only shows a 160-char fragment, not enough to see why
+          a conversion actually failed. Native <details> needs no JS and
+          matches the disclosure pattern the Shelves nav already uses. %>
+      <% if conversion.failed? && conversion.error.present? %>
+        <details class="conversion-error">
+          <summary>Show full error</summary>
+          <pre class="conversion-error__pre mono"><%= conversion.error %></pre>
+        </details>
+      <% end %>
     <% end %>
   <% end %>
 <% end %>

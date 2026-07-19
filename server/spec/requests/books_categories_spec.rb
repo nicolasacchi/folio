@@ -74,7 +74,7 @@ RSpec.describe "Library category filters", type: :request do
     expect(response.body).not_to include("Foundation")
   end
 
-  describe "the keep-reading guard" do
+  describe "the keep-reading rail" do
     let!(:reading_state) do
       device = create(:device)
       create(:reading_state, book: sf, device: device, content_mtime: Time.current, progress_percent: 40)
@@ -85,14 +85,27 @@ RSpec.describe "Library category filters", type: :request do
       expect(response.body).to include("Keep reading")
     end
 
-    it "suppresses the keep-reading shelf once a category filter is applied" do
+    # It's the user's main entry point back into a book they're mid-way
+    # through — it should stay put no matter what's filtering the grid
+    # below it (see BooksController#index).
+    it "persists once a category filter is applied" do
       get root_path(category: "fiction/sf")
-      expect(response.body).not_to include("Keep reading")
+      expect(response.body).to include("Keep reading")
     end
 
-    it "suppresses the keep-reading shelf once a category_root filter is applied" do
+    it "persists once a category_root filter is applied" do
       get root_path(category_root: "fiction")
-      expect(response.body).not_to include("Keep reading")
+      expect(response.body).to include("Keep reading")
+    end
+
+    it "persists once an author filter is applied" do
+      get root_path(author: sf.author)
+      expect(response.body).to include("Keep reading")
+    end
+
+    it "persists on page 2 of the grid" do
+      get root_path(page: 2)
+      expect(response.body).to include("Keep reading")
     end
   end
 

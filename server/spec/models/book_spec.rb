@@ -19,6 +19,26 @@ RSpec.describe Book, type: :model do
     end
   end
 
+  describe "#conversion_failed_without_deliverable?" do
+    let!(:book) { create(:book) }
+    let!(:source) { create(:book_file, book: book, format: "epub") }
+
+    it "is false when there are no conversions at all" do
+      expect(book.conversion_failed_without_deliverable?).to be false
+    end
+
+    it "is true once a conversion has failed and no Kindle-ready file exists" do
+      create(:conversion, book: book, book_file: source, target_format: "azw3", status: "failed")
+      expect(book.conversion_failed_without_deliverable?).to be true
+    end
+
+    it "is false when a failed conversion coexists with a good Kindle-ready file" do
+      create(:conversion, book: book, book_file: source, target_format: "azw3", status: "failed")
+      create(:book_file, book: book, format: "azw3")
+      expect(book.reload.conversion_failed_without_deliverable?).to be false
+    end
+  end
+
   describe ".search" do
     let!(:whale_book) { create(:book, title: "The Whale", author: "H. Melville") }
     let!(:other_book) { create(:book, title: "Cooking for Two") }

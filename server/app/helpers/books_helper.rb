@@ -16,6 +16,17 @@ module BooksHelper
     number_to_human_size(bytes, precision: 2)
   end
 
+  # Screen-reader announcement for the search mode toggle (books/index) —
+  # the visual state is just a bolded word, so this spells out what each
+  # mode actually does for the aria-live region next to it.
+  def search_mode_announcement(mode)
+    case mode
+    when "full" then "Searching full text: descriptions and text extracted from your books, in addition to titles and authors."
+    when "semantic" then "Searching by meaning, using the semantic index."
+    else "Searching titles, authors, and series."
+    end
+  end
+
   # Chip/breadcrumb label for a books.category value, including the two
   # values that aren't real taxonomy categories.
   def category_label(value)

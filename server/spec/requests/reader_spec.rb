@@ -54,6 +54,12 @@ RSpec.describe "In-browser reader", type: :request do
 
         expect(response).to have_http_status(:ok)
         expect(response.body).to include("Preparing a readable copy")
+        # The spinner/timeout affordance (see reader_preparing_controller.js):
+        # a server timestamp the client counts elapsed time from, plus a
+        # fallback panel that only appears once that timeout fires.
+        expect(response.body).to include("data-reader-preparing-started-at-value")
+        expect(response.body).to include(%(data-reader-preparing-timeout-value="#{ReaderController::PREPARING_TIMEOUT_MS}"))
+        expect(response.body).to include("Still preparing")
 
         conversion = Conversion.last
         expect(conversion).to have_attributes(book: book, book_file: docx_file, target_format: "epub", status: "pending")

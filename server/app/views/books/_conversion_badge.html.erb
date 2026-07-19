@@ -1,0 +1,9 @@
+<%# Small unobtrusive corner badge for a book whose conversion failed and
+    that has no deliverable Kindle-ready file — see
+    Book#conversion_failed_without_deliverable?. Only rendered by callers
+    that already know the answer (currently the library shelf grid), so
+    this never triggers its own query. %>
+<span class="cover-badge" title="A conversion failed and no Kindle-ready file is available yet">
+  <span aria-hidden="true">⚠</span>
+  <span class="sr-only">Conversion failed — no Kindle-ready file available</span>
+</span>

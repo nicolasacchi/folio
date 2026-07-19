@@ -75,6 +75,17 @@ class ReaderController < ApplicationController
   # write-back.
   CONTEXT_FIELD_MAX_CHARS = 2000
 
+  # How long the "preparing a readable copy" screen (reader/show.html.erb's
+  # @preparing_conversion branch) spins before swapping to a stalled-
+  # conversion fallback with retry/back actions — see
+  # reader_preparing_controller.js, which does the actual client-side
+  # countdown from the conversion's created_at (a server timestamp, so it
+  # survives every poll-triggered frame reload rather than resetting). A
+  # real conversion finishes in well under this; Conversion::STUCK_AFTER
+  # (1 hour) is the server-side backstop that actually marks a dead
+  # worker's row failed so a retry can requeue it.
+  PREPARING_TIMEOUT_MS = 90_000
+
   def show
     @file = @book.readable_file
     @book_lang = normalized_book_lang
@@ -83,7 +94,7 @@ class ReaderController < ApplicationController
       @text_length = mobi_text_length
     else
       ensure_epub_conversion
-      @preparing = @book.conversions.active.where(target_format: "epub").exists?
+      @preparing_conversion = @book.conversions.active.where(target_format: "epub").order(:created_at).first
     end
   end
 

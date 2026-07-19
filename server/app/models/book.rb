@@ -74,6 +74,17 @@ class Book < ApplicationRecord
     book_files.order(:format).pluck(:format)
   end
 
+  # Flags a book for the shelf badge: some conversion attempt failed and
+  # nothing Kindle-ready ever landed — i.e. there's genuinely no
+  # deliverable file to fall back on. A book that failed one target but
+  # still has a good file from another isn't flagged (kindle_file wins).
+  # Reads off already-loaded book_files/conversions (see
+  # BooksController#index's .includes(:book_files, :conversions)) so this
+  # never issues a query of its own when called across a shelf of books.
+  def conversion_failed_without_deliverable?
+    conversions.any?(&:failed?) && kindle_file.nil?
+  end
+
   def latest_reading_state
     reading_states.order(content_mtime: :desc).first
   end
