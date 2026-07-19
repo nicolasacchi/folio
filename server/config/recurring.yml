@@ -40,3 +40,12 @@ production:
   sweep_orphaned_artifacts:
     class: SweepOrphanedArtifactsJob
     schedule: every day at 5:15am
+
+  # WAL checkpoint + quick_check canary (see DatabaseMaintenance). Last in
+  # the overnight lineup (3:30/4:45/5:15) so it checkpoints the WAL churn
+  # those jobs themselves generate; once a day is plenty for a single-app
+  # SQLite deployment — Solid Queue's own writes are what grow the WAL
+  # fastest, and 24h of accumulation is still a small, fast checkpoint.
+  nightly_database_maintenance:
+    class: DatabaseMaintenanceJob
+    schedule: every day at 5:40am
