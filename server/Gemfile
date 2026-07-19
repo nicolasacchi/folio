@@ -26,6 +26,11 @@ gem "solid_cache"
 gem "solid_queue"
 gem "solid_cable"
 
+# Request throttling — protects the device API from a runaway/abusive
+# client without touching the real Kindle daemon's normal traffic (see
+# config/initializers/rack_attack.rb for the generous limits).
+gem "rack-attack"
+
 # Reduces boot times through caching; required in config/boot.rb
 gem "bootsnap", require: false
 

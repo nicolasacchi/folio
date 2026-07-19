@@ -43,6 +43,54 @@ RSpec.describe Library::Enrich do
     expect(book.reload.enrichment_source).to eq("none")
   end
 
+  describe ".get" do
+    def fake_response(klass, code:, location: nil, body: nil)
+      response = klass.new("1.1", code, "status")
+      response["location"] = location if location
+      if body
+        response.instance_variable_set(:@read, true)
+        response.instance_variable_set(:@body, body)
+      end
+      response
+    end
+
+    it "refuses a redirect to a private/link-local address (SSRF guard)" do
+      allow(Resolv).to receive(:getaddresses).with("provider.example.com").and_return([ "93.184.216.34" ])
+      allow(Resolv).to receive(:getaddresses).with("169.254.169.254").and_return([ "169.254.169.254" ])
+
+      redirect = fake_response(Net::HTTPFound, code: "302", location: "http://169.254.169.254/latest/meta-data/")
+      http = instance_double(Net::HTTP, get: redirect)
+      allow(Net::HTTP).to receive(:start)
+        .with("provider.example.com", 80, hash_including(use_ssl: false))
+        .and_yield(http)
+
+      # The redirect target resolves to a link-local address; it must never
+      # be connected to.
+      expect(Net::HTTP).not_to receive(:start).with("169.254.169.254", any_args)
+
+      expect(described_class.get("http://provider.example.com/start")).to be_nil
+    end
+
+    it "refuses a URL whose host itself resolves to a private address" do
+      allow(Resolv).to receive(:getaddresses).with("internal.example.com").and_return([ "10.0.0.5" ])
+
+      expect(Net::HTTP).not_to receive(:start)
+      expect(described_class.get("http://internal.example.com/")).to be_nil
+    end
+
+    it "still fetches normally from a public external host" do
+      allow(Resolv).to receive(:getaddresses).with("provider.example.com").and_return([ "93.184.216.34" ])
+
+      ok = fake_response(Net::HTTPOK, code: "200", body: "hello world")
+      http = instance_double(Net::HTTP, get: ok)
+      allow(Net::HTTP).to receive(:start)
+        .with("provider.example.com", 80, hash_including(use_ssl: false))
+        .and_yield(http)
+
+      expect(described_class.get("http://provider.example.com/start")).to eq("hello world")
+    end
+  end
+
   describe ".plausible_match?" do
     it "accepts close titles with matching author surname" do
       expect(described_class.plausible_match?(

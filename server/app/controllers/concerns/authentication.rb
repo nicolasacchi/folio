@@ -1,6 +1,12 @@
 module Authentication
   extend ActiveSupport::Concern
 
+  # The session cookie itself is `.permanent` (~20 years) and sessions have
+  # no other server-side expiry, so a leaked/stolen cookie would otherwise
+  # work forever. Cap how long any session — however it was created — stays
+  # valid, independent of self-service/admin revocation elsewhere.
+  SESSION_MAX_AGE = 30.days
+
   included do
     before_action :require_authentication
     helper_method :authenticated?
@@ -26,7 +32,20 @@ module Authentication
     end
 
     def find_session_by_cookie
-      Session.find_by(id: cookies.signed[:session_id]) if cookies.signed[:session_id]
+      return nil unless cookies.signed[:session_id]
+
+      session = Session.find_by(id: cookies.signed[:session_id])
+      return nil if session.nil?
+
+      if session.created_at <= SESSION_MAX_AGE.ago
+        # Over-age: revoke it server-side and treat this request as if no
+        # session cookie had been sent at all (redirects to login for web).
+        session.destroy
+        cookies.delete(:session_id)
+        return nil
+      end
+
+      session
     end
 
     def request_authentication
