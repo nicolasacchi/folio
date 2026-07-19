@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_19_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_19_141000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -75,6 +75,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_140000) do
     t.float "series_index"
     t.string "title", null: false
     t.datetime "updated_at", null: false
+    t.index "lower(title)", name: "index_books_on_lower_title"
     t.index ["author"], name: "index_books_on_author"
     t.index ["category"], name: "index_books_on_category"
     t.index ["created_at"], name: "index_books_on_created_at"
@@ -110,6 +111,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_140000) do
     t.datetime "updated_at", null: false
     t.index ["book_id", "device_id"], name: "index_deliveries_on_book_id_and_device_id", unique: true
     t.index ["book_id"], name: "index_deliveries_on_book_id"
+    t.index ["device_id", "evict_requested_at"], name: "index_deliveries_on_device_active", where: "removed_at IS NULL"
     t.index ["device_id"], name: "index_deliveries_on_device_id"
   end
 
@@ -202,6 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_140000) do
     t.datetime "updated_at", null: false
     t.index ["book_id", "device_id"], name: "index_reading_states_on_book_id_and_device_id", unique: true
     t.index ["book_id"], name: "index_reading_states_on_book_id"
+    t.index ["content_mtime"], name: "index_reading_states_on_content_mtime"
     t.index ["device_id"], name: "index_reading_states_on_device_id"
   end
 
