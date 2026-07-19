@@ -92,6 +92,20 @@ RSpec.describe BookSearch do
       expect { described_class.index_book!(bare) }.not_to raise_error
       expect(described_class.search("shelf", scope: :metadata).map { |hit| hit[:book_id] }).to eq([ bare.id ])
     end
+
+    # Regression coverage for wrapping DELETE+INSERT in a transaction: a
+    # failure between the two statements must not leave the book dropped
+    # from the index.
+    it "keeps the existing row if the insert half of a reindex fails" do
+      described_class.index_book!(book, fulltext: "original words")
+      allow(described_class).to receive(:insert_row!).and_raise(SQLite3::Exception, "boom")
+
+      expect { described_class.index_book!(book, fulltext: "replacement words") }
+        .to raise_error(SQLite3::Exception, "boom")
+
+      expect(described_class.search("original").map { |hit| hit[:book_id] }).to eq([ book.id ])
+      expect(described_class.search("replacement")).to eq([])
+    end
   end
 
   describe "legacy schema migration" do

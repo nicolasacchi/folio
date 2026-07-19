@@ -3,7 +3,7 @@
 # filename from the manifest.
 class Api::V1::ThumbnailsController < Api::V1::BaseController
   def show
-    book = find_book! or return
+    book = find_delivered_book! or return
 
     thumb = Library::Thumbnails.ensure(book)
     return render json: { error: "no cover" }, status: :not_found unless thumb

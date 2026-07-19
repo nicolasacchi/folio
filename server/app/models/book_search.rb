@@ -45,8 +45,15 @@ module BookSearch
     fulltext ||= stored_fulltext(book.id)
     fulltext = fulltext.to_s.byteslice(0, MAX_FULLTEXT_BYTES).to_s.scrub("")
     with_db do |db|
-      db.execute("DELETE FROM book_search WHERE book_id = ?", [ book.id ])
-      insert_row!(db, book, fulltext)
+      # DELETE+INSERT is a re-index, not two independent writes: without a
+      # transaction, a crash (or a concurrent reader) between the two
+      # statements could observe — or permanently leave — the book missing
+      # from search. :immediate takes the write lock up front rather than
+      # upgrading mid-transaction (see migrate_from_primary! above).
+      db.transaction(:immediate) do
+        db.execute("DELETE FROM book_search WHERE book_id = ?", [ book.id ])
+        insert_row!(db, book, fulltext)
+      end
     end
   end
 

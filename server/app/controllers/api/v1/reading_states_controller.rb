@@ -5,7 +5,7 @@ class Api::V1::ReadingStatesController < Api::V1::BaseController
   MAX_BUNDLE_BYTES = 20.megabytes
 
   def show
-    book = find_book! or return
+    book = find_delivered_book! or return
 
     state = book.latest_reading_state
     if state.nil? || !File.exist?(state.absolute_path)
@@ -22,7 +22,7 @@ class Api::V1::ReadingStatesController < Api::V1::BaseController
   end
 
   def update
-    book = find_book! or return
+    book = find_delivered_book! or return
 
     mtime = request.headers["X-Sdr-Mtime"].to_i
     return render json: { error: "X-Sdr-Mtime header required" }, status: :unprocessable_content if mtime <= 0

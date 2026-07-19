@@ -6,6 +6,7 @@ RSpec.describe "API v1 book files", type: :request do
   let!(:book) { create(:book) }
   let!(:azw3) { create(:book_file, :on_disk, book: book, format: "azw3") }
   let!(:epub) { create(:book_file, :on_disk, book: book, format: "epub") }
+  let!(:delivery) { create(:delivery, book: book, device: device) }
 
   it "serves the preferred Kindle file by default" do
     get "/api/v1/books/#{book.public_id}/file", headers: headers
@@ -27,8 +28,40 @@ RSpec.describe "API v1 book files", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
+  # Regression coverage for the device-API IDOR: a device token must not
+  # reach a file for a book it was never queued (see BaseController#find_delivered_book!).
+  describe "scoping to this device's manifest" do
+    it "404s for a book never queued to any device" do
+      unqueued = create(:book)
+      create(:book_file, :on_disk, book: unqueued, format: "azw3")
+
+      get "/api/v1/books/#{unqueued.public_id}/file", headers: headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s for a book queued only to another device" do
+      other_device = create(:device)
+      other_book = create(:book)
+      create(:book_file, :on_disk, book: other_book, format: "azw3")
+      create(:delivery, book: other_book, device: other_device)
+
+      get "/api/v1/books/#{other_book.public_id}/file", headers: headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s once eviction of this book has been requested" do
+      delivery.update!(delivered_at: 1.day.ago)
+      delivery.request_eviction!("finished")
+
+      get "/api/v1/books/#{book.public_id}/file", headers: headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "delivery tracking" do
-    let!(:delivery) { create(:delivery, book: book, device: device) }
     let!(:other_device) { create(:device) }
     let!(:other_delivery) { create(:delivery, book: book, device: other_device) }
 

@@ -5,8 +5,10 @@ class Conversion < ApplicationRecord
   TARGET_FORMATS = %w[epub azw3 mobi pdf txt docx].freeze
 
   # Richest formats first: converting from these loses the least. Shared by
-  # ConversionsController (explicit user-picked target) and ReaderController
-  # (auto-queued epub conversion when a book has no browser-readable file).
+  # ConversionsController (explicit user-picked target), ReaderController
+  # (auto-queued epub conversion when a book has no browser-readable file),
+  # and EnsureKindleFormatJob (filtered down to non-Kindle-native formats —
+  # see CONVERSION_SOURCE_PREFERENCE there).
   SOURCE_PREFERENCE = %w[epub azw3 kfx mobi azw fb2 docx html htmlz odt rtf lit pdf cbz cbr djvu txt].freeze
 
   belongs_to :book
