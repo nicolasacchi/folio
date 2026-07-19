@@ -26,3 +26,10 @@ production:
     class: CatalogOperationJob
     args: [ "embed_all" ]
     schedule: every day at 4:45am
+
+  # Clears conversions stuck in "running" after their worker crashed, so
+  # EnsureKindleFormatJob's active-scope guard doesn't wedge on that book
+  # forever (see Conversion::STUCK_AFTER).
+  sweep_stuck_conversions:
+    class: SweepStuckConversionsJob
+    schedule: every 15 minutes

@@ -11,6 +11,12 @@ class Conversion < ApplicationRecord
   # see CONVERSION_SOURCE_PREFERENCE there).
   SOURCE_PREFERENCE = %w[epub azw3 kfx mobi azw fb2 docx html htmlz odt rtf lit pdf cbz cbr djvu txt].freeze
 
+  # A conversion realistically finishes in minutes. A "running" row older
+  # than this almost certainly means its worker crashed or was killed
+  # mid-job — left alone it would wedge EnsureKindleFormatJob's active-scope
+  # guard on that book forever. See Conversion.sweep_stuck!.
+  STUCK_AFTER = 1.hour
+
   belongs_to :book
   belongs_to :book_file # source file
 
@@ -25,6 +31,21 @@ class Conversion < ApplicationRecord
 
   STATUSES.each do |name|
     define_method("#{name}?") { status == name }
+  end
+
+  # Marks running conversions whose worker appears to have died as failed,
+  # dropping them out of `active` scope so EnsureKindleFormatJob (and
+  # ConversionsController) can retry them. A nil started_at — set only by
+  # mark_running! — means the row is stuck too (crashed before it could even
+  # stamp one). Returns the number of conversions swept.
+  def self.sweep_stuck!(older_than: STUCK_AFTER)
+    cutoff = Time.current - older_than
+    swept = 0
+    where(status: "running").where("started_at IS NULL OR started_at < ?", cutoff).find_each do |conversion|
+      conversion.mark_failed!("conversion timed out (worker stopped)")
+      swept += 1
+    end
+    swept
   end
 
   def mark_running!

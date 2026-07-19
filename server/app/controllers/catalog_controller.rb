@@ -43,6 +43,13 @@ class CatalogController < ApplicationController
     # Pending conversions whose job was just cancelled would otherwise
     # block EnsureKindleFormatJob from ever retrying those books.
     Conversion.where(status: "pending").destroy_all
+    # "Cancel queued work" is also the user's manual escape hatch for a
+    # conversion wedged in "running" (its worker died without the periodic
+    # sweep having caught it yet) — fail every currently-running conversion
+    # immediately rather than waiting out STUCK_AFTER. If a worker is
+    # actually still mid-run and later finishes, mark_completed! just flips
+    # its (already-failed) row to completed; harmless.
+    Conversion.sweep_stuck!(older_than: 0.seconds)
 
     redirect_to library_scan_path, notice: "Cancelled #{helpers.pluralize(cancelled, 'queued job')}."
   end
