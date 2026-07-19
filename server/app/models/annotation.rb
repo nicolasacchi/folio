@@ -3,6 +3,10 @@
 # +content+; notes carry the typed note; bookmarks have no content.
 class Annotation < ApplicationRecord
   KINDS = %w[highlight note bookmark].freeze
+  # Where the row was written from: parsed out of a device's
+  # "My Clippings.txt" (see Library::Clippings), or saved directly by the
+  # in-browser reader.
+  SOURCES = %w[clippings web].freeze
   # Colors offered by the in-browser reader's highlight tool. Only
   # meaningful for source "web" — clippings-sourced rows never carry a
   # color, so this validation is scoped off of `source` and leaves the
@@ -13,6 +17,7 @@ class Annotation < ApplicationRecord
   belongs_to :device
 
   validates :kind, inclusion: { in: KINDS }
+  validates :source, inclusion: { in: SOURCES }
   validates :raw_title, presence: true
   validates :fingerprint, presence: true, uniqueness: { scope: :device_id }
   validates :color, inclusion: { in: COLORS }, if: -> { source == "web" && kind == "highlight" }

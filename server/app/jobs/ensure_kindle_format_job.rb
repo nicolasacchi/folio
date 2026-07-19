@@ -7,7 +7,12 @@ class EnsureKindleFormatJob < ApplicationJob
   queue_as :default
 
   TARGET_FORMAT = "mobi".freeze
-  CONVERSION_SOURCE_PREFERENCE = %w[epub fb2 docx html htmlz odt rtf lit cbz cbr djvu].freeze
+  # Conversion::SOURCE_PREFERENCE, minus the formats the stock Kindle reader
+  # already opens directly — picking one of those as a "source" here would
+  # be moot anyway, since #perform already bails out via book.kindle_file
+  # whenever a Kindle-native file exists. Same richest-first ordering, one
+  # source of truth.
+  CONVERSION_SOURCE_PREFERENCE = (Conversion::SOURCE_PREFERENCE - Book::KINDLE_FORMATS).freeze
 
   def perform(book_id)
     book = Book.find_by(id: book_id)

@@ -1,6 +1,6 @@
 class Api::V1::BookFilesController < Api::V1::BaseController
   def show
-    book = find_book! or return
+    book = find_delivered_book! or return
 
     file = params[:fmt].present? ? book.file_for(params[:fmt]) : book.kindle_file
     if file.nil? || !File.exist?(file.delivery_path)
