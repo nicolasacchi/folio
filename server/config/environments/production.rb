@@ -77,7 +77,14 @@ Rails.application.configure do
       password: ENV["SMTP_PASSWORD"],
       authentication: ENV.fetch("SMTP_AUTH", "plain").to_sym,
       enable_starttls_auto: true,
-      openssl_verify_mode: ENV.fetch("SMTP_OPENSSL_VERIFY_MODE", "none")
+      # Verify the peer certificate by default — with verification off, a
+      # MITM'd or spoofed relay could silently intercept password-reset
+      # emails (account takeover). "peer" is the safe default for any real
+      # remote MTA. This deploy talks to a local SMTP relay; if it's reached
+      # over localhost/a private network with a self-signed cert, override
+      # via SMTP_OPENSSL_VERIFY_MODE=none for that connection specifically
+      # rather than weakening the default here.
+      openssl_verify_mode: ENV.fetch("SMTP_OPENSSL_VERIFY_MODE", "peer")
     }
   end
 

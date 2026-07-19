@@ -29,11 +29,18 @@ class UsersController < ApplicationController
   def update
     attrs = user_params
     attrs.delete(:password) if attrs[:password].blank?
+    changing_password = attrs.key?(:password)
     if demoting_last_admin?(attrs)
       return redirect_to users_path, alert: "At least one admin must remain."
     end
 
     if @user.update(attrs)
+      # An admin-issued password change must revoke the target's existing
+      # sessions (self-service reset already does this in
+      # PasswordsController) — otherwise a stolen session outlives the
+      # credential change meant to kill it. Scoped to password changes only
+      # so a plain email/admin-bit edit doesn't log the user out.
+      @user.sessions.destroy_all if changing_password
       redirect_to users_path, notice: "#{@user.email_address} updated."
     else
       redirect_to users_path, alert: @user.errors.full_messages.to_sentence

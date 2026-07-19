@@ -62,6 +62,24 @@ RSpec.describe "User management", type: :request do
       expect(admin.reload).to be_admin
     end
 
+    it "revokes the target user's sessions when an admin changes their password" do
+      reader = create(:user, email_address: "reader@example.com")
+      reader.sessions.create!(ip_address: "1.1.1.1", user_agent: "kindle")
+
+      patch user_path(reader), params: { user: { password: "newpassword" } }
+
+      expect(reader.sessions.count).to eq(0)
+    end
+
+    it "does not revoke sessions on a plain (non-password) update" do
+      reader = create(:user, email_address: "reader@example.com")
+      reader.sessions.create!(ip_address: "1.1.1.1", user_agent: "kindle")
+
+      patch user_path(reader), params: { user: { email_address: "reader2@example.com", password: "" } }
+
+      expect(reader.sessions.count).to eq(1)
+    end
+
     it "refuses to demote the last admin" do
       # The self-edit guard already strips :admin; simulate a second admin
       # demoting path where the target is the only admin.
