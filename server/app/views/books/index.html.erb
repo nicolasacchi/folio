@@ -9,14 +9,19 @@
 <% if @query.present? %>
   <p class="kicker">
     Results for “<%= @query %>”
-    <span class="mode-toggle">
-      · <%= @mode == "title" ? tag.b("titles") : link_to("titles", root_path(q: @query), title: "Match titles, authors and series") %>
-      / <%= @mode == "full" ? tag.b("full text") : link_to("full text", root_path(q: @query, mode: "full"), title: "Also search descriptions and inside the books") %>
+    <span class="mode-toggle" role="group" aria-label="Search mode">
+      · <%= @mode == "title" ? tag.b("titles", "aria-current": "true") : link_to("titles", root_path(q: @query), title: "Match titles, authors and series") %>
+      / <%= @mode == "full" ? tag.b("full text", "aria-current": "true") : link_to("full text", root_path(q: @query, mode: "full"), title: "Also search descriptions and inside the books") %>
       <% if @semantic_available %>
-        / <%= @mode == "semantic" ? tag.b("meaning") : link_to("meaning", root_path(q: @query, mode: "semantic")) %>
+        / <%= @mode == "semantic" ? tag.b("meaning", "aria-current": "true") : link_to("meaning", root_path(q: @query, mode: "semantic")) %>
       <% end %>
     </span>
   </p>
+  <%# Turbo navigates mode-toggle links via DOM morph (turbo_refreshes_with
+      method: :morph in the layout), so this node persists across the visit
+      and its text change is what triggers the live-region announcement —
+      not a fresh page load, which screen readers wouldn't announce. %>
+  <p class="sr-only" aria-live="polite" aria-atomic="true"><%= search_mode_announcement(@mode) %></p>
 
   <% if @mode == "semantic" %>
     <% if @semantic_books.empty? %>
@@ -187,7 +192,7 @@
     <div class="shelf">
       <% @books.each do |book| %>
         <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
-          <%= render "cover", book: book %>
+          <%= render "cover", book: book, flagged: book.conversion_failed_without_deliverable? %>
           <span class="shelf-caption">
             <span class="t"><%= book.title %></span>
             <span class="a"><%= book.display_author %></span>

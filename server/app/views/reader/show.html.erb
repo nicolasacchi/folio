@@ -249,10 +249,21 @@
         <div class="reader-lookup-card__pane" data-reader-target="lookupWikipediaPane" hidden></div>
       </div>
     </div>
-  <% elsif @preparing %>
-    <div class="reader-empty" data-controller="poll" data-poll-interval-value="4000">
-      <p>Preparing a readable copy…</p>
-      <p class="small">Converting to EPUB in the background — this page refreshes itself.</p>
+  <% elsif @preparing_conversion %>
+    <div class="reader-empty" data-controller="poll reader-preparing"
+         data-poll-interval-value="4000"
+         data-reader-preparing-started-at-value="<%= @preparing_conversion.created_at.to_i %>"
+         data-reader-preparing-timeout-value="<%= ReaderController::PREPARING_TIMEOUT_MS %>">
+      <div class="reader-preparing-step" data-reader-preparing-target="waiting">
+        <div class="reader-loading__spinner" aria-hidden="true"></div>
+        <p>Preparing a readable copy…</p>
+        <p class="small">Preparing this book for reading — this can take a minute. It's converting to EPUB in the background, and this page refreshes itself.</p>
+      </div>
+      <div class="reader-preparing-step" data-reader-preparing-target="timedOut" hidden>
+        <p>Still preparing — this is taking longer than expected.</p>
+        <p class="small">The conversion may have stalled. You can keep waiting, try again, or head back to the book.</p>
+        <button type="button" class="btn" data-action="reader-preparing#retry">Try again</button>
+      </div>
       <%= link_to "← Back to book", book_path(@book), class: "btn btn--quiet", data: { turbo: false } %>
     </div>
   <% else %>

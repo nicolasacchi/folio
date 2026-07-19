@@ -65,7 +65,10 @@ class BooksController < ApplicationController
       @page = [ params[:page].to_i, 1 ].max
       @last_page = [ (@total / PER_PAGE.to_f).ceil, 1 ].max
       @page = @last_page if @page > @last_page
-      @books = scope.includes(:book_files).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
+      # :conversions is preloaded alongside :book_files so the shelf's
+      # failed-conversion badge (Book#conversion_failed_without_deliverable?)
+      # never N+1s across a page of up to PER_PAGE books.
+      @books = scope.includes(:book_files, :conversions).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
 
       @stats = Rails.cache.fetch("library_stats", expires_in: 10.minutes) do
         { books: Book.count, files: BookFile.count, bytes: BookFile.sum(:size) }
@@ -78,10 +81,12 @@ class BooksController < ApplicationController
       @inbox_count = category_counts.fetch("_inbox", 0)
       @uncategorized_count = category_counts.fetch(nil, 0) + category_counts.fetch("", 0)
 
-      # The "keep reading" shelf only heads the unfiltered front page.
-      if @page == 1 && !@author && !@series && !@format && !@year && !@language && !@added && !@category && !@category_root
-        @currently_reading = Book.currently_reading(limit: 10)
-      end
+      # The "keep reading" shelf is the user's main entry point back into a
+      # book they're mid-way through — it used to disappear the moment any
+      # filter (or a later page) was active, hiding it right when someone's
+      # browsing around. It now always heads the browse view; only the
+      # grid below responds to filters/paging.
+      @currently_reading = Book.currently_reading(limit: 10)
     end
   end
 

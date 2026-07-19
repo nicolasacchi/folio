@@ -1046,6 +1046,16 @@
   color: var(--ink-soft);
 }
 
+/* One step (spinner+copy, or the timed-out fallback) of the "preparing a
+   readable copy" screen — see reader_preparing_controller.js. */
+.reader-preparing-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+}
+.reader-preparing-step[hidden] { display: none; }
+
 /* ---------- Themes ----------
    Overriding the same custom properties application.css defines on :root
    re-themes every .reader-* rule above without duplicating them — these

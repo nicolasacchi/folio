@@ -1,9 +1,11 @@
 <% if book.cover? %>
   <span class="cover">
+    <%= render "conversion_badge", book: book if local_assigns[:flagged] %>
     <%= image_tag cover_book_path(book), alt: "", loading: "lazy" %>
   </span>
 <% else %>
   <span class="cover cover--generated" style="--h: <%= cover_hue(book) %>">
+    <%= render "conversion_badge", book: book if local_assigns[:flagged] %>
     <span class="gen-title"><%= book.title %></span>
     <span class="gen-author"><%= book.display_author %></span>
   </span>
