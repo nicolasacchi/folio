@@ -52,6 +52,7 @@ Rails.application.routes.draw do
   post "catalog/merge_duplicates", to: "catalog#merge_duplicates", as: :catalog_merge_duplicates
   post "catalog/enrich_all", to: "catalog#enrich_all", as: :catalog_enrich_all
   post "catalog/embed_all", to: "catalog#embed_all", as: :catalog_embed_all
+  post "catalog/embed_chunks_all", to: "catalog#embed_chunks_all", as: :catalog_embed_chunks_all
   post "catalog/cancel_queued", to: "catalog#cancel_queued", as: :catalog_cancel_queued
 
   # Folder scanning (Komga-style: reference books in place from SCAN_ROOTS).

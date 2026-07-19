@@ -15,6 +15,7 @@ class LibraryScansController < ApplicationController
         duplicate_groups: Library::DuplicateGroups.count,
         to_enrich: Book.where(description: [ nil, "" ]).where(enriched_at: nil).count,
         embedded: Library::Embeddings.available? ? Library::Embeddings.count : nil,
+        chunk_book_count: Library::Embeddings.available? ? Library::Embeddings.chunk_book_count : nil,
         queued: SolidQueue::Job.where(class_name: CatalogController::BATCH_JOB_CLASSES, finished_at: nil).count,
         failed_conversions: Conversion.where(status: "failed").count
       }

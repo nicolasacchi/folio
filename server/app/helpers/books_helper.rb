@@ -22,7 +22,7 @@ module BooksHelper
   def search_mode_announcement(mode)
     case mode
     when "full" then "Searching full text: descriptions and text extracted from your books, in addition to titles and authors."
-    when "semantic" then "Searching by meaning, using the semantic index."
+    when "semantic" then "Searching by meaning, blending full-text relevance with the semantic index."
     else "Searching titles, authors, and series."
     end
   end

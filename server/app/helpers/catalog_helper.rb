@@ -6,7 +6,8 @@ module CatalogHelper
     "index_fulltext" => "Full-text indexing",
     "merge_duplicates" => "Merge duplicates",
     "enrich_all" => "Metadata enrichment",
-    "embed_all" => "Semantic reindex"
+    "embed_all" => "Semantic reindex",
+    "embed_chunks_all" => "Chunk-level semantic reindex"
   }.freeze
 
   def catalog_operation_label(operation)

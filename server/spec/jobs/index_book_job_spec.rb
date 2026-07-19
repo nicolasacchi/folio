@@ -33,4 +33,27 @@ RSpec.describe IndexBookJob do
   it "does nothing when the book no longer exists" do
     expect { described_class.perform_now(0) }.not_to raise_error
   end
+
+  describe "chunk-level embedding follow-up" do
+    let(:book) { create(:book) }
+
+    before do
+      create(:book_file, :on_disk, book: book, format: "epub")
+      allow(Calibre).to receive(:available?).and_return(true)
+      allow(Calibre).to receive(:extract_text).and_return("extracted body text")
+    end
+
+    it "enqueues EmbedBookChunksJob on the indexing queue when embeddings are available" do
+      allow(Library::Embeddings).to receive(:available?).and_return(true)
+
+      expect { described_class.perform_now(book.id) }
+        .to have_enqueued_job(EmbedBookChunksJob).with(book.id).on_queue("indexing")
+    end
+
+    it "does not enqueue EmbedBookChunksJob when embeddings are unavailable" do
+      allow(Library::Embeddings).to receive(:available?).and_return(false)
+
+      expect { described_class.perform_now(book.id) }.not_to have_enqueued_job(EmbedBookChunksJob)
+    end
+  end
 end
