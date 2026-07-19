@@ -59,6 +59,34 @@ Rails.application.routes.draw do
     post :prune
   end
 
+  # Read-only OPDS 1.2 (Atom/XML) catalog for external readers (KOReader,
+  # Thorium, Marvin, Panels, Calibre…). Deliberately its own top-level
+  # namespace, not nested under /api/v1: different auth (HTTP Basic against
+  # User, not a device token) and different content types (Atom/XML, not
+  # JSON) — see Opds::BaseController.
+  namespace :opds do
+    root to: "catalog#root"
+
+    get "new",             to: "catalog#new_books", as: :new_books
+    get "books",           to: "catalog#books",     as: :books
+    get "search",          to: "catalog#search",    as: :search
+    get "opensearch.xml",  to: "catalog#opensearch", as: :opensearch
+
+    get "authors",        to: "catalog#authors",  as: :authors
+    get "authors/:name",  to: "catalog#author",   as: :author, constraints: { name: /[^\/]+/ }
+
+    get "series",         to: "catalog#series_index", as: :series_index
+    get "series/:name",   to: "catalog#series",       as: :series, constraints: { name: /[^\/]+/ }
+
+    get "categories",       to: "catalog#categories", as: :categories
+    get "categories/*path", to: "catalog#category",   as: :category
+
+    get "entries/:public_id",           to: "catalog#entry",       as: :entry
+    get "entries/:public_id/file",      to: "downloads#file",      as: :entry_file
+    get "entries/:public_id/cover",     to: "downloads#cover",     as: :entry_cover
+    get "entries/:public_id/thumbnail", to: "downloads#thumbnail", as: :entry_thumbnail
+  end
+
   namespace :api do
     namespace :v1 do
       get "manifest", to: "manifests#show"
