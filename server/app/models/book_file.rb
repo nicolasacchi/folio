@@ -97,9 +97,14 @@ class BookFile < ApplicationRecord
   private
 
   # Never touch external files: the scan roots are someone else's data
-  # (and mounted read-only in production).
+  # (and mounted read-only in production). The prepared delivery copy
+  # (see Library::KindlePrep) is always a local, regenerable file — even
+  # for an external source — so it's removed unconditionally; the whole
+  # point of this hook is that a lone book_file destroy (book survives)
+  # doesn't leave that copy orphaned under storage/prepared.
   def remove_from_disk
     FileUtils.rm_f(absolute_path) unless external?
+    FileUtils.rm_f(prepared_absolute_path) if prepared_path.present?
   end
 
   # Keeping the ledger row (as "removed") means the next scan will not

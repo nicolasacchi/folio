@@ -20,6 +20,31 @@ RSpec.describe BookFile, type: :model do
     end
   end
 
+  describe "destroying a file with a prepared delivery copy" do
+    it "removes the prepared copy from disk too" do
+      relative = "prepared/#{book.public_id}.mobi"
+      prepared = Library.base_root.join(relative)
+      FileUtils.mkdir_p(prepared.dirname)
+      File.write(prepared, "prepared bytes")
+      book_file.update!(prepared_path: relative)
+
+      book_file.destroy!
+
+      expect(File.exist?(prepared)).to be(false)
+    end
+
+    it "does not raise when there is no prepared copy" do
+      expect(book_file.prepared_path).to be_nil
+      expect { book_file.destroy! }.not_to raise_error
+    end
+
+    it "does not raise when the prepared copy is already gone from disk" do
+      book_file.update!(prepared_path: "prepared/#{book.public_id}.mobi")
+
+      expect { book_file.destroy! }.not_to raise_error
+    end
+  end
+
   describe "destroying a file that sourced a conversion" do
     # conversions.book_file_id is NOT NULL with no ON DELETE — destroying
     # the source file on its own (book survives, e.g. Library::Scan.prune_missing!)

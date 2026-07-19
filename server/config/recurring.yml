@@ -33,3 +33,10 @@ production:
   sweep_stuck_conversions:
     class: SweepStuckConversionsJob
     schedule: every 15 minutes
+
+  # Deletes prepared-delivery/cover/thumbnail files that lost their
+  # referencing DB row (see Library::StorageGc). After the nightly scan
+  # (3:30am) and embeddings refresh (4:45am) so it isn't racing either.
+  sweep_orphaned_artifacts:
+    class: SweepOrphanedArtifactsJob
+    schedule: every day at 5:15am
