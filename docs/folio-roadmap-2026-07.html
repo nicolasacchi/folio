@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="kb-category" content="roadmap">
-  <meta name="kb-tags" content="folio, kindle, rails, rust, roadmap, planning, opds, koreader, semantic-search, status:open">
+  <meta name="kb-tags" content="folio, kindle, rails, rust, roadmap, planning, opds, koreader, semantic-search, status:partial">
   <title>Folio — recommended roadmap (fixes + new directions) 2026-07</title>
   <template id="kb-prompt">From the full project review of kindle-private-cloud, produce a recommended, sequenced roadmap: the fixes ordered by value-for-effort into phases (safety net first, then authorization, then scale, then daemon resilience, then UX), followed by the genuinely new directions (OPDS, KOReader sync, deep semantic search over highlights, smart shelves, local-LLM summaries). Every item traces to a verified finding in the companion review artifact.</template>
   <style>
@@ -33,6 +33,21 @@
 </head>
 <body>
 <h1 id="top">Folio — recommended roadmap</h1>
+
+<div class="note" id="shipped-status">
+<strong>Implementation status — 2026-07-20: most of this roadmap has shipped.</strong>
+In a single execution pass (sonnet builders for code, grok workers for read-only
+research, each diff reviewed and the suite kept green — 418 → 719 rspec examples,
+0 failures), the following landed on <code>main</code>:
+<ul class="tight">
+<li><strong>P0</strong> — CI made real + deep health check (<code>7cbc2c8</code>). <em>Backup deliberately excluded per the owner's instruction — still the top open item.</em></li>
+<li><strong>P1</strong> — device-API IDOR scoping (<code>80dd7d6</code>), conversion unique-index + stuck sweeper (<code>1190920</code>), prepared-file GC (<code>7c05e5b</code>), token digests at rest (<code>b1d9bf5</code>), session/rate-limit/SMTP/SSRF hardening (<code>f3c0dff</code>), plus the cheap integrity guards folded into <code>80dd7d6</code>.</li>
+<li><strong>P2</strong> — <code>has_fulltext</code> materialization + indexing queue split (<code>5cdb7b3</code>), prep-job dedup + targeted indexes + DB maintenance job (<code>6f36e12</code>).</li>
+<li><strong>P3</strong> — kindled 0.2.4 resilience: path containment, retry backoff, resumable downloads, atomic state (<code>16a597b</code>); UX feedback fixes (<code>44e26f0</code>) and second-tier polish (<code>0646a9a</code>).</li>
+<li><strong>P4</strong> — OPDS 1.2 catalog (<code>a9aecf9</code>), KOReader kosync server (<code>c54a09a</code>), chunked embeddings + hybrid search (<code>2f2e965</code>), smart shelves (<code>dc1bb6d</code>), vocab notebook (<code>e8fc95e</code>).</li>
+</ul>
+<strong>Still open (deliberately deferred):</strong> automated SQLite backup (P0 — excluded from this pass by request), the local-LLM RAG/summaries layer (P4 item 5), and the parked XL items (Kobo Sync subset, multi-user ACLs). Everything shipped is code-committed and green in CI; the reader-JS auto-capture, the OPDS/kosync clients, and the kindled 0.2.4 daemon still want a real-device/real-client smoke test before the next deploy.
+</div>
 
 <p>This sequences the <a href="folio-review-2026-07.html">full review</a> into work
 you can actually schedule. Every item traces back to a verified finding. Ordering is

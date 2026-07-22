@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="kb-category" content="review">
-  <meta name="kb-tags" content="folio, kindle, rails, rust, review, security, performance, architecture, ux, status:open">
+  <meta name="kb-tags" content="folio, kindle, rails, rust, review, security, performance, architecture, ux, status:partial">
   <title>Folio — full project review (architecture, security, performance, UX, ecosystem) 2026-07</title>
   <template id="kb-prompt">Review the kindle-private-cloud project (Folio Rails server + kindled Rust daemon) across every direction — architecture, security, data/performance, the Rust daemon, testing/ops, product/UX, and ecosystem positioning — looking for improvements and new ideas. Seven grok-4.5 reviewer workers each went deep on one lens; every finding was then adversarially re-verified against the actual source by a separate agent, and the headline claims were hand-checked. This artifact is the detailed findings register; the companion roadmap artifact prioritises the work.</template>
   <style>
@@ -33,6 +33,17 @@
 </head>
 <body>
 <h1 id="top">Folio — full project review, July 2026</h1>
+
+<div class="note" id="shipped-status">
+<strong>Status 2026-07-20:</strong> most findings in this register have since been
+fixed — see the <a href="folio-roadmap-2026-07.html#shipped-status">roadmap's
+implementation-status banner</a> for the commit-by-commit map. The device-API
+IDOR, stuck conversions, plaintext tokens, the catalog scale cliffs, the kindled
+path/retry/state gaps, the CI misconfiguration, and the worst UX feedback gaps
+are resolved on <code>main</code>. Still open: automated SQLite backup (excluded
+from that pass by request) and the lower-severity <span class="v vu">UNVERIFIED</span>
+items. This document is preserved as the historical record of what was found.
+</div>
 
 <p><strong>Scope.</strong> A whole-project review of <code>kindle-private-cloud</code>
 — the Folio Rails&nbsp;8 server (<code>server/</code>, ~6k lines Ruby: 16 models,
