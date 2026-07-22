@@ -40,6 +40,10 @@ gem "thruster", require: false
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"
 
+# No longer a default gem as of Ruby 3.4 — the vocab notebook's CSV export
+# (VocabEntries::Export) needs it explicitly bundled.
+gem "csv"
+
 # Book-level semantic search: local ONNX sentence embeddings (no external
 # services) stored in SQLite via the sqlite-vec extension. sqlite-vec only
 # ships prerelease platform gems, hence the explicit constraint (and the

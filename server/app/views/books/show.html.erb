@@ -143,6 +143,14 @@
   <% end %>
 <% end %>
 
+<% if @vocab_entries.any? %>
+  <p class="section-label">
+    Vocab (<%= @vocab_entries.size %>)
+    <span class="muted small">· <%= link_to "all vocab for this book", vocab_entries_path(book_id: @book.id) %></span>
+  </p>
+  <%= render partial: "vocab_entries/entry", collection: @vocab_entries, as: :entry %>
+<% end %>
+
 <%= turbo_frame_tag "book_files" do %>
   <% if @conversions.any?(&:pending?) || @conversions.any?(&:running?) %>
     <%# Reloads this frame while work is in flight; the attribute disappears

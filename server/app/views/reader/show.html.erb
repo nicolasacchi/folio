@@ -13,6 +13,7 @@
          data-reader-state-url-value="<%= read_book_state_path(@book) %>"
          data-reader-annotations-url-value="/books/<%= @book.id %>/read/annotations"
          data-reader-lookup-url-value="<%= lookup_path %>"
+         data-reader-vocab-url-value="<%= vocab_entries_path %>"
          data-reader-book-lang-value="<%= @book_lang %>"
          data-reader-csrf-token-value="<%= form_authenticity_token %>"
          data-reader-cfi-value="<%= @initial_position&.cfi %>"

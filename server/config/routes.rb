@@ -24,6 +24,14 @@ Rails.application.routes.draw do
   patch  "books/:id/read/annotations/:annotation_id/locate" => "reader_annotations#locate"
   get    "lookup" => "lookups#show"
 
+  # Vocab notebook: dictionary lookups saved into a per-book study list.
+  # The reader auto-POSTs here once a /lookup resolves — see
+  # VocabEntriesController and reader_controller.js's "Vocab notebook
+  # capture" section.
+  resources :vocab_entries, path: "vocab", only: [ :index, :create, :destroy ] do
+    collection { get :export }
+  end
+
   resources :deliveries, only: [ :create, :destroy ]
   # Ask a device to delete a delivered book (rides the next manifest).
   resources :evictions, only: [ :create, :destroy ], param: :delivery_id

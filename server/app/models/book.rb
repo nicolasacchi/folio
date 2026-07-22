@@ -23,6 +23,7 @@ class Book < ApplicationRecord
   has_many :deliveries, dependent: :destroy
   has_many :annotations, dependent: :nullify
   has_many :reader_positions, dependent: :destroy
+  has_many :vocab_entries, dependent: :nullify
 
   # Assigned eagerly (not at validation) because the storage path of an
   # about-to-be-ingested file already depends on it.

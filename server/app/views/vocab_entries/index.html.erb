@@ -1,0 +1,61 @@
+<% content_for :title, "Vocab — Folio" %>
+
+<p class="kicker">Words looked up while reading</p>
+<h1 class="page-title">Vocab notebook<% if @book %> · <%= @book.title %><% end %></h1>
+
+<%= form_with url: vocab_entries_path, method: :get, class: "search-bar", role: "search" do %>
+  <%= select_tag :book_id,
+        options_for_select([ [ "All books", "" ] ] + @filter_books.map { |b| [ b.title, b.id ] }, @book&.id),
+        "aria-label": "Filter by book" %>
+  <%= hidden_field_tag :lang, @lang if @lang %>
+  <button class="btn" type="submit">Filter</button>
+  <% if @book || @lang %>
+    <%= link_to "Clear filters", vocab_entries_path, class: "btn btn--quiet" %>
+  <% end %>
+<% end %>
+
+<p class="chips">
+  <%= link_to "all #{@total_all}", vocab_entries_path(book_id: @book&.id),
+        class: "stamp chip #{"stamp--ready" if @lang.nil?}" %>
+  <% Dictionary::SUPPORTED_LANGS.each do |lang| %>
+    <% count = @lang_counts[lang].to_i %>
+    <% next if count.zero? && @lang != lang %>
+    <%= link_to "#{lang.upcase} #{count}", vocab_entries_path(book_id: @book&.id, lang: lang),
+          class: "stamp chip #{"stamp--ready" if @lang == lang}" %>
+  <% end %>
+</p>
+
+<p class="actions">
+  <%= link_to "Export CSV", export_vocab_entries_path(book_id: @book&.id, lang: @lang, format: "csv"),
+        class: "btn btn--quiet", data: { turbo: false } %>
+  <%= link_to "Export Anki (TSV)", export_vocab_entries_path(book_id: @book&.id, lang: @lang, format: "anki"),
+        class: "btn btn--quiet", data: { turbo: false } %>
+</p>
+
+<% if @vocab_entries.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    <% if @book || @lang %>
+      Nothing matches.<br><%= link_to "All vocab", vocab_entries_path %>
+    <% else %>
+      No words saved yet.<br>
+      <span class="small">Tap a word in the reader — a lookup that resolves is saved here
+      automatically.</span>
+    <% end %>
+  </div>
+<% else %>
+  <%= render partial: "vocab_entries/entry", collection: @vocab_entries, as: :entry %>
+
+  <% last_page = [ (@total / VocabEntriesController::PER_PAGE.to_f).ceil, 1 ].max %>
+  <% if last_page > 1 %>
+    <nav class="pager" aria-label="Pagination">
+      <% if @page > 1 %>
+        <%= link_to "← Prev", vocab_entries_path(request.query_parameters.merge("page" => @page - 1)), class: "btn btn--quiet" %>
+      <% end %>
+      <span class="muted small">page <%= @page %> of <%= last_page %></span>
+      <% if @page < last_page %>
+        <%= link_to "Next →", vocab_entries_path(request.query_parameters.merge("page" => @page + 1)), class: "btn btn--quiet" %>
+      <% end %>
+    </nav>
+  <% end %>
+<% end %>

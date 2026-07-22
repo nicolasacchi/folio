@@ -136,9 +136,11 @@ export default class extends Controller {
     fileUrl: String,
     filename: String,
     format: String,
+    bookId: Number,
     positionUrl: String,
     annotationsUrl: String,
     lookupUrl: String,
+    vocabUrl: String,
     stateUrl: String,
     bookLang: { type: String, default: "en" },
     csrfToken: String,
@@ -841,22 +843,26 @@ export default class extends Controller {
   }
 
   // Look-up hand-off: dispatched on this.element (bubbles) as
-  // "reader:lookup" with `{ word, lang, rect }` — `rect` is already
+  // "reader:lookup" with `{ word, lang, rect, range }` — `rect` is already
   // translated into this document's viewport ({left, top, right, bottom,
   // width, height}, position:fixed-compatible). `word` is the raw trimmed
   // selection (may be a phrase, not a single token) and `lang` is the
-  // book's own section language when set, else null. This selection menu
-  // button doesn't itself call /lookup — openLookupCard(), below, is the
-  // sole listener and does that (kept as an event rather than a direct
-  // call so the hand-off contract stays decoupled from how the card ends
-  // up wired). The menu is deliberately left open: its color dots/Note/Copy
-  // stay reachable while the card is showing, Kindle-style.
+  // book's own section language when set, else null. `range` is the live
+  // section-document Range the lookup was made from — openLookupCard()
+  // only reads it synchronously (to capture surrounding-sentence context
+  // for the vocab notebook, see buildLookupContext()) and never holds
+  // onto it. This selection menu button doesn't itself call /lookup —
+  // openLookupCard(), below, is the sole listener and does that (kept as
+  // an event rather than a direct call so the hand-off contract stays
+  // decoupled from how the card ends up wired). The menu is deliberately
+  // left open: its color dots/Note/Copy stay reachable while the card is
+  // showing, Kindle-style.
   lookupSelection() {
     const captured = this.captureSelectionText()
     if (!captured) return
     const text = captured.text.trim()
     if (!text) return
-    this.dispatchLookup({ word: text, lang: captured.doc.documentElement?.lang || null, rect: this.hostRectForRange(captured.range) })
+    this.dispatchLookup({ word: text, lang: captured.doc.documentElement?.lang || null, rect: this.hostRectForRange(captured.range), range: captured.range })
   }
 
   // -- Dictionary lookup card ----------------------------------------------
@@ -876,7 +882,7 @@ export default class extends Controller {
 
   maybeAutoLookup(doc, range, text) {
     if (!this.isAutoLookupCandidate(text)) return
-    this.dispatchLookup({ word: text, lang: doc.documentElement?.lang || null, rect: this.hostRectForRange(range) })
+    this.dispatchLookup({ word: text, lang: doc.documentElement?.lang || null, rect: this.hostRectForRange(range), range })
   }
 
   isAutoLookupCandidate(text) {
@@ -885,7 +891,7 @@ export default class extends Controller {
     return words.length >= 1 && words.length <= LOOKUP_AUTO_MAX_WORDS
   }
 
-  openLookupCard({ word, lang, rect } = {}) {
+  openLookupCard({ word, lang, rect, range } = {}) {
     if (!this.hasLookupCardTarget) return
     const cleanWord = (word || "").trim()
     if (!cleanWord) return
@@ -909,7 +915,11 @@ export default class extends Controller {
       activeTab,
       dictionaryFetchedFor: needsDictionaryFetch ? null : lookupKey,
       wikipediaFetchedFor: previous?.wikipediaFetchedFor === lookupKey ? lookupKey : null,
-      anchorRect // re-used by repositionLookupCard() once async content changes the card's height
+      anchorRect, // re-used by repositionLookupCard() once async content changes the card's height
+      // Surrounding-sentence snippet for the vocab notebook (see
+      // saveVocabEntry(), below) — read from `range` right now, while it's
+      // still live, rather than held onto for later.
+      context: this.buildLookupContext(range)
     }
 
     if (anchorRect) this.positionFloating(this.lookupCardTarget, anchorRect)
@@ -921,6 +931,23 @@ export default class extends Controller {
       this.fetchDictionaryEntry(this.lookupToken)
     }
     if (activeTab === "wikipedia") this.ensureWikipediaPane()
+  }
+
+  // Best-effort "surrounding sentence" for the word being looked up,
+  // reused straight from buildPositionContext() (see the "-- Position
+  // context capture --" section below) — the same bounded DOM walk
+  // position-saves already use, just joined into one snippet instead of
+  // kept as separate exact/before/after pieces. Saved alongside the vocab
+  // notebook entry (see saveVocabEntry()) so an export carries some
+  // reading context, not just the bare word. `range` is null for callers
+  // that don't have one; the walk itself is already wrapped in its own
+  // try/catch and degrades to `{}` on any failure, so this never throws —
+  // worst case the entry is saved without context, not hackily guessed.
+  buildLookupContext(range) {
+    if (!range) return null
+    const { exact, before, after } = this.buildPositionContext(range)
+    const joined = [ before, exact, after ].filter(Boolean).join(" ").trim()
+    return joined || null
   }
 
   closeLookupCard() {
@@ -1002,6 +1029,7 @@ export default class extends Controller {
       if (token !== this.lookupToken) return
       if (this.lookupState) this.lookupState.dictionaryFetchedFor = dictionaryKey
       this.renderLookupDictionaryResult(data)
+      this.saveVocabEntry(state, data)
     } catch (error) {
       console.error("[reader] lookup failed", error)
       if (token === this.lookupToken) this.renderLookupDictionaryError()
@@ -1014,6 +1042,38 @@ export default class extends Controller {
     this.lookupState.dictionaryFetchedFor = null
     this.lookupToken += 1
     this.fetchDictionaryEntry(this.lookupToken)
+  }
+
+  // -- Vocab notebook capture ----------------------------------------------
+  //
+  // Fire-and-forget: once a dictionary lookup actually resolves (called
+  // from fetchDictionaryEntry(), above, right after the popup itself has
+  // already rendered), silently POST it to the vocab notebook so tapping
+  // words while reading builds a per-book study list with no explicit
+  // "save" step. GET /lookup stays a pure read — this is the only place
+  // that writes a vocab_entries row, and it must never disrupt the lookup
+  // popup: every failure mode here (missing URL, rejected fetch, thrown
+  // error) is swallowed rather than surfaced to the reader.
+  saveVocabEntry(state, data) {
+    if (!this.hasVocabUrlValue) return
+    try {
+      const gloss = data.entries?.[0]?.glosses?.[0] || null
+      const payload = { word: data.word, lemma: data.lemma, lang: data.lang, gloss, context: state.context || null }
+      if (this.hasBookIdValue) payload.book_id = this.bookIdValue
+
+      fetch(this.vocabUrlValue, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": this.csrfTokenValue,
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch((error) => console.error("[reader] failed to save vocab entry", error))
+    } catch (error) {
+      console.error("[reader] failed to save vocab entry", error)
+    }
   }
 
   renderLookupShimmer(target) {

@@ -45,6 +45,8 @@
                 aria: { current: current_page?(reading_path) ? "page" : nil } %>
           <%= link_to "Notes", annotations_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(annotations_path) ? "page" : nil } %>
+          <%= link_to "Vocab", vocab_entries_path, class: "top-link top-link--nav",
+                aria: { current: controller_name == "vocab_entries" ? "page" : nil } %>
           <% queued = Delivery.pending.count %>
           <%= link_to queued.positive? ? "Queue (#{queued})" : "Queue", queue_path, class: "top-link top-link--nav",
                 aria: { current: current_page?(queue_path) ? "page" : nil } %>

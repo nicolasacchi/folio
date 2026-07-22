@@ -100,6 +100,7 @@ class BooksController < ApplicationController
     @devices = Device.physical.order(:name)
     @deliveries = @book.deliveries.index_by(&:device_id)
     @annotations = @book.annotations.with_content.includes(:device).recent.limit(100)
+    @vocab_entries = @book.vocab_entries.where(user: Current.user).includes(:book).recent.limit(50)
   end
 
   def edit
