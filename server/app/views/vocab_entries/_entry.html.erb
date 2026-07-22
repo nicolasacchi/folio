@@ -1,0 +1,23 @@
+<blockquote class="annotation">
+  <p class="annotation-content">
+    <b><%= entry.word %></b>
+    <% if entry.lemma.present? && entry.lemma != entry.word %>
+      <span class="muted small">→ <%= entry.lemma %></span>
+    <% end %>
+    <% if entry.gloss.present? %><br><span class="small"><%= entry.gloss %></span><% end %>
+    <% if entry.context.present? %>
+      <br><span class="small muted">“<%= truncate(entry.context, length: 220) %>”</span>
+    <% end %>
+  </p>
+  <footer class="small muted">
+    <span class="stamp stamp--ready"><%= entry.lang.upcase %></span>
+    <% if entry.book %>
+      <%= link_to entry.book.title, book_path(entry.book) %>
+    <% else %>
+      <span title="Not captured from a specific book">no book</span>
+    <% end %>
+    · <%= l entry.updated_at.to_date, format: :long %>
+    <%= button_to "Remove", vocab_entry_path(entry), method: :delete, class: "btn btn--quiet",
+          form: { data: { turbo_confirm: "Remove “#{entry.word}” from the vocab notebook?" } } %>
+  </footer>
+</blockquote>

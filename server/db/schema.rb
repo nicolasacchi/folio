@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_20_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -261,6 +261,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_130000) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  create_table "vocab_entries", force: :cascade do |t|
+    t.integer "book_id"
+    t.text "context"
+    t.datetime "created_at", null: false
+    t.text "gloss"
+    t.string "lang", null: false
+    t.string "lemma", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.string "word", null: false
+    t.index ["book_id", "updated_at"], name: "index_vocab_entries_on_book_id_and_updated_at"
+    t.index ["book_id"], name: "index_vocab_entries_on_book_id"
+    t.index ["user_id", "book_id", "lemma", "lang"], name: "index_vocab_entries_on_dedupe_key", unique: true
+    t.index ["user_id", "updated_at"], name: "index_vocab_entries_on_user_id_and_updated_at"
+    t.index ["user_id"], name: "index_vocab_entries_on_user_id"
+  end
+
   add_foreign_key "annotations", "books"
   add_foreign_key "annotations", "devices"
   add_foreign_key "book_files", "books"
@@ -277,4 +294,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_130000) do
   add_foreign_key "reading_states", "books"
   add_foreign_key "reading_states", "devices"
   add_foreign_key "sessions", "users"
+  add_foreign_key "vocab_entries", "books"
+  add_foreign_key "vocab_entries", "users"
 end
