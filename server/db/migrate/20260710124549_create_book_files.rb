@@ -12,6 +12,6 @@ class CreateBookFiles < ActiveRecord::Migration[8.1]
     end
     add_index :book_files, :sha256
     add_index :book_files, :path, unique: true
-    add_index :book_files, [:book_id, :format], unique: true
+    add_index :book_files, [ :book_id, :format ], unique: true
   end
 end
