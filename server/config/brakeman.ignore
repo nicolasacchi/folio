@@ -1,0 +1,93 @@
+{
+  "ignored_warnings": [
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "35438e9459f7226730e6206b6d5c3bad6ca750674329df5775179d10ad1114da",
+      "check_name": "SendFile",
+      "message": "Model attribute used in file name",
+      "file": "app/controllers/books_controller.rb",
+      "line": 132,
+      "note": "Path is the book's own stored cover_path from the DB record; params only select which book. No user-controlled path segment.",
+      "confidence": "Medium"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "fb814ba1614b531373bb664c0d6abb31aa2e715250ea54c96d18c9d3a790963e",
+      "check_name": "SendFile",
+      "message": "Model attribute used in file name",
+      "file": "app/controllers/books_controller.rb",
+      "line": 141,
+      "note": "Path is the book_file's own absolute_path from the DB; params[:fmt] only selects a format row via where(format:). No traversal.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "f176c09140e71041ffb7af1ee1c0cdde12c984418712cbe641012eaa88551dd4",
+      "check_name": "SendFile",
+      "message": "Model attribute used in file name",
+      "file": "app/controllers/reader_controller.rb",
+      "line": 108,
+      "note": "Path is the book's own readable_file.absolute_path from the DB. Session-authenticated. No user-controlled path segment.",
+      "confidence": "Medium"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "6e49bf296167b0d8f67ed7e3a005b290a363cfd6ef5918f16a349f5aa8c164f7",
+      "check_name": "SendFile",
+      "message": "Parameter value used in file name",
+      "file": "app/controllers/api/v1/book_files_controller.rb",
+      "line": 12,
+      "note": "Path is the delivered book_file's own delivery_path; the book is resolved via find_delivered_book! (scoped to this device's manifest). params[:fmt] selects a format row, not a path.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "4e066a37ba756eb4f81ee8fc63d682548d29fb59e369243d39395f3599f240b2",
+      "check_name": "SendFile",
+      "message": "Parameter value used in file name",
+      "file": "app/controllers/opds/downloads_controller.rb",
+      "line": 21,
+      "note": "OPDS acquisition: path is the book_file's own absolute_path from the DB; the book is found by public_id within available_books, params[:fmt] selects a format row. Same safe pattern as books#download. HTTP Basic auth gates it.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "2e1c8d57d2768555ad95f3b13c372f43ccb905537976250677bb31075ddb4de0",
+      "check_name": "SendFile",
+      "message": "Parameter value used in file name",
+      "file": "app/controllers/opds/downloads_controller.rb",
+      "line": 33,
+      "note": "OPDS cover: path is the book's own cover_path from the DB record found by public_id within available_books. No user-controlled path segment. HTTP Basic auth gates it.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "c798a91d4afdcf22fbb2042a520ec5537d963fedc502cb12b0c3da6680291b8c",
+      "check_name": "SendFile",
+      "message": "Parameter value used in file name",
+      "file": "app/controllers/opds/downloads_controller.rb",
+      "line": 40,
+      "note": "OPDS thumbnail: path is produced by Library::Thumbnails.ensure for the book found by public_id within available_books. Server-generated path, no user input. HTTP Basic auth gates it.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "Remote Code Execution",
+      "warning_code": 25,
+      "fingerprint": "215674e99073c5ff3f53ac415a996ad9907547178473fdc92cebdf90ec7c259f",
+      "check_name": "Deserialize",
+      "message": "Use of `Marshal.load` may be dangerous",
+      "file": "app/services/reader/anchor.rb",
+      "line": 89,
+      "note": "Loads a Marshal cache this same service wrote (anchor.rb writes it with Marshal.dump), keyed by book_file.sha256 under the app's own cache dir. The data is app-generated, never remote input; exploiting it requires arbitrary write to the cache dir, which is a prior compromise.",
+      "confidence": "Weak"
+    }
+  ],
+  "brakeman_version": "8.0.5"
+}
