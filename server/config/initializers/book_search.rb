@@ -2,7 +2,7 @@
 # file (storage/<env>_search.sqlite3). The dump exclusion stays because a
 # legacy in-primary table may still exist until `book_search:migrate` has
 # run.
-ActiveRecord::SchemaDumper.ignore_tables = [/\Abook_search/]
+ActiveRecord::SchemaDumper.ignore_tables = [ /\Abook_search/ ]
 
 Rails.application.config.after_initialize do
   BookSearch.ensure_schema!
