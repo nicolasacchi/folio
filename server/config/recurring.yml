@@ -15,17 +15,24 @@ production:
     queue: default
     schedule: every hour at minute 12
 
-  # Pick up books added to the scan roots (SCAN_ROOTS) overnight.
-  nightly_library_scan:
+  # Pick up books added to the scan roots (SCAN_ROOTS). WEEKLY, not nightly:
+  # a full rescan walks every file in the library and took 8h11m on this
+  # host's spinning-disk RAID5, so a nightly cadence meant one scan was
+  # still running when the next day's overnight jobs queued behind it.
+  # Sunday 03:30 (cron form, so the day is unambiguous). Set SCAN_THROTTLE_MS
+  # to trade scan duration for disk headroom.
+  weekly_library_scan:
     class: ScanLibraryJob
-    schedule: every day at 3:30am
+    schedule: "30 3 * * 0"
 
-  # Refresh semantic vectors after the scan (covers books added/edited
-  # during the day; a full re-embed of the catalog takes a few minutes).
-  nightly_embeddings:
+  # Refresh semantic vectors the morning AFTER the scan, so an hours-long
+  # scan isn't still holding the shared :scan queue when this starts. This
+  # re-embeds the whole catalog, so weekly is plenty — and it now resumes
+  # from a cursor rather than restarting (see EMBED_BATCH_LIMIT).
+  weekly_embeddings:
     class: CatalogOperationJob
     args: [ "embed_all" ]
-    schedule: every day at 4:45am
+    schedule: "45 4 * * 1"
 
   # Clears conversions stuck in "running" after their worker crashed, so
   # EnsureKindleFormatJob's active-scope guard doesn't wedge on that book
@@ -35,15 +42,16 @@ production:
     schedule: every 15 minutes
 
   # Deletes prepared-delivery/cover/thumbnail files that lost their
-  # referencing DB row (see Library::StorageGc). After the nightly scan
-  # (3:30am) and embeddings refresh (4:45am) so it isn't racing either.
+  # referencing DB row (see Library::StorageGc). At 5:15am it starts after
+  # the weekly scan (Sun 3:30) and embeddings (Mon 4:45) have kicked off;
+  # it's independent of both, so overlapping a long scan is harmless.
   sweep_orphaned_artifacts:
     class: SweepOrphanedArtifactsJob
     schedule: every day at 5:15am
 
   # WAL checkpoint + quick_check canary (see DatabaseMaintenance). Last in
-  # the overnight lineup (3:30/4:45/5:15) so it checkpoints the WAL churn
-  # those jobs themselves generate; once a day is plenty for a single-app
+  # the overnight lineup so it checkpoints the WAL churn the other jobs
+  # generate; once a day is plenty for a single-app
   # SQLite deployment — Solid Queue's own writes are what grow the WAL
   # fastest, and 24h of accumulation is still a small, fast checkpoint.
   nightly_database_maintenance:

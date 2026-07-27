@@ -53,12 +53,16 @@ Rails.application.configure do
   # Replace the default in-process and non-durable queuing backend for Active Job.
   config.active_job.queue_adapter = :solid_queue
   config.solid_queue.connects_to = { database: { writing: :queue } }
-  # A long library scan (ScanLibraryJob, hours on a first run) whose
+  # A long library scan (ScanLibraryJob, hours on a large library) whose
   # heartbeat thread is briefly starved under load must not be declared
   # dead and have its in-flight job re-enqueued from scratch — that turns
-  # one slow scan into a retry loop. Tolerate longer heartbeat gaps than
-  # the 5-minute default before the supervisor prunes a process.
-  config.solid_queue.process_alive_threshold = 15.minutes
+  # one slow scan into a retry loop. 15 minutes was not enough: on a
+  # saturated spinning-disk array the heartbeat's own SQLite write stalls
+  # past that, and scans/embeds were pruned and restarted for days without
+  # ever completing a pass — every recorded job failure was a
+  # ProcessPrunedError. Whole-catalog embeds now chunk and resume, but the
+  # scan is still one long job, so tolerate a genuinely long gap.
+  config.solid_queue.process_alive_threshold = 1.hour
 
   # Ignore bad email addresses and do not raise email delivery errors.
   # Set this to true and configure the email server for immediate delivery to raise delivery errors.
