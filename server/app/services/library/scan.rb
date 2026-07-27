@@ -26,6 +26,13 @@ class Library::Scan
 
   PROGRESS_CACHE_KEY = "library_scan/progress"
 
+  # Optional pause between book groups. A rescan is thousands of small
+  # random reads; on a spinning-disk array that saturates the spindles and
+  # starves everything else on the host (including this process's own Solid
+  # Queue heartbeat). SCAN_THROTTLE_MS=25 turns the scan into a background
+  # trickle that takes longer but leaves the disks usable. 0 = unthrottled.
+  THROTTLE_SECONDS = ENV.fetch("SCAN_THROTTLE_MS", "0").to_f / 1000
+
   def self.roots
     ENV.fetch("SCAN_ROOTS", "").split(",").filter_map do |raw|
       path = Pathname.new(raw.strip)
@@ -74,6 +81,7 @@ class Library::Scan
       import_group(group)
       done += group.paths.size
       write_progress(state: "running", done: done, total: total) if (done % 20).zero?
+      sleep THROTTLE_SECONDS if THROTTLE_SECONDS.positive?
     end
 
     mark_missing

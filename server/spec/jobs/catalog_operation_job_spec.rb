@@ -24,6 +24,55 @@ RSpec.describe CatalogOperationJob do
     expect(target.reload.formats).to contain_exactly("epub", "azw3", "mobi")
   end
 
+  # Regression: this used to force the jobs onto :conversion, overriding
+  # IndexBookJob's own queue. When that worker later failed to register,
+  # 8,498 jobs sat unclaimed for eight days.
+  it "queues fulltext extraction on IndexBookJob's own queue" do
+    create(:book)
+
+    expect { described_class.perform_now("index_fulltext") }
+      .to have_enqueued_job(IndexBookJob).on_queue("indexing")
+  end
+
+  describe '"embed_all"' do
+    before do
+      allow(Library::Embeddings).to receive(:available?).and_return(true)
+      allow(Library::Embeddings).to receive(:index_books!) { |batch| batch.size }
+    end
+
+    # A single invocation must not walk the whole catalog: occupying the
+    # worker past process_alive_threshold gets it pruned as dead and the job
+    # restarted from scratch, which never terminates on a large library.
+    it "hands off to a fresh job with a cursor when more books remain" do
+      stub_const("#{described_class}::EMBED_BATCH_LIMIT", 1)
+      first, second = create(:book), create(:book)
+
+      expect { described_class.perform_now("embed_all") }
+        .to have_enqueued_job(described_class).with("embed_all", first.id)
+      expect(second.id).to be > first.id
+    end
+
+    it "resumes after the cursor rather than re-embedding from the start" do
+      stub_const("#{described_class}::EMBED_BATCH_LIMIT", 10)
+      first, second = create(:book), create(:book)
+
+      expect { described_class.perform_now("embed_all", first.id) }
+        .not_to have_enqueued_job(described_class)
+
+      expect(Library::Embeddings).to have_received(:index_books!).with([ second ])
+    end
+
+    it "stops without re-enqueueing when the catalog fits one pass" do
+      stub_const("#{described_class}::EMBED_BATCH_LIMIT", 10)
+      book = create(:book)
+
+      expect { described_class.perform_now("embed_all") }
+        .not_to have_enqueued_job(described_class)
+
+      expect(Library::Embeddings).to have_received(:index_books!).with([ book ])
+    end
+  end
+
   describe '"embed_chunks_all"' do
     before do
       Library::Embeddings.reset!
