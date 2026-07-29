@@ -17,6 +17,7 @@ Rails.application.routes.draw do
   get    "books/:id/read/file"                   => "reader#file",      as: :read_book_file
   put    "books/:id/read/position"               => "reader#update_position", as: :read_book_position
   get    "books/:id/read/state"                  => "reader#state",           as: :read_book_state
+  put    "reader/preferences"                    => "reader_preferences#update", as: :reader_preferences
   get    "books/:id/read/annotations"            => "reader_annotations#index"
   post   "books/:id/read/annotations"            => "reader_annotations#create"
   patch  "books/:id/read/annotations/:annotation_id" => "reader_annotations#update"
@@ -40,6 +41,7 @@ Rails.application.routes.draw do
   resources :devices, only: [ :index, :create, :show, :update, :destroy ] do
     member do
       post :evict_suggested # apply the whole eviction plan in one tap
+      post :prefer         # set Current.user's preferred Kindle
     end
   end
 

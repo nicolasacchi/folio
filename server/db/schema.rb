@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_29_172801) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -143,6 +143,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
     t.datetime "last_seen_at"
     t.datetime "last_sync_at"
     t.integer "low_space_threshold_mb", default: 500, null: false
+    t.integer "main_user_id"
     t.boolean "modern_reader_pinned", default: true, null: false
     t.string "name", null: false
     t.string "reader_mode"
@@ -154,6 +155,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
     t.bigint "total_bytes"
     t.datetime "updated_at", null: false
     t.index ["kind"], name: "index_devices_on_kind"
+    t.index ["main_user_id"], name: "index_devices_on_main_user_id"
     t.index ["token_digest"], name: "index_devices_on_token_digest", unique: true
   end
 
@@ -257,8 +259,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
     t.datetime "created_at", null: false
     t.string "email_address", null: false
     t.string "password_digest", null: false
+    t.integer "preferred_device_id"
+    t.text "reader_preferences", default: "{}", null: false
     t.datetime "updated_at", null: false
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
+    t.index ["preferred_device_id"], name: "index_users_on_preferred_device_id"
   end
 
   create_table "vocab_entries", force: :cascade do |t|
@@ -286,6 +291,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
   add_foreign_key "deliveries", "books"
   add_foreign_key "deliveries", "devices"
   add_foreign_key "device_syncs", "devices"
+  add_foreign_key "devices", "users", column: "main_user_id", on_delete: :nullify
   add_foreign_key "import_files", "book_files", on_delete: :nullify
   add_foreign_key "kosync_credentials", "users"
   add_foreign_key "kosync_progresses", "kosync_credentials"
@@ -294,6 +300,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_20_140000) do
   add_foreign_key "reading_states", "books"
   add_foreign_key "reading_states", "devices"
   add_foreign_key "sessions", "users"
+  add_foreign_key "users", "devices", column: "preferred_device_id", on_delete: :nullify
   add_foreign_key "vocab_entries", "books"
   add_foreign_key "vocab_entries", "users"
 end

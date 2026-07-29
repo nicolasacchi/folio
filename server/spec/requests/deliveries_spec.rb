@@ -18,6 +18,26 @@ RSpec.describe "Deliveries", type: :request do
       expect(Delivery.last).to have_attributes(book: book, device: device, delivered_at: nil)
     end
 
+    it "falls back to the user's preferred Kindle when device_id is blank" do
+      user.update!(preferred_device: device)
+
+      expect {
+        post "/deliveries", params: { book_id: book.id }
+      }.to change(Delivery, :count).by(1)
+
+      expect(Delivery.last.device).to eq(device)
+    end
+
+    it "redirects with an alert when neither device_id nor preferred Kindle is set" do
+      expect {
+        post "/deliveries", params: { book_id: book.id }
+      }.not_to change(Delivery, :count)
+
+      expect(response).to redirect_to(book_path(book))
+      follow_redirect!
+      expect(response.body).to match(/No Kindle selected|preferred Kindle/i)
+    end
+
     it "is idempotent for an already-queued book" do
       create(:delivery, book: book, device: device)
 

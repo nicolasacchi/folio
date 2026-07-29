@@ -19,6 +19,7 @@
         · <%= pluralize(device.deliveries.on_device.count, "book") %> on device<%
         %><% pending = device.deliveries.pending.count %><% if pending.positive? %>, <%= pending %> queued<% end %><%
         %><% removing = device.deliveries.evict_requested.count %><% if removing.positive? %>, <%= removing %> removing<% end %>
+        <% if device.main_user %>· main user <%= device.main_user.email_address %><% end %>
       </span>
       <% if device.storage_known? %>
         <span class="storage-bar <%= "storage-bar--low" if device.low_space? %>" role="img"
@@ -28,6 +29,11 @@
         <span class="small muted"><%= format_size(device.free_bytes) %> free of <%= format_size(device.total_bytes) %><% if device.low_space? %> — <b>low space</b><% end %></span>
       <% end %>
     </span>
+    <% if device.id == @preferred_device_id %>
+      <span class="stamp stamp--ready">Preferred ✓</span>
+    <% else %>
+      <%= button_to "Set as my preferred", prefer_device_path(device), method: :post, class: "btn btn--quiet" %>
+    <% end %>
     <%= link_to "Details", device_path(device), class: "btn btn--quiet" %>
   </div>
 <% end %>

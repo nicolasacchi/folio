@@ -31,6 +31,28 @@ RSpec.describe Reader::KindleWriteback do
       content_mtime: content_mtime, size: bytes.bytesize, sha256: Digest::SHA256.hexdigest(bytes))
   end
 
+  describe ".latest_physical_state" do
+    let!(:other) { create(:device, kind: "kindle", name: "other-kindle") }
+    let!(:user) { create(:user) }
+
+    it "prefers the acting user's preferred device when it has a state" do
+      create(:reading_state, book: book, device: other, content_mtime: 1.hour.ago, progress_percent: 10)
+      preferred_state = create(:reading_state, book: book, device: kindle, content_mtime: 1.day.ago, progress_percent: 40)
+      user.update!(preferred_device: kindle)
+
+      expect(described_class.latest_physical_state(book, user: user)).to eq(preferred_state)
+    end
+
+    it "falls back to newest content_mtime without a preferred match" do
+      older = create(:reading_state, book: book, device: kindle, content_mtime: 2.days.ago, progress_percent: 10)
+      newer = create(:reading_state, book: book, device: other, content_mtime: 1.hour.ago, progress_percent: 20)
+
+      expect(described_class.latest_physical_state(book, user: user)).to eq(newer)
+      expect(described_class.latest_physical_state(book)).to eq(newer)
+      expect(described_class.latest_physical_state(book, user: user)).not_to eq(older)
+    end
+  end
+
   describe "the reader_writeback flag" do
     it "short-circuits when no physical device has opted in" do
       kindle.update!(reader_writeback: false)

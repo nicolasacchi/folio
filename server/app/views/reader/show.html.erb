@@ -16,6 +16,8 @@
          data-reader-vocab-url-value="<%= vocab_entries_path %>"
          data-reader-book-lang-value="<%= @book_lang %>"
          data-reader-csrf-token-value="<%= form_authenticity_token %>"
+         data-reader-preferences-url-value="<%= reader_preferences_path %>"
+         data-reader-server-preferences-value="<%= ERB::Util.html_escape(@reader_preferences.to_json) %>"
          data-reader-cfi-value="<%= @initial_position&.cfi %>"
          data-reader-fraction-value="<%= @initial_position&.fraction %>"
          <% if @text_length %>data-reader-text-length-value="<%= @text_length %>"<% end %>>
@@ -142,15 +144,25 @@
           <span data-reader-target="marginReadout">24px</span>
         </div>
 
-        <div class="reader-settings-row">
+        <div class="reader-settings-row reader-settings-row--fonts">
           <label>Font</label>
-          <div class="reader-toggle-group">
-            <button type="button" class="reader-toggle" data-reader-target="fontButton"
+          <div class="reader-font-chips">
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--publisher" data-reader-target="fontButton"
                     data-action="reader#setFontFamily" data-reader-font-param="publisher">Publisher</button>
-            <button type="button" class="reader-toggle" data-reader-target="fontButton"
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--serif" data-reader-target="fontButton"
                     data-action="reader#setFontFamily" data-reader-font-param="serif">Serif</button>
-            <button type="button" class="reader-toggle" data-reader-target="fontButton"
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--sans" data-reader-target="fontButton"
                     data-action="reader#setFontFamily" data-reader-font-param="sans">Sans</button>
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--literata" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="literata">Literata</button>
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--bitter" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="bitter">Bitter</button>
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--garamond" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="garamond">EB Garamond</button>
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--atkinson" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="atkinson">Atkinson</button>
+            <button type="button" class="reader-toggle reader-font-chip reader-font-chip--opendyslexic" data-reader-target="fontButton"
+                    data-action="reader#setFontFamily" data-reader-font-param="opendyslexic">OpenDyslexic</button>
           </div>
         </div>
 

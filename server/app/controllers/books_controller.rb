@@ -89,15 +89,21 @@ class BooksController < ApplicationController
       # book they're mid-way through — it used to disappear the moment any
       # filter (or a later page) was active, hiding it right when someone's
       # browsing around. It now always heads the browse view; only the
-      # grid below responds to filters/paging.
-      @currently_reading = Book.currently_reading(limit: 10)
+      # grid below responds to filters/paging. Merges web + Kindle progress.
+      @currently_reading = Book.keep_reading_for(Current.user, limit: 10)
     end
   end
 
   def show
     @conversions = @book.conversions.order(created_at: :desc).limit(10)
     @similar = similar_books
-    @devices = Device.physical.order(:name)
+    preferred_id = Current.user.preferred_device_id
+    devices = Device.physical.order(:name).to_a
+    if preferred_id && (preferred = devices.find { |d| d.id == preferred_id })
+      devices = [ preferred ] + devices.reject { |d| d.id == preferred_id }
+    end
+    @devices = devices
+    @preferred_device_id = preferred_id
     @deliveries = @book.deliveries.index_by(&:device_id)
     @annotations = @book.annotations.with_content.includes(:device).recent.limit(100)
     @vocab_entries = @book.vocab_entries.where(user: Current.user).includes(:book).recent.limit(50)

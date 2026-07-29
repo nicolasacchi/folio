@@ -1,9 +1,10 @@
 class DevicesController < ApplicationController
-  before_action :set_device, only: [ :show, :update, :evict_suggested, :destroy ]
+  before_action :set_device, only: [ :show, :update, :evict_suggested, :destroy, :prefer ]
 
   def index
-    @devices = Device.physical.order(:name)
+    @devices = Device.physical.includes(:main_user).order(:name)
     @device = Device.new
+    @preferred_device_id = Current.user.preferred_device_id
   end
 
   def show
@@ -18,6 +19,7 @@ class DevicesController < ApplicationController
     @plan = @planner.plan
     @on_device_bytes = @on_device.sum { |d| d.book.kindle_file&.size.to_i }
     @annotation_count = @device.annotations.count
+    @users = User.order(:email_address)
   end
 
   def create
@@ -45,6 +47,12 @@ class DevicesController < ApplicationController
       notice: plan.any? ? "#{plan.size} #{"removal".pluralize(plan.size)} queued for next sync." : "Nothing to remove."
   end
 
+  # Writes only Current.user.preferred_device_id — never another user's.
+  def prefer
+    Current.user.update!(preferred_device: @device)
+    redirect_back fallback_location: devices_path, notice: "#{@device.name} is now your preferred Kindle."
+  end
+
   def destroy
     @device.destroy!
     redirect_to devices_path, notice: "Device removed.", status: :see_other
@@ -66,7 +74,10 @@ class DevicesController < ApplicationController
   end
 
   def device_settings_params
-    params.expect(device: [ :name, :low_space_threshold_mb, :auto_evict,
-                            :modern_reader_pinned, :freeze_experiments, :reader_writeback ])
+    permitted = params.expect(device: [ :name, :low_space_threshold_mb, :auto_evict,
+                                        :modern_reader_pinned, :freeze_experiments, :reader_writeback,
+                                        :main_user_id ])
+    permitted[:main_user_id] = nil if permitted[:main_user_id].blank?
+    permitted
   end
 end

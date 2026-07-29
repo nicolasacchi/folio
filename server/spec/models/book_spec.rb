@@ -63,6 +63,48 @@ RSpec.describe Book, type: :model do
     end
   end
 
+  describe ".keep_reading_for" do
+    let!(:user) { create(:user) }
+    let!(:device) { create(:device) }
+    let!(:kindle_book) { create(:book, title: "Kindle only") }
+    let!(:web_book) { create(:book, title: "Web only") }
+    let!(:both_book) { create(:book, title: "Both") }
+
+    before do
+      create(:reading_state, book: kindle_book, device: device, progress_percent: 40, content_mtime: 3.days.ago)
+      create(:reader_position, book: web_book, user: user, percent: 25, updated_at: 2.days.ago)
+      create(:reading_state, book: both_book, device: device, progress_percent: 50, content_mtime: 5.days.ago)
+      create(:reader_position, book: both_book, user: user, percent: 55, updated_at: 1.day.ago)
+    end
+
+    it "merges web and kindle unfinished positions, deduping by most recent activity" do
+      rows = Book.keep_reading_for(user, limit: 10)
+      books = rows.map(&:first)
+      expect(books).to eq([ both_book, web_book, kindle_book ])
+
+      both_entry = rows.find { |book, _| book == both_book }.last
+      expect(both_entry.source_label).to eq("Web")
+      expect(both_entry.progress_percent).to eq(55)
+
+      kindle_entry = rows.find { |book, _| book == kindle_book }.last
+      expect(kindle_entry.source_label).to eq(device.name)
+    end
+
+    it "drops finished web positions and finished kindle progress" do
+      create(:reader_position, book: create(:book), user: user, percent: 99)
+      finished = create(:book)
+      create(:reading_state, book: finished, device: device, progress_percent: 99, content_mtime: Time.current)
+
+      books = Book.keep_reading_for(user, limit: 20).map(&:first)
+      expect(books).not_to include(finished)
+      expect(books.map { |b| b.reader_positions.find_by(user: user)&.percent }.compact).not_to include(99)
+    end
+
+    it "respects the limit" do
+      expect(Book.keep_reading_for(user, limit: 2).size).to eq(2)
+    end
+  end
+
   describe "category" do
     it "accepts a nil, single-segment, or two-segment category" do
       expect(build(:book, category: nil)).to be_valid

@@ -34,7 +34,7 @@ class KindleWritebackJob < ApplicationJob
     return log("could not locate anchor for book #{book.id}") if offset.nil?
     return if unchanged?(book, offset)
 
-    result = write_back(book, offset)
+    result = write_back(book, offset, user: user)
     log("book #{book.id} written=#{result.written} reason=#{result.reason || "ok"}")
   end
 
@@ -67,11 +67,13 @@ class KindleWritebackJob < ApplicationJob
   # rewriting from; if another sync landed a newer one while we were
   # locating the anchor, Reader::KindleWriteback reports :stale — refetch
   # and retry once against the now-current bundle rather than clobbering it.
-  def write_back(book, offset)
-    result = Reader::KindleWriteback.call(book: book, offset: offset, basis_state: Reader::KindleWriteback.latest_physical_state(book))
+  def write_back(book, offset, user: nil)
+    basis = Reader::KindleWriteback.latest_physical_state(book, user: user)
+    result = Reader::KindleWriteback.call(book: book, offset: offset, basis_state: basis, user: user)
     return result unless result.reason == :stale
 
-    Reader::KindleWriteback.call(book: book, offset: offset, basis_state: Reader::KindleWriteback.latest_physical_state(book))
+    basis = Reader::KindleWriteback.latest_physical_state(book, user: user)
+    Reader::KindleWriteback.call(book: book, offset: offset, basis_state: basis, user: user)
   end
 
   def log(message)

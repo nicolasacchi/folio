@@ -699,6 +699,76 @@
   color: var(--on-accent);
 }
 
+/* Reader-scoped webfonts for settings chip previews (shared URLs with the
+   iframe injection path so the HTTP cache is shared). */
+@font-face {
+  font-family: "Literata";
+  src: url("/reader/fonts/literata/literata-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bitter";
+  src: url("/reader/fonts/bitter/bitter-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/reader/fonts/garamond/garamond-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("/reader/fonts/atkinson/atkinson-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  src: url("/reader/fonts/opendyslexic/opendyslexic-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.reader-settings-row--fonts {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.reader-font-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  justify-content: flex-end;
+  max-width: 18rem;
+}
+.reader-font-chip {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: .78rem;
+}
+.reader-font-chip--serif {
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+}
+.reader-font-chip--sans {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.reader-font-chip--literata { font-family: "Literata", Georgia, serif; }
+.reader-font-chip--bitter { font-family: "Bitter", Georgia, serif; }
+.reader-font-chip--garamond { font-family: "EB Garamond", "Palatino Linotype", Georgia, serif; }
+.reader-font-chip--atkinson {
+  font-family: "Atkinson Hyperlegible", ui-sans-serif, system-ui, sans-serif;
+}
+.reader-font-chip--opendyslexic {
+  font-family: "OpenDyslexic", ui-sans-serif, system-ui, sans-serif;
+}
+
 .reader-note-sheet__body {
   padding: .9rem 1rem;
   display: flex;
