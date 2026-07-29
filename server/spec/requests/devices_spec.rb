@@ -71,6 +71,40 @@ RSpec.describe "Device settings", type: :request do
     end
   end
 
+  describe "POST /devices/:id/prefer" do
+    it "sets only the signed-in user's preferred device" do
+      other = create(:user, email_address: "other@example.com")
+      device = create(:device, kind: "kindle")
+      other_device = create(:device, kind: "kindle", name: "other-kindle")
+      other.update!(preferred_device: other_device)
+
+      post prefer_device_path(device)
+
+      expect(response).to redirect_to(devices_path)
+      expect(user.reload.preferred_device).to eq(device)
+      expect(other.reload.preferred_device).to eq(other_device)
+    end
+
+    it "shows preferred state on the devices index" do
+      device = create(:device, kind: "kindle")
+      user.update!(preferred_device: device)
+
+      get devices_path
+      expect(response.body).to include("Preferred ✓")
+    end
+  end
+
+  describe "main user on device settings" do
+    it "saves main_user_id from the device form" do
+      device = create(:device, kind: "kindle")
+      owner = create(:user, email_address: "owner@example.com")
+
+      patch device_path(device), params: { device: { main_user_id: owner.id } }
+
+      expect(device.reload.main_user).to eq(owner)
+    end
+  end
+
   # Library::EvictionPlanner's criteria (finished/never opened/dormant) are
   # otherwise bare tokens on the page — see EvictionPlanner's header comment
   # for the thresholds these hints/legend must stay in sync with.

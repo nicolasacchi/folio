@@ -89,6 +89,7 @@ class ReaderController < ApplicationController
   def show
     @file = @book.readable_file
     @book_lang = normalized_book_lang
+    @reader_preferences = Current.user.reader_preferences
     if @file
       @initial_position = @book.reader_positions.find_by(user: Current.user)
       @text_length = mobi_text_length
@@ -187,7 +188,7 @@ class ReaderController < ApplicationController
   def backward_without_confirmation?(position)
     return false if confirm_backward?
 
-    kindle_percent = Reader::KindleWriteback.latest_physical_state(@book)&.progress_percent
+    kindle_percent = Reader::KindleWriteback.latest_physical_state(@book, user: Current.user)&.progress_percent
     return false unless kindle_percent && position.percent
 
     position.percent < kindle_percent - BACKWARD_SLACK_PERCENT
@@ -204,7 +205,7 @@ class ReaderController < ApplicationController
   # -- kindle state (used by #state) ------------------------------------
 
   def kindle_state_json
-    state = Reader::KindleWriteback.latest_physical_state(@book)
+    state = Reader::KindleWriteback.latest_physical_state(@book, user: Current.user)
     return nil unless state
 
     {

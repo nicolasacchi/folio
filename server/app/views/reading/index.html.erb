@@ -1,18 +1,57 @@
 <% content_for :title, "Folio — reading" %>
 
-<p class="kicker">From the devices</p>
+<p class="kicker">Your progress</p>
 <h1 class="page-title">Reading</h1>
 
+<p class="chips">
+  <span class="stamp"><%= pluralize(@web_opened_count, "book") %> opened on web</span>
+  <span class="stamp"><%= pluralize(@web_finished_count, "book") %> finished on web</span>
+  <span class="stamp"><%= pluralize(@kindle_book_count, "book") %> on the kindles</span>
+</p>
+
+<p class="section-label">Your web reading</p>
+<% if @web_positions.empty? %>
+  <div class="empty-state">
+    <span class="fleuron">❧</span>
+    No books opened in the web reader yet.<br>
+    <span class="small">Open any book with “Read in browser” and your place will show up here.</span>
+  </div>
+<% else %>
+  <% @web_positions.each do |position| %>
+    <% book = position.book %>
+    <div class="file-row">
+      <%= link_to book_path(book), class: "duplicate-cover" do %>
+        <%= render "books/cover", book: book %>
+      <% end %>
+      <span class="grow small">
+        <%= link_to book.title, book_path(book) %>
+        <span class="book-author"> — <%= book.display_author %></span><br>
+        <span class="muted mono small reading-device-line">
+          Web · read <%= time_ago_in_words(position.updated_at) %> ago
+          <% if position.percent %>
+            <span class="progress-track" role="img" aria-label="approximately <%= position.percent.round %> percent read"><span class="progress-fill" style="width: <%= position.percent.clamp(2, 100) %>%"></span></span>
+            ~<%= position.percent.round %>%
+          <% end %>
+        </span><br>
+        <% if book.readable_file %>
+          <%= link_to "Continue reading", read_book_path(book), class: "btn btn--quiet" %>
+        <% end %>
+      </span>
+    </div>
+  <% end %>
+<% end %>
+
+<p class="section-label">On the Kindles</p>
 <% if @by_book.empty? %>
   <div class="empty-state">
     <span class="fleuron">❧</span>
-    No reading activity synced yet.<br>
-    <span class="small">This page fills up once a Kindle runs <code>kindled sync</code> —
+    No Kindle reading activity synced yet.<br>
+    <span class="small">This section fills up once a Kindle runs <code>kindled sync</code> —
     every book it has opened shows here with its last-read time, and
     positions/annotations where the sidecar format allows.</span>
   </div>
 <% else %>
-  <p class="muted small"><%= pluralize(@by_book.size, "book") %> with reading activity</p>
+  <p class="muted small"><%= pluralize(@by_book.size, "book") %> with Kindle reading activity</p>
 
   <% @by_book.each do |book, states| %>
     <div class="file-row">

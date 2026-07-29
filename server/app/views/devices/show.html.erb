@@ -67,6 +67,11 @@
       <%= form.label :low_space_threshold_mb, "Keep free (MB)" %>
       <%= form.number_field :low_space_threshold_mb, min: 50, step: 50 %>
     </span>
+    <span>
+      <%= form.label :main_user_id, "Main user" %>
+      <%= form.collection_select :main_user_id, @users, :id, :email_address,
+            { include_blank: "— none —" } %>
+    </span>
     <span class="settings-check">
       <%= form.check_box :auto_evict %>
       <%= form.label :auto_evict, "Auto-remove finished/dormant books when space runs low" %>

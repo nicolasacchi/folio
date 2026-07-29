@@ -49,21 +49,25 @@
     <div class="actions">
       <% @devices.each do |device| %>
         <% delivery = @deliveries[device.id] %>
+        <% preferred = device.id == @preferred_device_id %>
         <% if delivery.nil? || delivery.removed? %>
-          <%= button_to "Send to #{device.name}", deliveries_path(book_id: @book.id, device_id: device.id),
+          <%= button_to "Send to #{device.name}#{preferred ? " (Preferred)" : ""}", deliveries_path(book_id: @book.id, device_id: device.id),
                 class: "btn btn--primary" %>
         <% elsif delivery.evict_requested? %>
           <%= button_to "Removing from #{device.name}… keep",
                 eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet",
                 title: "Queued for deletion on next sync — click to keep it" %>
         <% elsif delivery.delivered? %>
-          <%= button_to "On #{device.name} ✕", evictions_path(delivery_id: delivery.id), class: "btn btn--quiet",
+          <%= button_to "On #{device.name}#{preferred ? " ★" : ""} ✕", evictions_path(delivery_id: delivery.id), class: "btn btn--quiet",
                 title: "Delete from the device on next sync",
                 form: { data: { turbo_confirm: "Delete “#{@book.title}” from #{device.name} on next sync?" } } %>
         <% else %>
-          <%= button_to "Queued for #{device.name} ✕",
+          <%= button_to "Queued for #{device.name}#{preferred ? " ★" : ""} ✕",
                 delivery_path(delivery), method: :delete, class: "btn btn--quiet",
                 title: "Remove from queue" %>
+        <% end %>
+        <% if preferred && (delivery.nil? || delivery.removed?) %>
+          <span class="stamp stamp--ready">Preferred</span>
         <% end %>
       <% end %>
       <% if @book.readable_file || @book.book_files.any? %>

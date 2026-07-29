@@ -2,7 +2,11 @@
 class DeliveriesController < ApplicationController
   def create
     book = Book.find(params[:book_id])
-    device = Device.find(params[:device_id])
+    device = resolve_device
+    unless device
+      return redirect_back fallback_location: book_path(book),
+        alert: "No Kindle selected. Pick a device or set a preferred Kindle on the Devices page."
+    end
 
     delivery = Delivery.find_or_create_by!(book: book, device: device)
     # Re-sending a book that was previously removed (or queued for
@@ -26,5 +30,15 @@ class DeliveriesController < ApplicationController
     delivery.destroy!
     redirect_back fallback_location: book_path(delivery.book),
       notice: "Removed from #{delivery.device.name}.", status: :see_other
+  end
+
+  private
+
+  def resolve_device
+    if params[:device_id].present?
+      Device.physical.find_by(id: params[:device_id])
+    else
+      Current.user.preferred_kindle
+    end
   end
 end

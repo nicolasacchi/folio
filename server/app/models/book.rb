@@ -114,6 +114,55 @@ class Book < ApplicationRecord
     }.first(limit)
   end
 
+  # Unified "Keep reading" rail: merge the signed-in user's unfinished web
+  # ReaderPositions with household Kindle currently_reading, dedupe by book
+  # (most recent activity wins), cap at limit. Returns [[book, entry], ...]
+  # where entry responds to progress_percent / activity_at / source_label.
+  KeepReadingEntry = Struct.new(:progress_percent, :activity_at, :source_label, keyword_init: true)
+
+  def self.keep_reading_for(user, limit: 10)
+    by_book = {}
+
+    currently_reading(limit: limit * 2).each do |book, state|
+      by_book[book.id] = {
+        book: book,
+        at: state.content_mtime,
+        entry: KeepReadingEntry.new(
+          progress_percent: state.progress_percent,
+          activity_at: state.content_mtime,
+          source_label: state.device.name
+        )
+      }
+    end
+
+    if user
+      user.reader_positions.includes(book: :book_files)
+        .where("percent IS NULL OR percent <= ?", READING_FINISHED_THRESHOLD)
+        .order(updated_at: :desc)
+        .limit(limit * 2)
+        .each do |pos|
+          existing = by_book[pos.book_id]
+          next if existing && existing[:at] >= pos.updated_at
+
+          by_book[pos.book_id] = {
+            book: pos.book,
+            at: pos.updated_at,
+            entry: KeepReadingEntry.new(
+              progress_percent: pos.percent,
+              activity_at: pos.updated_at,
+              source_label: "Web"
+            )
+          }
+        end
+    end
+
+    by_book.values
+      .sort_by { |row| row[:at] }
+      .reverse
+      .first(limit)
+      .map { |row| [ row[:book], row[:entry] ] }
+  end
+
   def cover_path
     Library.cover_path(self)
   end

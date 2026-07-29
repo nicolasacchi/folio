@@ -29,10 +29,10 @@ module Reader
 
     module_function
 
-    def call(book:, offset:, basis_state: nil)
+    def call(book:, offset:, basis_state: nil, user: nil)
       return not_written(:writeback_disabled) unless Device.physical.where(reader_writeback: true).exists?
 
-      latest = latest_physical_state(book)
+      latest = latest_physical_state(book, user: user)
       return not_written(:no_reading_state) unless latest
 
       return not_written(:stale) if basis_state && latest.content_mtime > basis_state.content_mtime
@@ -60,7 +60,14 @@ module Reader
       Result.new(written: false, reason: reason)
     end
 
-    def latest_physical_state(book)
+    # Prefer the acting user's preferred Kindle when it has a state for
+    # this book; otherwise the household's newest content_mtime wins.
+    def latest_physical_state(book, user: nil)
+      if (preferred = user&.preferred_kindle)
+        state = book.reading_states.find_by(device_id: preferred.id)
+        return state if state
+      end
+
       book.reading_states.joins(:device).merge(Device.physical).order(content_mtime: :desc).first
     end
 

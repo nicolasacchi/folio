@@ -161,17 +161,17 @@
   <% if @currently_reading.present? %>
     <p class="section-label">Keep reading</p>
     <div class="shelf shelf--similar shelf--reading">
-      <% @currently_reading.each do |book, state| %>
+      <% @currently_reading.each do |book, entry| %>
         <%= link_to book_path(book), class: "shelf-item", title: book.title do %>
           <%= render "cover", book: book %>
           <span class="shelf-caption">
             <span class="t"><%= book.title %></span>
             <span class="a">
-              <% if state.progress_percent %>~<%= state.progress_percent.round %>% · <% end %><%
-              %><%= time_ago_in_words(state.content_mtime) %> ago · <%= state.device.name %>
+              <% if entry.progress_percent %>~<%= entry.progress_percent.round %>% · <% end %><%
+              %><%= time_ago_in_words(entry.activity_at) %> ago · <%= entry.source_label %>
             </span>
-            <% if state.progress_percent %>
-              <span class="progress-track"><span class="progress-fill" style="width: <%= state.progress_percent.clamp(2, 100) %>%"></span></span>
+            <% if entry.progress_percent %>
+              <span class="progress-track"><span class="progress-fill" style="width: <%= entry.progress_percent.clamp(2, 100) %>%"></span></span>
             <% end %>
           </span>
         <% end %>

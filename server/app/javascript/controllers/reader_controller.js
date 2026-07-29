@@ -28,10 +28,12 @@ const DEFAULT_SETTINGS = {
   margin: 24, // px, injected into the book's own document
   theme: "light", // light | sepia | dark
   flow: "paginated", // paginated | scrolled
-  fontFamily: "publisher", // publisher | serif | sans
+  fontFamily: "publisher", // publisher | serif | sans | webfont keys
   justify: false,
   hyphenate: true
 }
+
+const PREFS_SAVE_DEBOUNCE_MS = 1000
 
 // Literal stacks (not var(--serif)/var(--mono) — this is injected into the
 // book's own cross-document iframe, same reasoning as THEMES above).
@@ -39,7 +41,55 @@ const DEFAULT_SETTINGS = {
 // and leaves the book's own stylesheet in charge of its font.
 const FONT_FAMILY_STACKS = {
   serif: "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif",
-  sans: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+  sans: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  literata: '"Literata", Georgia, "Iowan Old Style", "Palatino Linotype", serif',
+  bitter: '"Bitter", Georgia, "Iowan Old Style", "Palatino Linotype", serif',
+  garamond: '"EB Garamond", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+  atkinson: '"Atkinson Hyperlegible", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  opendyslexic: '"OpenDyslexic", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+}
+
+// Lazy @font-face sources for webfont keys only (absolute same-origin URLs;
+// relative would resolve against the section's blob: document).
+const WEBFONT_FACES = {
+  literata: [
+    { file: "literata-regular.woff2", weight: 400, style: "normal" },
+    { file: "literata-italic.woff2", weight: 400, style: "italic" },
+    { file: "literata-700.woff2", weight: 700, style: "normal" },
+    { file: "literata-700italic.woff2", weight: 700, style: "italic" }
+  ],
+  bitter: [
+    { file: "bitter-regular.woff2", weight: 400, style: "normal" },
+    { file: "bitter-italic.woff2", weight: 400, style: "italic" },
+    { file: "bitter-700.woff2", weight: 700, style: "normal" },
+    { file: "bitter-700italic.woff2", weight: 700, style: "italic" }
+  ],
+  garamond: [
+    { file: "garamond-regular.woff2", weight: 400, style: "normal" },
+    { file: "garamond-italic.woff2", weight: 400, style: "italic" },
+    { file: "garamond-700.woff2", weight: 700, style: "normal" },
+    { file: "garamond-700italic.woff2", weight: 700, style: "italic" }
+  ],
+  atkinson: [
+    { file: "atkinson-regular.woff2", weight: 400, style: "normal" },
+    { file: "atkinson-italic.woff2", weight: 400, style: "italic" },
+    { file: "atkinson-700.woff2", weight: 700, style: "normal" },
+    { file: "atkinson-700italic.woff2", weight: 700, style: "italic" }
+  ],
+  // OpenDyslexic ships no bold-italic face anywhere; browsers synthesize it.
+  opendyslexic: [
+    { file: "opendyslexic-regular.woff2", weight: 400, style: "normal" },
+    { file: "opendyslexic-italic.woff2", weight: 400, style: "italic" },
+    { file: "opendyslexic-700.woff2", weight: 700, style: "normal" }
+  ]
+}
+
+const WEBFONT_FAMILY_NAMES = {
+  literata: "Literata",
+  bitter: "Bitter",
+  garamond: "EB Garamond",
+  atkinson: "Atkinson Hyperlegible",
+  opendyslexic: "OpenDyslexic"
 }
 
 // Literal colors, not var(--token) — this CSS is injected into each
@@ -144,6 +194,8 @@ export default class extends Controller {
     stateUrl: String,
     bookLang: { type: String, default: "en" },
     csrfToken: String,
+    preferencesUrl: String,
+    serverPreferences: Object,
     cfi: String,
     fraction: Number,
     textLength: Number
@@ -1814,22 +1866,82 @@ export default class extends Controller {
   }
 
   loadSettings() {
+    const server = this.normalizeSettings(this.hasServerPreferencesValue ? this.serverPreferencesValue : null)
+    const local = this.readLocalSettings()
+    const serverIsDefault = this.settingsMatch(server, DEFAULT_SETTINGS)
+
+    // One-shot migration: pure server defaults + existing localStorage → adopt
+    // local once and push it to the server. Otherwise server wins.
+    if (serverIsDefault && local && !this.settingsMatch(local, DEFAULT_SETTINGS)) {
+      this.writeLocalSettings(local)
+      this.queuePreferencesSave(local)
+      return local
+    }
+    this.writeLocalSettings(server)
+    return server
+  }
+
+  readLocalSettings() {
     try {
       const raw = window.localStorage.getItem(SETTINGS_KEY)
-      const stored = raw ? JSON.parse(raw) : {}
-      return { ...DEFAULT_SETTINGS, ...stored }
+      if (!raw) return null
+      return this.normalizeSettings(JSON.parse(raw))
     } catch (error) {
       // Safari private mode (and similar) can throw on localStorage access.
       console.error("[reader] failed to read settings", error)
-      return { ...DEFAULT_SETTINGS }
+      return null
+    }
+  }
+
+  normalizeSettings(raw) {
+    const merged = { ...DEFAULT_SETTINGS, ...(raw && typeof raw === "object" ? raw : {}) }
+    if (!FONT_FAMILY_STACKS[merged.fontFamily] && merged.fontFamily !== "publisher") {
+      merged.fontFamily = "publisher"
+    }
+    return merged
+  }
+
+  settingsMatch(a, b) {
+    return Object.keys(DEFAULT_SETTINGS).every((key) => a[key] === b[key])
+  }
+
+  writeLocalSettings(settings) {
+    try {
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+    } catch (error) {
+      console.error("[reader] failed to save settings", error)
     }
   }
 
   saveSettings() {
+    this.writeLocalSettings(this.settings)
+    this.queuePreferencesSave(this.settings)
+  }
+
+  queuePreferencesSave(settings) {
+    if (!this.hasPreferencesUrlValue || !this.preferencesUrlValue) return
+    if (this.prefsSaveTimer) clearTimeout(this.prefsSaveTimer)
+    this.prefsSaveTimer = setTimeout(() => {
+      this.prefsSaveTimer = null
+      this.putPreferences(settings)
+    }, PREFS_SAVE_DEBOUNCE_MS)
+  }
+
+  async putPreferences(settings) {
     try {
-      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings))
+      const response = await fetch(this.preferencesUrlValue, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": this.csrfTokenValue,
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ preferences: settings }),
+        keepalive: true
+      })
+      if (!response.ok) throw new Error(`PUT ${this.preferencesUrlValue} -> ${response.status}`)
     } catch (error) {
-      console.error("[reader] failed to save settings", error)
+      console.error("[reader] failed to save preferences", error)
     }
   }
 
@@ -1920,6 +2032,7 @@ export default class extends Controller {
     // !important: the book's own stylesheet frequently sets these same
     // properties on html/body/a, at equal-or-higher specificity.
     return `
+      ${this.webfontFaceCss(fontFamily)}
       html, body { background: ${palette.background} !important; color: ${palette.color} !important; }
       body { font-size: ${fontSize}% !important; line-height: ${lineHeight} !important; margin: ${margin}px !important; }
       a, a:link, a:visited { color: ${palette.link} !important; }
@@ -1930,6 +2043,24 @@ export default class extends Controller {
         : "html { -webkit-hyphens: manual; hyphens: manual; }"}
       ${this.coverImageCss()}
     `
+  }
+
+  // Inject only the active webfont's faces (lazy). Absolute URLs so the
+  // section iframe's blob: base doesn't break resolution.
+  webfontFaceCss(fontFamily) {
+    const faces = WEBFONT_FACES[fontFamily]
+    const familyName = WEBFONT_FAMILY_NAMES[fontFamily]
+    if (!faces || !familyName) return ""
+    const origin = window.location.origin
+    return faces.map(({ file, weight, style }) => `
+      @font-face {
+        font-family: "${familyName}";
+        src: url("${origin}/reader/fonts/${fontFamily}/${file}") format("woff2");
+        font-weight: ${weight};
+        font-style: ${style};
+        font-display: swap;
+      }
+    `).join("")
   }
 
   // Calibre titlepages/cover sections are typically a single img/svg,

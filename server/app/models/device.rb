@@ -4,6 +4,7 @@ class Device < ApplicationRecord
   has_many :queued_books, through: :deliveries, source: :book
   has_many :device_syncs, dependent: :destroy
   has_many :annotations, dependent: :destroy
+  belongs_to :main_user, class_name: "User", optional: true, inverse_of: :owned_devices
 
   # Holds the plaintext token in memory only, right after generation — it
   # is never persisted (see #assign_token). Populated on create so the UI
@@ -15,6 +16,7 @@ class Device < ApplicationRecord
   validates :name, presence: true, uniqueness: true
   validates :token_digest, presence: true, uniqueness: true
   validates :low_space_threshold_mb, numericality: { greater_than: 0 }
+  validate :main_user_only_on_physical, if: -> { main_user_id.present? }
 
   broadcasts_refreshes_to ->(_device) { "devices" }
 
@@ -133,6 +135,12 @@ class Device < ApplicationRecord
   end
 
   private
+
+  def main_user_only_on_physical
+    return if kind == "kindle"
+
+    errors.add(:main_user, "can only be set on a physical Kindle")
+  end
 
   def assign_token
     return if token_digest.present?

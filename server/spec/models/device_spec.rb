@@ -83,4 +83,21 @@ RSpec.describe Device, type: :model do
       expect(Device.authenticate_by_token(web.raw_token)).to eq(web)
     end
   end
+
+  describe "main_user" do
+    let!(:owner) { create(:user, email_address: "owner@example.com") }
+
+    it "belongs to an optional main user on physical devices" do
+      device.update!(main_user: owner)
+      expect(device.reload.main_user).to eq(owner)
+      expect(owner.owned_devices).to include(device)
+    end
+
+    it "rejects main_user on the synthetic web device" do
+      web = Device.web_reader!
+      web.main_user = owner
+      expect(web).not_to be_valid
+      expect(web.errors[:main_user]).to be_present
+    end
+  end
 end
