@@ -23,3 +23,6 @@ privatecloud/__pycache__/
 
 # Rust build output.
 kindled/target/
+
+# grokclaude offload blackboard (job briefs/reports/scratch — local run records).
+.grokclaude/
