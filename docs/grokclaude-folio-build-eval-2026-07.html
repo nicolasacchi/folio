@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="report">
+  <meta name="kb-tags" content="grokclaude, folio, build-eval, offload, process, workflow, status:open">
+  <title>grokclaude on a real Folio build — run eval, July 2026</title>
+  <template id="kb-prompt">Document what was found running the /grokclaude offload pipeline on the Folio fonts / per-user preferences / preferred-Kindles build (commit 83c91a0, 2026-07-29): reconstruct the run from the .grokclaude/ job artifacts, compare it with the 2026-07-24 smoke and the 2026-07-28 kb mobile-selection eval, assess whether the research→build→host-review split paid, and answer whether grokclaude workflows should become the default for builds or stay selectable (and how to make the selection automatic).</template>
+  <style>
+    :root{
+      --bg:#faf9f7; --surface:#f0eeea; --fg:#22211f; --muted:#5a5850;
+      --rule:#dcd9d3; --accent:#0b5d54; --accent-fg:#ffffff;
+      --warn:#8a5500; --danger:#a1302a; --ok:#1e6b47;
+      --fs-body:1.0625rem; --fs-small:.85rem; --lh:1.65; --maxw:47rem;
+      --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+      --radius:6px; --focus:2px solid var(--accent);
+    }
+    @media (prefers-color-scheme:dark){
+      :root{
+        --bg:#161816; --surface:#1f2320; --fg:#e9e7e2; --muted:#a8a69d;
+        --rule:#2e332f; --accent:#79d2c3; --accent-fg:#0b2823;
+        --warn:#e0b45c; --danger:#f28b82; --ok:#7fd0a3;
+      }
+    }
+    @media (prefers-reduced-motion:reduce){
+      html{scroll-behavior:auto}
+      *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+    }
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+      font-size:var(--fs-body);line-height:var(--lh)}
+    main{max-width:var(--maxw);margin:0 auto;padding:2rem 1rem 4rem}
+    :focus-visible{outline:var(--focus);outline-offset:2px}
+    .skip-link{position:absolute;left:-9999px;top:0;background:var(--fg);color:var(--bg);
+      padding:.5rem 1rem;z-index:100;font:600 var(--fs-small)/1 var(--mono);
+      text-transform:uppercase;letter-spacing:.05em;text-decoration:none}
+    .skip-link:focus{left:.5rem;top:.5rem}
+    h1{font-size:1.7rem;line-height:1.25;margin:.2rem 0 .4rem}
+    h2{font-size:1.25rem;margin-top:2.4rem;border-bottom:1px solid var(--rule);padding-bottom:.3rem}
+    h3{font-size:1.05rem;margin-top:1.6rem}
+    .subtitle{color:var(--muted);margin-top:0}
+    code{font-family:var(--mono);font-size:.88em;background:var(--surface);border-radius:4px;padding:.08em .35em}
+    pre{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:1rem;overflow:auto;font-size:.85rem;line-height:1.5}
+    pre code{background:none;padding:0}
+    table{border-collapse:collapse;width:100%;font-size:.9rem;margin:1em 0}
+    th,td{border:1px solid var(--rule);padding:.5em .7em;text-align:left;vertical-align:top}
+    th{background:var(--surface);font-weight:600}
+    a{color:var(--accent);text-underline-offset:2px}
+    a:focus-visible{outline:var(--focus);outline-offset:2px;border-radius:2px}
+    .callout{border:1px solid var(--rule);border-left:4px solid var(--accent);
+      border-radius:var(--radius);background:color-mix(in srgb,var(--accent) 7%,var(--bg));
+      padding:.8em 1em;margin:1.2em 0}
+    .callout-label{font:650 .72rem/1 var(--sans);letter-spacing:.05em;text-transform:uppercase;
+      color:var(--accent);display:block;margin-bottom:.3em}
+    .callout--warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,var(--bg))}
+    .callout--warn .callout-label{color:var(--warn)}
+    .callout--ok{border-left-color:var(--ok);background:color-mix(in srgb,var(--ok) 9%,var(--bg))}
+    .callout--ok .callout-label{color:var(--ok)}
+    .meta-line{font-size:var(--fs-small);color:var(--muted);font-family:var(--mono)}
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<main id="main">
+
+<h1 id="top">grokclaude on a real Folio build — run eval, July 2026</h1>
+<p class="subtitle">The fonts / per-user prefs / preferred-Kindles ship
+(commit <code>83c91a0</code>, 2026-07-29), reconstructed from the
+<code>.grokclaude/</code> job artifacts, with the verdict on defaulting the workflow.</p>
+
+<section id="context">
+<h2 id="what-was-built">What was built, and how</h2>
+<p>The task: five selectable reading fonts in the Folio web reader, per-user reading
+settings synced server-side, a per-user <code>/reading</code> page with web-reading
+stats merged into keep-reading, and shared Kindles with a main user + per-user
+preferred device. All four features shipped in a single commit,
+<code>83c91a0</code> (&ldquo;Add reader fonts, synced prefs, per-user reading page,
+and preferred Kindles&rdquo;), verified green: <strong>746 RSpec examples, 0 failures;
+RuboCop clean</strong>. Details of what shipped are in the commit message and the
+<a href="/a/folio/folio-roadmap-2026-07.html">roadmap doc</a>; this artifact is about
+<em>how</em> it was built.</p>
+<p>The pipeline was the <code>/grokclaude</code> offload skill, its second
+feature-build outing: four parallel <em>research</em> jobs mapped the device model,
+writeback path, reader settings, and roadmap constraints into distilled reports;
+one <em>build</em> job (grok-4.5-build, in a managed <code>gc/*</code> worktree)
+implemented all four features with specs from a self-contained brief; the host
+(Claude) reviewed the worktree diff, fixed four defects, fetched the actual font
+files, and committed. Grok never committed &mdash; by design the builder sandbox
+denies <code>.git</code> writes.</p>
+</section>
+
+<section id="numbers">
+<h2 id="run-numbers">Run numbers</h2>
+<table>
+<tr><th>Job</th><th>Role</th><th>Turns</th><th>Tokens</th><th>Cost</th><th>Wall</th></tr>
+<tr><td><code>01KYQ74SQWAJ…</code></td><td>research</td><td>18</td><td>0.98M</td><td>$0.53</td><td rowspan="4">~6 min (parallel)</td></tr>
+<tr><td><code>01KYQ74SQWJA…</code></td><td>research</td><td>14</td><td>0.78M</td><td>$0.45</td></tr>
+<tr><td><code>01KYQ74SQWMD…</code></td><td>research</td><td>13</td><td>0.71M</td><td>$0.43</td></tr>
+<tr><td><code>01KYQ74SQWVT…</code></td><td>research</td><td>17</td><td>0.92M</td><td>$0.51</td></tr>
+<tr><td><code>01KYQ7RY0TJE…</code></td><td>build</td><td>37</td><td>3.42M</td><td>$1.43</td><td>9.5 min</td></tr>
+<tr><th colspan="2">Total</th><th>99</th><th>~6.8M</th><th>$3.36</th><th>~45 min incl. host review</th></tr>
+</table>
+<p>Timeline: research 15:16&ndash;15:22 UTC, build 15:27&ndash;15:36 UTC, host review +
+fixes + font acquisition + commit at 16:01 UTC &mdash; roughly <strong>25 minutes of
+host phase</strong> after the packet landed. The ~6.8M grok tokens (raw file reads,
+spec runs, bundler fights) never entered the host context; the host consumed only
+the distilled reports and the diff.</p>
+</section>
+
+<section id="host-review">
+<h2 id="what-review-caught">What host review caught — and why it stays mandatory</h2>
+<p>Grok delivered complete, spec-covered, green-in-worktree code. Review still found
+four real defects before commit:</p>
+<table>
+<tr><th>Defect</th><th>Severity</th></tr>
+<tr><td><code>sanitize_sql_array</code> used inside a migration &mdash; not available in
+migration context, so the <code>main_user_id</code> backfill would have crashed
+<code>db:migrate</code> on deploy</td><td><strong>Deploy-breaking</strong></td></tr>
+<tr><td>Server font-size clamp 70&ndash;180 while the existing reader stepper goes
+70&ndash;200 &mdash; settings would silently snap back on reload</td><td>UX bug</td></tr>
+<tr><td><code>@font-face</code> declared for an OpenDyslexic bold-italic file that
+does not exist upstream &mdash; permanent 404 per reader session</td><td>Minor</td></tr>
+<tr><td>Stats chips restyled the global <code>.chip</code> class instead of the scoped
+stamp primitive &mdash; visual regression risk across the app</td><td>Minor</td></tr>
+</table>
+<div class="callout callout--warn"><span class="callout-label">Load-bearing</span>
+A green suite and a clean linter in the worktree did not mean shippable. The
+deploy-breaking defect was invisible to the worker's own verification because the
+worktree DB had already been migrated incrementally &mdash; only a fresh
+<code>db:prepare</code> (what production runs) would have hit it. Host review of the
+actual diff is not a formality in this pipeline; it is the step that makes the
+output committable.</div>
+<p>Review also completed work grok scoped out: the builder shipped the font
+<em>scaffold</em> with silent fallback (&ldquo;woff2s intentionally absent&rdquo;),
+so the host fetched and committed the five families (Literata, Bitter, EB Garamond,
+Atkinson Hyperlegible, OpenDyslexic) with their OFL licenses. Asset acquisition
+either belongs in the brief explicitly or stays host-side.</p>
+</section>
+
+<section id="friction">
+<h2 id="friction-found">Friction found this run</h2>
+<ul>
+<li><strong>Worktree environment provisioning.</strong> The builder burned several of
+its 37 turns discovering that the gc worktree had no <code>vendor/bundle</code>, then
+fighting bundler cache permissions and a half-made symlink
+(<code>vendor/bundle/bundle</code>). It recovered, but a build packet for a Rails repo
+should pre-provision <code>BUNDLE_PATH</code> or the brief should state the exact
+bundle setup incantation.</li>
+<li><strong>Stray <code>~/.local</code> directory in the repo root</strong> &mdash; an
+empty tree left by the bundler fight (a <code>BUNDLE_USER_HOME</code> mis-expansion).
+Harmless but real: workers escaping their worktree for writes, even trivially, is
+worth watching. Removed 2026-07-30.</li>
+<li><strong><code>.grokclaude/</code> was untracked and unignored</strong> &mdash; 1.5&nbsp;MB
+of job artifacts (briefs, reports, scratch excerpts, a stale <code>index.lock</code>)
+sitting in <code>git status</code>. Now gitignored; the artifacts stay on disk as the
+run record.</li>
+<li><strong>Job lifecycle bookkeeping.</strong> The build job's <code>meta.json</code>
+still says <code>needs_review</code>; the commit is the de-facto close-out. Cosmetic,
+but it means blackboard state cannot be trusted as &ldquo;what shipped&rdquo;.</li>
+</ul>
+</section>
+
+<section id="runs-compare">
+<h2 id="across-three-runs">Across three runs: the trajectory</h2>
+<table>
+<tr><th>Run</th><th>Task</th><th>Outcome</th></tr>
+<tr><td>2026-07-24 smoke</td><td>All vehicles exercised (research / session / build /
+fleet)</td><td>Pass with P0 gaps in the X evidence schema and image harvest; panel
+issues (stuck run, low <code>max_turns</code>)</td></tr>
+<tr><td>2026-07-28 eval</td><td>kb mobile-selection fix (research + build + e2e)</td>
+<td>Verdict &ldquo;useful&rdquo;; 4 jobs, ~5.2M tokens, $2.67; defect list D1&ndash;D6
+(blackboard root trap, JSON stdout purity, undocumented <code>.git</code> write
+denial, half-state builder role, missing worktree path in <code>build start</code>,
+verify JSON shape drift)</td></tr>
+<tr><td>2026-07-29 Folio (this)</td><td>4-feature build</td><td>All features shipped;
+4 host-review fixes; new friction class: worktree env provisioning</td></tr>
+</table>
+<p>The trajectory is healthy: eval-run defects are getting fixed or documented and
+then <em>staying</em> fixed. D3 (&ldquo;builders can't commit but briefs don't say
+so&rdquo;) was folded into the skill text, and this run's builder correctly noted
+&ldquo;No git commit/push (per contract)&rdquo; without wasting turns. Each run so far
+has surfaced exactly one new friction class &mdash; this time, worktree environment
+provisioning &mdash; which is what an eval cadence is for.</p>
+</section>
+
+<section id="default-question">
+<h2 id="default-or-selectable">Should the workflow be the default, or selectable?</h2>
+<div class="callout callout--ok"><span class="callout-label">Recommendation</span>
+Selectable by rule, not default by fiat. Encode the offload gate as a standing
+policy so the pipeline triggers on qualifying tasks without anyone typing
+<code>/grokclaude</code> &mdash; and never triggers on tasks where it can't pay.</div>
+<p>Two runs of evidence say the pipeline pays on <strong>multi-feature builds and
+bulky research</strong>: this build kept ~6.8M tokens out of the host context for
+$3.36 and let the host spend its window on review and judgment rather than
+implementation. The same evidence says it should <em>not</em> be a blanket default:</p>
+<ul>
+<li><strong>Floor cost and latency are real.</strong> ~$3 and ~45 minutes wall for
+this shape. A one-file fix or a judgment call is faster and better done natively;
+the skill's own &ldquo;say no when it doesn't pay&rdquo; gate exists for a reason.</li>
+<li><strong>Host review is mandatory anyway.</strong> The pipeline shifts Claude's
+work from writing to reviewing; it does not remove it. Defaulting everything through
+grok would multiply review load without multiplying value on small tasks.</li>
+<li><strong>Brief-writing is a fixed cost.</strong> Workers share no context; tasks
+needing deep, hard-to-serialize repo context stay cheaper native.</li>
+</ul>
+<p>Concretely, &ldquo;selectable by rule&rdquo; means a short standing policy in
+<code>~/.claude/CLAUDE.md</code>: offload unprompted when a task is a self-contained
+build of roughly &ge;2 features / &ge;300 changed lines, or research over
+&ge;~20&ndash;30K tokens of raw material &mdash; and say so in one line when doing it.
+Everything smaller stays native. The selection surfaces already exist
+(the <code>/grokclaude</code> skill, plus the <code>grok-worker</code> /
+<code>grok-builder</code> agent types callable from Workflow scripts); the only
+missing piece is the trigger rule.</p>
+</section>
+
+<section id="follow-ups">
+<h2 id="open-follow-ups">Open follow-ups from the ship</h2>
+<ul>
+<li><code>devices.main_user_id</code> backfill ran only because the install had one
+user at migrate time; when household users are added, each Kindle's main user must be
+set on its device page.</li>
+<li>Writeback prefers the user's preferred Kindle only when that device has reading
+state for the book; otherwise it falls back to newest <code>content_mtime</code>
+across physical devices.</li>
+<li>users &harr; devices circular nullable FKs (<code>on_delete: :nullify</code>) are
+fine for a household; revisit if per-user ACLs ever land (see the
+<a href="/a/folio/folio-review-2026-07.html">July review</a>'s parked multi-user
+items).</li>
+<li>Pipeline side: pre-provision bundler in gc worktrees; put asset acquisition in
+briefs explicitly; close out job <code>meta.json</code> status when the host
+commits.</li>
+</ul>
+<p class="meta-line">Sources: .grokclaude/jobs/01KYQ7RY0TJE0QK57WQ42JY6MV/{report.md,result.json},
+research job reports under .grokclaude/jobs/01KYQ74SQW*/, git show 83c91a0,
+memory-kb entries for the 2026-07-24 smoke and 2026-07-28 eval. Suite re-verified
+green on HEAD 2026-07-30.</p>
+</section>
+
+</main>
+</body>
+</html>
