@@ -51,6 +51,10 @@ module Library::Embeddings
   # Truncated chunk text stored alongside its vector, shown as a "why this
   # result" preview in hybrid search results.
   SNIPPET_CHARS = 240
+  # Bumped when any input to #chunk_content_fingerprint changes meaning
+  # (window size, overlap, cap, model, dimensions, snippet length, …) so
+  # existing book_chunk_meta rows are treated as stale and re-embedded.
+  CHUNK_PARAMS_VERSION = 1
   # Chunks per embed() call. Bounds peak memory for a book that hits
   # MAX_CHUNKS_PER_BOOK without regressing to one embed() call per chunk
   # (slow — it's batching, not the total count, that keeps memory bounded).
@@ -207,17 +211,68 @@ module Library::Embeddings
   end
   private_class_method :boundary_after
 
+  # Fingerprint of everything that would change a book's chunk vectors for
+  # a given fulltext: model, dimensions, chunking params, and the text
+  # itself. Pure — no DB. Used by #chunks_fresh? to skip re-embedding
+  # when nothing has changed since the last successful index.
+  def chunk_content_fingerprint(fulltext)
+    Digest::SHA256.hexdigest(
+      [
+        "v#{CHUNK_PARAMS_VERSION}",
+        MODEL,
+        DIMENSIONS,
+        CHUNK_TARGET_CHARS,
+        CHUNK_OVERLAP_RATIO,
+        CHUNK_BOUNDARY_LOOKBACK,
+        MAX_CHUNKS_PER_BOOK,
+        SNIPPET_CHARS,
+        fulltext.to_s
+      ].join("\0")
+    )
+  end
+
+  def stored_chunk_fingerprint(book_id)
+    with_db { |db| db.get_first_value("SELECT fingerprint FROM book_chunk_meta WHERE book_id = ?", [ book_id ]) }
+  rescue SQLite3::Exception
+    nil
+  end
+
+  def book_has_chunks?(book_id)
+    with_db do |db|
+      !db.get_first_value("SELECT 1 FROM chunk_vec WHERE book_id = ? LIMIT 1", [ book_id ]).nil?
+    end
+  rescue SQLite3::Exception
+    false
+  end
+
+  def book_chunk_count(book_id)
+    with_db { |db| db.get_first_value("SELECT count(*) FROM chunk_vec WHERE book_id = ?", [ book_id ]).to_i }
+  rescue SQLite3::Exception
+    0
+  end
+
+  # True when this book already has chunk vectors and their stored
+  # fingerprint matches what we'd compute for `fulltext` under the
+  # current model + chunk params — i.e. re-indexing would be a no-op.
+  def chunks_fresh?(book_id, fulltext)
+    stored = stored_chunk_fingerprint(book_id)
+    stored.present? && stored == chunk_content_fingerprint(fulltext) && book_has_chunks?(book_id)
+  end
+
   # (Re)indexes one book's chunk-level vectors from its extracted fulltext
-  # (BookSearch's copy by default). Deletes any existing chunks first so
-  # re-running (a re-extraction, a backfill re-run) replaces rather than
+  # (BookSearch's copy by default). Skips embed work when a stored
+  # fingerprint still matches the current fulltext + chunk params
+  # (#chunks_fresh?); pass force: true to re-embed anyway. On a real
+  # write, deletes any existing chunks first so re-running (a
+  # re-extraction, a param bump, force: true) replaces rather than
   # duplicates. Embeds in CHUNK_EMBED_BATCH_SIZE-sized batches — one
   # embed() call per batch, not per chunk.
-  def index_book_chunks!(book, fulltext: nil)
+  def index_book_chunks!(book, fulltext: nil, force: false)
     return 0 unless available?
 
     fulltext ||= BookSearch.stored_fulltext(book.id)
-    chunks = chunk_text(fulltext)
-    if chunks.empty?
+    fulltext_s = fulltext.to_s
+    if fulltext_s.strip.empty?
       # No (more) extractable text — drop any stale chunks from a previous
       # version of this book's file, mirroring BookSearch's own handling
       # of an empty fulltext.
@@ -225,9 +280,21 @@ module Library::Embeddings
       return 0
     end
 
+    unless force
+      return book_chunk_count(book.id) if chunks_fresh?(book.id, fulltext_s)
+    end
+
+    chunks = chunk_text(fulltext_s)
+    if chunks.empty?
+      remove_book_chunks!(book.id)
+      return 0
+    end
+
     vectors = []
     chunks.each_slice(CHUNK_EMBED_BATCH_SIZE) { |batch| vectors.concat(embed(batch)) }
 
+    fingerprint = chunk_content_fingerprint(fulltext_s)
+    now = Time.now.to_i
     with_db do |db|
       db.transaction(:immediate) do
         db.execute("DELETE FROM chunk_vec WHERE book_id = ?", [ book.id ])
@@ -237,21 +304,37 @@ module Library::Embeddings
             [ book.id, ord, vectors[ord].pack("f*"), chunk.byteslice(0, SNIPPET_CHARS).to_s.scrub("") ]
           )
         end
+        db.execute(
+          "INSERT INTO book_chunk_meta (book_id, fingerprint, model, chunk_params_version, updated_at) " \
+          "VALUES (?, ?, ?, ?, ?) " \
+          "ON CONFLICT(book_id) DO UPDATE SET " \
+          "fingerprint = excluded.fingerprint, model = excluded.model, " \
+          "chunk_params_version = excluded.chunk_params_version, updated_at = excluded.updated_at",
+          [ book.id, fingerprint, MODEL, CHUNK_PARAMS_VERSION, now ]
+        )
       end
     end
     chunks.size
   end
 
   def remove_book_chunks!(book_id)
-    with_db { |db| db.execute("DELETE FROM chunk_vec WHERE book_id = ?", [ book_id ]) }
+    with_db do |db|
+      db.transaction(:immediate) do
+        db.execute("DELETE FROM chunk_vec WHERE book_id = ?", [ book_id ])
+        db.execute("DELETE FROM book_chunk_meta WHERE book_id = ?", [ book_id ])
+      end
+    end
   rescue SQLite3::Exception
     nil
   end
 
   def remove_book!(book_id)
     with_db do |db|
-      db.execute("DELETE FROM book_vec WHERE book_id = ?", [ book_id ])
-      db.execute("DELETE FROM chunk_vec WHERE book_id = ?", [ book_id ])
+      db.transaction(:immediate) do
+        db.execute("DELETE FROM book_vec WHERE book_id = ?", [ book_id ])
+        db.execute("DELETE FROM chunk_vec WHERE book_id = ?", [ book_id ])
+        db.execute("DELETE FROM book_chunk_meta WHERE book_id = ?", [ book_id ])
+      end
     end
   rescue SQLite3::Exception
     nil
@@ -361,6 +444,19 @@ module Library::Embeddings
         chunk_ord integer,
         embedding float[#{DIMENSIONS}] distance_metric=cosine,
         +snippet text
+      )
+    SQL
+    # Fingerprint of the fulltext + chunk params that produced the current
+    # chunk_vec rows for a book. Lets #index_book_chunks! skip re-embed
+    # when nothing has changed (catalog-wide backfills, re-extractions
+    # that produced identical text). Not a vec0 table — plain metadata.
+    db.execute(<<~SQL)
+      CREATE TABLE IF NOT EXISTS book_chunk_meta (
+        book_id INTEGER PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        model TEXT NOT NULL,
+        chunk_params_version INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )
     SQL
     db

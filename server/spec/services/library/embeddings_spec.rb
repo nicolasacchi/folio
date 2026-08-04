@@ -172,12 +172,15 @@ RSpec.describe Library::Embeddings do
 
       it "re-indexing replaces rather than duplicates a book's chunks" do
         text = ("alpha beta gamma delta epsilon " * 100).strip
+        expected = described_class.chunk_text(text).size
         described_class.index_book_chunks!(book, fulltext: text)
-        count_before = described_class.chunk_count
+        expect(described_class.chunk_count).to eq(expected)
 
-        described_class.index_book_chunks!(book, fulltext: text)
+        # force: true so the write path runs (identical fulltext would
+        # otherwise hit the fingerprint skip and never exercise DELETE+INSERT).
+        described_class.index_book_chunks!(book, fulltext: text, force: true)
 
-        expect(described_class.chunk_count).to eq(count_before)
+        expect(described_class.chunk_count).to eq(expected)
       end
 
       it "clears existing chunks when re-indexed with blank fulltext" do
@@ -195,6 +198,128 @@ RSpec.describe Library::Embeddings do
         described_class.index_book_chunks!(book)
 
         expect(described_class.chunk_count).to be > 0
+      end
+    end
+
+    describe "chunk fingerprint skip" do
+      let(:text) { ("alpha beta gamma delta epsilon " * 100).strip }
+      let(:other_text) { ("zeta eta theta iota kappa " * 100).strip }
+
+      it "writes stored_chunk_fingerprint matching chunk_content_fingerprint on first index" do
+        described_class.index_book_chunks!(book, fulltext: text)
+
+        expect(described_class.stored_chunk_fingerprint(book.id))
+          .to eq(described_class.chunk_content_fingerprint(text))
+      end
+
+      it "skips embed on a second identical call" do
+        described_class.index_book_chunks!(book, fulltext: text)
+        count_before = described_class.chunk_count
+
+        expect(described_class).not_to receive(:embed)
+        result = described_class.index_book_chunks!(book, fulltext: text)
+
+        expect(result).to eq(count_before)
+        expect(described_class.chunk_count).to eq(count_before)
+      end
+
+      it "re-embeds when fulltext differs" do
+        described_class.index_book_chunks!(book, fulltext: text)
+        expected = described_class.chunk_text(other_text).size
+
+        expect(described_class).to receive(:embed).at_least(:once) do |texts|
+          texts.map { |t| fake_vector(t) }
+        end
+        described_class.index_book_chunks!(book, fulltext: other_text)
+
+        expect(described_class.stored_chunk_fingerprint(book.id))
+          .to eq(described_class.chunk_content_fingerprint(other_text))
+        expect(described_class.chunk_count).to eq(expected)
+      end
+
+      it "re-embeds when force: true even if fingerprint is fresh" do
+        described_class.index_book_chunks!(book, fulltext: text)
+        expected = described_class.chunk_text(text).size
+
+        expect(described_class).to receive(:embed).at_least(:once) do |texts|
+          texts.map { |t| fake_vector(t) }
+        end
+        described_class.index_book_chunks!(book, fulltext: text, force: true)
+
+        expect(described_class.chunk_count).to eq(expected)
+      end
+
+      it "re-embeds when CHUNK_PARAMS_VERSION is bumped" do
+        described_class.index_book_chunks!(book, fulltext: text)
+        old_fingerprint = described_class.stored_chunk_fingerprint(book.id)
+
+        stub_const("#{described_class}::CHUNK_PARAMS_VERSION", described_class::CHUNK_PARAMS_VERSION + 1)
+        new_fingerprint = described_class.chunk_content_fingerprint(text)
+        expect(new_fingerprint).not_to eq(old_fingerprint)
+
+        expect(described_class).to receive(:embed).at_least(:once) do |texts|
+          texts.map { |t| fake_vector(t) }
+        end
+        described_class.index_book_chunks!(book, fulltext: text)
+
+        expect(described_class.stored_chunk_fingerprint(book.id)).to eq(new_fingerprint)
+        expect(described_class.chunk_count).to eq(described_class.chunk_text(text).size)
+      end
+
+      it "clears chunks and meta when fulltext is blank" do
+        described_class.index_book_chunks!(book, fulltext: text)
+        expect(described_class.stored_chunk_fingerprint(book.id)).to be_present
+
+        described_class.index_book_chunks!(book, fulltext: "")
+
+        expect(described_class.chunk_count).to eq(0)
+        expect(described_class.stored_chunk_fingerprint(book.id)).to be_nil
+      end
+
+      it "remove_book_chunks! clears meta" do
+        described_class.index_book_chunks!(book, fulltext: text)
+
+        described_class.remove_book_chunks!(book.id)
+
+        expect(described_class.stored_chunk_fingerprint(book.id)).to be_nil
+      end
+
+      it "remove_book! clears meta" do
+        described_class.index_book_chunks!(book, fulltext: text)
+
+        described_class.remove_book!(book.id)
+
+        expect(described_class.stored_chunk_fingerprint(book.id)).to be_nil
+      end
+
+      it "re-embeds when meta exists without vectors (orphan meta)" do
+        fingerprint = described_class.chunk_content_fingerprint(text)
+        described_class.with_db do |db|
+          db.execute(
+            "INSERT INTO book_chunk_meta (book_id, fingerprint, model, chunk_params_version, updated_at) " \
+            "VALUES (?, ?, ?, ?, ?)",
+            [ book.id, fingerprint, described_class::MODEL, described_class::CHUNK_PARAMS_VERSION, Time.now.to_i ]
+          )
+        end
+        expect(described_class.book_has_chunks?(book.id)).to be false
+        expect(described_class.stored_chunk_fingerprint(book.id)).to eq(fingerprint)
+
+        expect(described_class).to receive(:embed).at_least(:once) do |texts|
+          texts.map { |t| fake_vector(t) }
+        end
+        result = described_class.index_book_chunks!(book, fulltext: text)
+
+        expect(result).to be > 0
+        expect(described_class.book_has_chunks?(book.id)).to be true
+      end
+
+      it "is pure: different texts differ, same text is stable" do
+        a = described_class.chunk_content_fingerprint(text)
+        b = described_class.chunk_content_fingerprint(other_text)
+        a_again = described_class.chunk_content_fingerprint(text)
+
+        expect(a).not_to eq(b)
+        expect(a).to eq(a_again)
       end
     end
 
