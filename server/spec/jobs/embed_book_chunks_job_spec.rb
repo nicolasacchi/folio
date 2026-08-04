@@ -45,4 +45,20 @@ RSpec.describe EmbedBookChunksJob do
 
     expect(Library::Embeddings.chunk_count).to be > 0
   end
+
+  it "skips re-embed on a second perform for the same unchanged book" do
+    skip "sqlite-vec/informers unavailable in this environment" unless Library::Embeddings.available?
+
+    book = create(:book)
+    BookSearch.index_book!(book, fulltext: "alpha beta gamma delta epsilon " * 100)
+
+    described_class.perform_now(book.id)
+    count_before = Library::Embeddings.chunk_count
+    expect(count_before).to be > 0
+
+    expect(Library::Embeddings).not_to receive(:embed)
+    described_class.perform_now(book.id)
+
+    expect(Library::Embeddings.chunk_count).to eq(count_before)
+  end
 end

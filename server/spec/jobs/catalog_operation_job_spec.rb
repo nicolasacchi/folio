@@ -109,5 +109,21 @@ RSpec.describe CatalogOperationJob do
       expect(Library::Embeddings.chunk_book_count).to eq(1)
       expect(Library::Embeddings.chunk_count).to be > 0
     end
+
+    it "skips re-embed for books already indexed with a fresh fingerprint" do
+      skip "sqlite-vec/informers unavailable in this environment" unless Library::Embeddings.available?
+
+      book = create(:book)
+      BookSearch.index_book!(book, fulltext: "alpha beta gamma delta epsilon " * 100)
+
+      described_class.perform_now("embed_chunks_all")
+      count_before = Library::Embeddings.chunk_count
+      expect(count_before).to be > 0
+
+      expect(Library::Embeddings).not_to receive(:embed)
+      described_class.perform_now("embed_chunks_all")
+
+      expect(Library::Embeddings.chunk_count).to eq(count_before)
+    end
   end
 end
