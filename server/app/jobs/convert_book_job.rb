@@ -18,7 +18,12 @@ class ConvertBookJob < ApplicationJob
       # MOBI targets get the joint MOBI6+KF8 container: KF8 rendering for
       # the reader, MOBI6 outside so the Library UI shows the cover.
       options = conversion.target_format == "mobi" ? Library::KindlePrep::COMBO_OPTIONS : []
-      Calibre.convert(source.absolute_path, target, options: options)
+      # #read_source_path is the OCR companion (see Library::Ocr,
+      # OcrBookJob) when one is fresh, else the raw file — only ever
+      # differs for a pdf source, so converting an OCR'd pdf carries its
+      # text layer into the derived epub/txt/etc. instead of starting from
+      # the original scan's bare images.
+      Calibre.convert(source.read_source_path, target, options: options)
       Library::Ingest.call(
         target,
         original_filename: File.basename(target),

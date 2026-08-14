@@ -94,17 +94,39 @@ class BookFile < ApplicationRecord
     "#{File.basename(filename, '.*')}.#{delivery_format}"
   end
 
+  # The OCR text-layer companion (see Library::Ocr, OcrBookJob) is fresh
+  # when it was made from the file's current bytes and still exists on
+  # disk — mirrors #prepared_fresh?. Only ever true for pdf book_files;
+  # other formats never get ocr_path populated.
+  def ocr_fresh?
+    ocr_path.present? && ocr_source_sha256 == sha256 && File.exist?(ocr_absolute_path)
+  end
+
+  def ocr_absolute_path
+    Library.base_root.join(ocr_path)
+  end
+
+  # What text extraction (and, eventually, the reader) should read: the
+  # OCR'd companion when it's fresh, else the raw file. The Kindle
+  # delivery path (#delivery_path / #prepared_path) is untouched by this —
+  # OCR only feeds search/reading, never what ships to a device.
+  def read_source_path
+    ocr_fresh? ? ocr_absolute_path : absolute_path
+  end
+
   private
 
   # Never touch external files: the scan roots are someone else's data
   # (and mounted read-only in production). The prepared delivery copy
-  # (see Library::KindlePrep) is always a local, regenerable file — even
-  # for an external source — so it's removed unconditionally; the whole
-  # point of this hook is that a lone book_file destroy (book survives)
-  # doesn't leave that copy orphaned under storage/prepared.
+  # (see Library::KindlePrep) and the OCR companion (see Library::Ocr) are
+  # always local, regenerable files — even for an external source — so
+  # both are removed unconditionally; the whole point of this hook is that
+  # a lone book_file destroy (book survives) doesn't leave them orphaned
+  # under storage/prepared or storage/ocr.
   def remove_from_disk
     FileUtils.rm_f(absolute_path) unless external?
     FileUtils.rm_f(prepared_absolute_path) if prepared_path.present?
+    FileUtils.rm_f(ocr_absolute_path) if ocr_path.present?
   end
 
   # Keeping the ledger row (as "removed") means the next scan will not

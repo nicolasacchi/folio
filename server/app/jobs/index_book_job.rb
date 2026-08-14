@@ -28,6 +28,13 @@ class IndexBookJob < ApplicationJob
     source = TEXT_SOURCE_PREFERENCE.filter_map { |format| by_format[format] }.first
     return nil unless source
 
-    Calibre.extract_text(source.absolute_path).presence
+    # #read_source_path is the OCR companion (see Library::Ocr, OcrBookJob)
+    # when one is fresh, else the raw file — only ever differs for a pdf
+    # source, since only pdf book_files ever get an OCR companion. Simpler
+    # than special-casing "pdf with a fresh companion" here, and it keeps
+    # this extraction going through Calibre either way rather than trusting
+    # the OCR sidecar text (which Calibre's own pdf conversion may clean up
+    # differently).
+    Calibre.extract_text(source.read_source_path).presence
   end
 end

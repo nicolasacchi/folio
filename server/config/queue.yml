@@ -13,6 +13,13 @@ default: &default
       threads: 1
       processes: 1
       polling_interval: 30
+    # OCR is minutes-long per book; its own serialized queue so it can
+    # never block reader auto-conversions or Kindle delivery prep on
+    # :conversion.
+    - queues: ocr
+      threads: 1
+      processes: 1
+      polling_interval: 30
     - queues: scan
       threads: 1
       processes: 1

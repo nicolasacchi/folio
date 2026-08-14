@@ -10,11 +10,17 @@ FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
 WORKDIR /rails
 
 # Calibre provides ebook-convert/ebook-meta, which do all conversion,
-# metadata, cover and text-extraction work.
+# metadata, cover and text-extraction work. ocrmypdf (+ tesseract language
+# packs) adds a text layer to scanned PDFs — see Library::Ocr/OcrBookJob —
+# and pulls in ghostscript + tesseract-ocr as dependencies. Package names
+# verified against this base image's release (Debian 12 "bookworm", per
+# `docker run --rm ruby:3.3.6-slim cat /etc/os-release`).
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libjemalloc2 libvips sqlite3 calibre && \
+    apt-get install --no-install-recommends -y curl libjemalloc2 libvips sqlite3 calibre \
+      ocrmypdf tesseract-ocr-eng tesseract-ocr-ita tesseract-ocr-deu tesseract-ocr-fra \
+      tesseract-ocr-spa tesseract-ocr-por tesseract-ocr-rus tesseract-ocr-ara && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives && \
-    ebook-convert --version && ebook-meta --version
+    ebook-convert --version && ebook-meta --version && ocrmypdf --version
 
 # BUNDLE_WITHOUT is an ARG so CI/local test runs can build a variant with
 # the development/test gems: docker build --build-arg BUNDLE_WITHOUT="" .

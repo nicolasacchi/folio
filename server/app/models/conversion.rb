@@ -1,6 +1,12 @@
 class Conversion < ApplicationRecord
   STATUSES = %w[pending running completed failed].freeze
 
+  # "calibre" is a normal ebook-convert format conversion (source format !=
+  # target_format). "ocr" is a Library::Ocr run over a scanned PDF, which
+  # is pdf -> pdf (a text-layer companion, not a new format) — see
+  # #target_differs_from_source and OcrBookJob.
+  KINDS = %w[calibre ocr].freeze
+
   # Targets Calibre can produce without extra plugins. KFX is input-only.
   TARGET_FORMATS = %w[epub azw3 mobi pdf txt docx].freeze
 
@@ -22,6 +28,7 @@ class Conversion < ApplicationRecord
 
   validates :target_format, inclusion: { in: TARGET_FORMATS }
   validates :status, inclusion: { in: STATUSES }
+  validates :kind, inclusion: { in: KINDS }
   validate :target_differs_from_source
 
   scope :active, -> { where(status: %w[pending running]) }
@@ -31,6 +38,10 @@ class Conversion < ApplicationRecord
 
   STATUSES.each do |name|
     define_method("#{name}?") { status == name }
+  end
+
+  def ocr?
+    kind == "ocr"
   end
 
   # Marks running conversions whose worker appears to have died as failed,
@@ -64,6 +75,7 @@ class Conversion < ApplicationRecord
 
   def target_differs_from_source
     return unless book_file
+    return if ocr? # an OCR run is pdf -> pdf, a companion, not a new format
     errors.add(:target_format, "matches the source format") if target_format == book_file.format
   end
 end

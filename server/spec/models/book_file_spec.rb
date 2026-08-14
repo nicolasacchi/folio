@@ -45,6 +45,64 @@ RSpec.describe BookFile, type: :model do
     end
   end
 
+  describe "#ocr_fresh? / #read_source_path" do
+    let!(:pdf) { create(:book_file, :on_disk, book: book, format: "pdf", sha256: "src-sha") }
+
+    it "is not fresh with no OCR companion, and reads the raw file" do
+      expect(pdf).not_to be_ocr_fresh
+      expect(pdf.read_source_path).to eq(pdf.absolute_path)
+    end
+
+    it "is fresh once the companion matches the current sha256 and exists on disk" do
+      relative = "ocr/#{book.public_id}.ocr.pdf"
+      companion = Library.base_root.join(relative)
+      FileUtils.mkdir_p(companion.dirname)
+      File.write(companion, "ocr'd bytes")
+      pdf.update!(ocr_path: relative, ocr_source_sha256: "src-sha")
+
+      expect(pdf).to be_ocr_fresh
+      expect(pdf.read_source_path).to eq(pdf.ocr_absolute_path)
+    end
+
+    it "is stale once the source sha changes, even with a companion on disk" do
+      relative = "ocr/#{book.public_id}.ocr.pdf"
+      companion = Library.base_root.join(relative)
+      FileUtils.mkdir_p(companion.dirname)
+      File.write(companion, "ocr'd bytes")
+      pdf.update!(ocr_path: relative, ocr_source_sha256: "old-sha")
+
+      expect(pdf).not_to be_ocr_fresh
+      expect(pdf.read_source_path).to eq(pdf.absolute_path)
+    end
+
+    it "is stale when the companion path is recorded but missing from disk" do
+      pdf.update!(ocr_path: "ocr/#{book.public_id}.ocr.pdf", ocr_source_sha256: "src-sha")
+
+      expect(pdf).not_to be_ocr_fresh
+    end
+  end
+
+  describe "destroying a file with an OCR companion" do
+    let!(:pdf) { create(:book_file, book: book, format: "pdf") }
+
+    it "removes the OCR companion from disk too" do
+      relative = "ocr/#{book.public_id}.ocr.pdf"
+      companion = Library.base_root.join(relative)
+      FileUtils.mkdir_p(companion.dirname)
+      File.write(companion, "ocr'd bytes")
+      pdf.update!(ocr_path: relative)
+
+      pdf.destroy!
+
+      expect(File.exist?(companion)).to be(false)
+    end
+
+    it "does not raise when there is no OCR companion" do
+      expect(pdf.ocr_path).to be_nil
+      expect { pdf.destroy! }.not_to raise_error
+    end
+  end
+
   describe "destroying a file that sourced a conversion" do
     # conversions.book_file_id is NOT NULL with no ON DELETE — destroying
     # the source file on its own (book survives, e.g. Library::Scan.prune_missing!)

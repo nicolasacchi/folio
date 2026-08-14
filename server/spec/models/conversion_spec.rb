@@ -9,6 +9,30 @@ RSpec.describe Conversion, type: :model do
     expect(conversion).not_to be_valid
   end
 
+  it "rejects an unknown kind" do
+    conversion = build(:conversion, book: book, book_file: source, target_format: "azw3", kind: "transmogrify")
+    expect(conversion).not_to be_valid
+  end
+
+  it "defaults kind to calibre" do
+    conversion = create(:conversion, book: book, book_file: source, target_format: "azw3")
+    expect(conversion.kind).to eq("calibre")
+    expect(conversion).not_to be_ocr
+  end
+
+  describe "kind: ocr" do
+    let!(:pdf) { create(:book_file, book: book, format: "pdf") }
+
+    it "allows a pdf -> pdf conversion, unlike a calibre conversion" do
+      ocr_conversion = build(:conversion, :ocr, book: book, book_file: pdf)
+      expect(ocr_conversion).to be_valid
+      expect(ocr_conversion).to be_ocr
+
+      calibre_conversion = build(:conversion, book: book, book_file: pdf, target_format: "pdf")
+      expect(calibre_conversion).not_to be_valid
+    end
+  end
+
   it "lets the database reject a second active conversion for the same book/target (index_conversions_on_active_book_target)" do
     create(:conversion, book: book, book_file: source, target_format: "azw3", status: "pending")
 

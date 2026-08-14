@@ -39,6 +39,23 @@ RSpec.describe Library::StorageGc do
     expect(stats.bytes_reclaimed).to eq(10)
   end
 
+  it "treats ocr_path exactly like prepared_path: keeps referenced companions, sweeps orphans" do
+    book = create(:book)
+    create(:book_file, book: book, format: "pdf", ocr_path: "ocr/#{book.public_id}.ocr.pdf")
+
+    referenced_ocr = root.join("ocr", "#{book.public_id}.ocr.pdf")
+    old_ocr_orphan = root.join("ocr", "staging-orphan.ocr.pdf")
+
+    write(referenced_ocr, mtime: 7.hours.ago)
+    write(old_ocr_orphan, mtime: 7.hours.ago)
+
+    stats = described_class.sweep!
+
+    expect(File.exist?(referenced_ocr)).to be(true)
+    expect(File.exist?(old_ocr_orphan)).to be(false)
+    expect(stats.removed).to eq(1)
+  end
+
   it "never touches directories outside the swept set" do
     untouched = root.join("library", "some-book", "original.epub")
     write(untouched, mtime: 7.hours.ago)

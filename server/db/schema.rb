@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_29_172801) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_14_144055) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -44,6 +44,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_29_172801) do
     t.string "cde_type"
     t.datetime "created_at", null: false
     t.string "format", null: false
+    t.string "ocr_path"
+    t.string "ocr_sha256"
+    t.integer "ocr_size"
+    t.string "ocr_source_sha256"
     t.string "path", null: false
     t.datetime "prepared_at"
     t.string "prepared_path"
@@ -91,6 +95,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_29_172801) do
     t.datetime "created_at", null: false
     t.text "error"
     t.datetime "finished_at"
+    t.string "kind", default: "calibre", null: false
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
     t.string "target_format", null: false
