@@ -17,3 +17,66 @@ package.json/package-lock.json, README.md. Everything else — all
 top-level .js files plus the vendor/ subdir (fflate.js, zip.js, and the
 full vendor/pdfjs pdf.js build incl. cmaps/standard_fonts) — is copied
 verbatim.
+
+vendor/pdfjs/wasm/ — added 2026-08-14, NOT part of upstream foliate-js
+(foliate-js's own repo never ships this dir). pdf.js 5.5.207 decodes
+JPXDecode (openjpeg) and JBIG2Decode (jbig2) page images, plus ICC color
+conversion (qcms), via wasm modules fetched at runtime from a `wasmUrl`;
+without them those codecs throw during page.render() and the page stays
+blank. Source: `npm pack pdfjs-dist@5.5.207`, extracted, then verbatim
+(sha256-verified) from the package:
+  - wasm/jbig2.wasm                      <- package/wasm/jbig2.wasm
+  - wasm/openjpeg.wasm                   <- package/wasm/openjpeg.wasm
+  - wasm/openjpeg_nowasm_fallback.js     <- package/wasm/openjpeg_nowasm_fallback.js
+  - wasm/qcms_bg.wasm                    <- package/wasm/qcms_bg.wasm
+  - wasm/CGATS001Compat-v2-micro.icc     <- package/iccs/CGATS001Compat-v2-micro.icc
+  - wasm/LICENSE_*                       <- package/wasm/LICENSE_*
+These filenames are exactly what the vendored pdf.worker.mjs fetches
+relative to `wasmUrl`/`iccUrl` — grep pdf.worker.mjs for `.wasm"`,
+`wasmUrl`, `iccUrl` before renaming/dropping any of them on a re-vendor.
+Re-vendoring pdf.mjs/pdf.worker.mjs to a newer pdfjs-dist version must
+re-pull this wasm/ dir from the matching pdfjs-dist version (filenames
+have moved between pdf.js releases before) and re-verify against the new
+worker's fetch list.
+
+Local patches on top of the otherwise-verbatim vendored files (see
+git log / git diff for the exact diffs — this is only the index):
+  - pdf.js (top-level, foliate-js's PDF loader, NOT under vendor/pdfjs/):
+    - makePDF(): pass `wasmUrl`/`iccUrl` (both -> vendor/pdfjs/wasm/) to
+      pdfjsLib.getDocument(), same pattern as the existing cMapUrl/
+      standardFontDataUrl — the vendored wasm/ dir above is inert without
+      this, since pdf.js otherwise never learns where to fetch it from.
+    - render(): wrap `await page.render(...).promise` in try/catch; on
+      failure, console.error the real error and swap in a visible
+      `.pdf-render-error` placeholder div (page number + short message)
+      instead of leaving a blank canvas — a codec failure on one page (or
+      before this fix, on every page, for lack of wasm) used to render as
+      a silent blank page with no visible error.
+    - render(): clamp the raster scale via clampRenderScale() (~16MP /
+      4096px max dimension budget) so `zoom * devicePixelRatio` on a large
+      scanned page can't allocate a runaway canvas; compensates with a
+      larger CSS scale-up so on-screen layout is unaffected.
+    - renderPage(): eagerly render (and discard) the FIRST loaded page
+      once at scale 1 before building its iframe shell, so a *hard* codec
+      failure rejects `section.load()` itself — the one call in the open()
+      path that's still awaited end-to-end (fixed-layout.js's goToSpread),
+      so it reaches reader_controller.js's open() try/catch
+      (-> showError()) instead of silently resolving into a blank shell.
+      Only the first load of each book probes: `probeState`, a `{ probed:
+      false }` object created fresh per `makePDF()` call and passed into
+      renderPage(), set on success — not a property on the renderPage
+      function itself, since Turbo Drive keeps this module's JS realm
+      alive across page visits and a function-level latch would silently
+      skip the probe for every book opened after the first one in a tab.
+      A broken codec stack fails fast on open, while a single bad page
+      later in the book falls through to render()'s try/catch placeholder
+      above rather than making that page unnavigable, and page turns
+      don't pay a second decode of every page.
+  - fixed-layout.js:
+    - #render()'s transform(): the `onZoom` invocation (renders a PDF
+      frame's canvas) is fire-and-forget by design (page layout shouldn't
+      block on a render), but previously had no `.catch` at all, so any
+      rejection (including, before the pdf.js render() try/catch above
+      existed, a codec failure) surfaced only as an unhandled promise
+      rejection with the canvas left blank. Now wrapped in
+      `Promise.resolve(...).catch(console.error)`.

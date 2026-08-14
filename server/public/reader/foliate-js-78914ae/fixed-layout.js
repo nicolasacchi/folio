@@ -135,7 +135,17 @@ export class FixedLayout extends HTMLElement {
         const transform = frame => {
             let { element, iframe, width, height, blank, onZoom } = frame
             if (!iframe) return
-            if (onZoom) onZoom({ doc: frame.iframe.contentDocument, scale })
+            // `onZoom` (e.g. pdf.js's per-frame canvas render) is async and
+            // isn't awaited here — `#render()` runs synchronously so pages
+            // can lay out immediately without blocking on a render that may
+            // take a while. Most failures `onZoom` can hit (a broken page
+            // image, a text/annotation layer error) are already turned into
+            // a visible in-page placeholder by the callee itself, but this
+            // still needs a `.catch` so an unrelated rejection (e.g. the
+            // frame's document having been torn down mid-render) doesn't
+            // surface only as an unhandled promise rejection.
+            if (onZoom) Promise.resolve(onZoom({ doc: frame.iframe.contentDocument, scale }))
+                .catch(error => console.error('[fixed-layout] onZoom failed', error))
             const iframeScale = onZoom ? scale : 1
             Object.assign(iframe.style, {
                 width: `${width * iframeScale}px`,
