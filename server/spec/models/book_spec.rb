@@ -19,6 +19,25 @@ RSpec.describe Book, type: :model do
     end
   end
 
+  describe "#ocr_candidate_file" do
+    let!(:book) { create(:book) }
+
+    it "is nil when the book has no pdf file" do
+      create(:book_file, book: book, format: "epub")
+      expect(book.ocr_candidate_file).to be_nil
+    end
+
+    it "is the pdf book_file when present and available" do
+      pdf = create(:book_file, book: book, format: "pdf")
+      expect(book.ocr_candidate_file).to eq(pdf)
+    end
+
+    it "is nil when the pdf file is unavailable (e.g. missing from a scan)" do
+      create(:book_file, book: book, format: "pdf", available: false)
+      expect(book.ocr_candidate_file).to be_nil
+    end
+  end
+
   describe "#conversion_failed_without_deliverable?" do
     let!(:book) { create(:book) }
     let!(:source) { create(:book_file, book: book, format: "epub") }

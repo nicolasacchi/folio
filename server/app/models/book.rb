@@ -67,6 +67,14 @@ class Book < ApplicationRecord
     book_files.find_by(format: format)
   end
 
+  # The scanned PDF an OCR run (Library::Ocr / OcrBookJob) would work
+  # from, or nil when there's nothing eligible — used by
+  # ConversionsController's kind=ocr guard and the (later) OCR button.
+  def ocr_candidate_file
+    file = file_for("pdf")
+    file if file&.available?
+  end
+
   # Best format for the in-browser reader, see READABLE_FORMATS.
   def readable_file
     by_format = book_files.select(&:available?).index_by(&:format)

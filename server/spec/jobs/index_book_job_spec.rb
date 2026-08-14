@@ -20,6 +20,22 @@ RSpec.describe IndexBookJob do
     expect(BookSearch.search("extracted").map { |hit| hit[:book_id] }).to eq([ book.id ])
   end
 
+  it "extracts from the OCR companion instead of the raw pdf when it is fresh" do
+    book = create(:book)
+    pdf = create(:book_file, :on_disk, book: book, format: "pdf", sha256: "src-sha")
+    companion = Library.base_root.join("ocr", "#{book.public_id}.ocr.pdf")
+    FileUtils.mkdir_p(companion.dirname)
+    File.write(companion, "companion bytes")
+    pdf.update!(ocr_path: "ocr/#{book.public_id}.ocr.pdf", ocr_source_sha256: "src-sha")
+    allow(Calibre).to receive(:available?).and_return(true)
+    allow(Calibre).to receive(:extract_text).and_return("ocr'd text")
+
+    described_class.perform_now(book.id)
+
+    expect(Calibre).to have_received(:extract_text).with(companion)
+    expect(book.reload.has_fulltext).to be(true)
+  end
+
   it "leaves has_fulltext false when Calibre is unavailable" do
     book = create(:book)
     create(:book_file, :on_disk, book: book, format: "epub")
