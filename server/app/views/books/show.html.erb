@@ -46,43 +46,76 @@
             title: "Everything added that day" %>
     </p>
 
-    <div class="actions">
-      <% @devices.each do |device| %>
-        <% delivery = @deliveries[device.id] %>
-        <% preferred = device.id == @preferred_device_id %>
-        <% if delivery.nil? || delivery.removed? %>
-          <%= button_to "Send to #{device.name}#{preferred ? " (Preferred)" : ""}", deliveries_path(book_id: @book.id, device_id: device.id),
-                class: "btn btn--primary" %>
-        <% elsif delivery.evict_requested? %>
-          <%= button_to "Removing from #{device.name}… keep",
-                eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet",
-                title: "Queued for deletion on next sync — click to keep it" %>
-        <% elsif delivery.delivered? %>
-          <%= button_to "On #{device.name}#{preferred ? " ★" : ""} ✕", evictions_path(delivery_id: delivery.id), class: "btn btn--quiet",
-                title: "Delete from the device on next sync",
-                form: { data: { turbo_confirm: "Delete “#{@book.title}” from #{device.name} on next sync?" } } %>
-        <% else %>
-          <%= button_to "Queued for #{device.name}#{preferred ? " ★" : ""} ✕",
-                delivery_path(delivery), method: :delete, class: "btn btn--quiet",
-                title: "Remove from queue" %>
+    <div class="action-deck">
+      <div class="action-row">
+        <% if @book.readable_file || @book.book_files.any? %>
+          <%= link_to read_book_path(@book), class: "btn btn--primary" do %>
+            <%= render "shared/icon", name: "book-open" %>Read in browser
+          <% end %>
         <% end %>
-        <% if preferred && (delivery.nil? || delivery.removed?) %>
-          <span class="stamp stamp--ready">Preferred</span>
+        <% if (kindle_file = @book.kindle_file) %>
+          <%= link_to download_book_path(@book, fmt: kindle_file.format), class: "btn", data: { turbo: false } do %>
+            <%= render "shared/icon", name: "download" %>Download <%= kindle_file.format.upcase %>
+          <% end %>
         <% end %>
+      </div>
+
+      <% if @devices.any? %>
+        <div class="action-row">
+          <% @devices.each do |device| %>
+            <% delivery = @deliveries[device.id] %>
+            <% preferred = device.id == @preferred_device_id %>
+            <% if delivery.nil? || delivery.removed? %>
+              <%= button_to deliveries_path(book_id: @book.id, device_id: device.id), class: "btn" do %>
+                <%= render "shared/icon", name: "send" %>Send to <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %>
+              <% end %>
+            <% elsif delivery.evict_requested? %>
+              <%= button_to eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet",
+                    title: "Queued for deletion on next sync — click to keep it" do %>
+                <%= render "shared/icon", name: "undo" %>Keep on <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %>
+              <% end %>
+            <% elsif delivery.delivered? %>
+              <%= button_to evictions_path(delivery_id: delivery.id), class: "btn btn--quiet btn--evict",
+                    title: "Delete from the device on next sync",
+                    form: { data: { turbo_confirm: "Delete “#{@book.title}” from #{device.name} on next sync?" } } do %>
+                <%= render "shared/icon", name: "check" %>On <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %><%= render "shared/icon", name: "x" %>
+              <% end %>
+            <% else %>
+              <%= button_to delivery_path(delivery), method: :delete, class: "btn btn--quiet btn--evict",
+                    title: "Remove from queue" do %>
+                <%= render "shared/icon", name: "clock" %>Queued <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %><%= render "shared/icon", name: "x" %>
+              <% end %>
+            <% end %>
+          <% end %>
+        </div>
       <% end %>
-      <% if @book.readable_file || @book.book_files.any? %>
-        <%= link_to "Read in browser", read_book_path(@book), class: "btn btn--primary" %>
-      <% end %>
-      <% if (kindle_file = @book.kindle_file) %>
-        <%= link_to "Download #{kindle_file.format.upcase}",
-              download_book_path(@book, fmt: kindle_file.format),
-              class: "btn #{"btn--primary" if @devices.empty?}", data: { turbo: false } %>
-      <% end %>
-      <%= link_to "Edit", edit_book_path(@book), class: "btn btn--quiet" %>
-      <%= button_to "Index full text", reindex_book_path(@book), class: "btn btn--quiet",
-            title: "Extract the book's text with Calibre so search can look inside it" %>
-      <%= button_to "Delete", book_path(@book), method: :delete, class: "btn btn--danger",
-            form: { data: { turbo_confirm: "Delete “#{@book.title}” and all its files?" } } %>
+
+      <div class="action-row">
+        <%= link_to edit_book_path(@book), class: "btn btn--quiet" do %>
+          <%= render "shared/icon", name: "pencil" %>Edit
+        <% end %>
+        <%= button_to reindex_book_path(@book), class: "btn btn--quiet",
+              title: "Extract the book's text with Calibre so search can look inside it" do %>
+          <%= render "shared/icon", name: "text-search" %>Index full text
+        <% end %>
+        <%# Only offered when the candidate pdf is actually what the browser
+            reader would open: on a mixed-format book (e.g. epub + pdf),
+            #readable_file prefers the epub, so an OCR'd pdf companion would
+            be used by neither reading (#readable_file/#read_source_path)
+            nor search (IndexBookJob::TEXT_SOURCE_PREFERENCE) — dead weight
+            the button shouldn't promise. %>
+        <% if (candidate = @book.ocr_candidate_file) && !candidate.ocr_fresh? && @book.readable_file == candidate %>
+          <%= button_to book_conversions_path(@book, kind: "ocr"), class: "btn btn--quiet",
+                title: "Adds a searchable, selectable text layer to the scanned PDF — takes a few minutes" do %>
+            <%= render "shared/icon", name: "scan-text" %>OCR text layer
+          <% end %>
+        <% end %>
+        <span class="action-row__spacer"></span>
+        <%= button_to book_path(@book), method: :delete, class: "btn btn--danger",
+              form: { data: { turbo_confirm: "Delete “#{@book.title}” and all its files?" } } do %>
+          <%= render "shared/icon", name: "trash" %>Delete
+        <% end %>
+      </div>
     </div>
   </div>
 </div>
@@ -166,15 +199,22 @@
   <% @book.book_files.order(:format).each do |file| %>
     <div class="file-row">
       <%= link_to file.format, root_path(format: file.format),
-            class: "stamp #{"stamp--ready" if file.kindle_ready?}",
+            class: "stamp stamp--link #{"stamp--ready" if file.kindle_ready?}",
             title: "All books available as #{file.format.upcase}", data: { turbo_frame: "_top" } %>
       <% unless file.available? %>
         <span class="stamp stamp--failed" title="The scanned source file is no longer at <%= file.path %>">missing</span>
       <% end %>
+      <% if file.ocr_fresh? %>
+        <% ocr_stamp_title = @book.readable_file == file ?
+             "OCR text layer present — search and the browser reader use it" :
+             "OCR text layer present (a richer format is preferred for reading and search)" %>
+        <span class="stamp stamp--ready" title="<%= ocr_stamp_title %>">text layer</span>
+      <% end %>
       <span class="grow small muted"><%= format_size(file.size) %> · <%= file.source %></span>
       <% if file.available? %>
-        <%= link_to "Download", download_book_path(@book, fmt: file.format),
-              class: "btn btn--quiet", data: { turbo: false } %>
+        <%= link_to download_book_path(@book, fmt: file.format), class: "btn btn--quiet", data: { turbo: false } do %>
+          <%= render "shared/icon", name: "download" %>Download
+        <% end %>
       <% end %>
     </div>
   <% end %>
@@ -184,7 +224,7 @@
     <p class="section-label">Convert to</p>
     <div class="actions">
       <% convertible.each do |target| %>
-        <%= button_to target.upcase, book_conversions_path(@book, target_format: target), class: "btn" %>
+        <%= button_to target.upcase, book_conversions_path(@book, target_format: target), class: "btn btn--quiet" %>
       <% end %>
     </div>
   <% end %>
@@ -195,7 +235,11 @@
       <div class="conversion-row">
         <span class="<%= conversion_stamp_class(conversion) %>"><%= conversion.status %></span>
         <span class="grow small">
-          <%= conversion.book_file.format.upcase %> → <%= conversion.target_format.upcase %>
+          <% if conversion.ocr? %>
+            <%= render "shared/icon", name: "scan-text" %>OCR · text layer
+          <% else %>
+            <%= conversion.book_file.format.upcase %> → <%= conversion.target_format.upcase %>
+          <% end %>
           <% if conversion.failed? && conversion.error.present? %>
             <span class="muted mono small"> — <%= truncate(conversion.error, length: 160) %></span>
           <% end %>

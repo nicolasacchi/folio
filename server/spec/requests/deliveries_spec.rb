@@ -84,7 +84,7 @@ RSpec.describe "Deliveries", type: :request do
       create(:delivery, book: book, device: device)
 
       get "/books/#{book.id}"
-      expect(response.body).to include("Queued for #{device.name}")
+      expect(response.body).to include("Queued #{device.name}")
 
       get "/devices"
       expect(response.body).to include("0 books on device, 1 queued")
