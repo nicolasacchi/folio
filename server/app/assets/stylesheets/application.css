@@ -15,6 +15,7 @@
   --accent: #b5442b;
   --accent-soft: rgb(181 68 43 / .14);
   --on-accent: #fcf9f1;
+  --danger: #8f1d1d;
   --shadow: 0 1px 2px rgb(34 28 18 / .10), 0 6px 18px -6px rgb(34 28 18 / .18);
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, ui-serif, Georgia, "Times New Roman", serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
@@ -32,6 +33,10 @@
     --accent: #d97250;
     --accent-soft: rgb(217 114 80 / .16);
     --on-accent: #1b1610;
+    /* #d75f5f: ~5:1 on dark --paper (#171310), and pure red (hue 0) rather
+       than --accent's orange-red (hue ~15) so a danger action doesn't read
+       as just a brighter accent. */
+    --danger: #d75f5f;
     --shadow: 0 1px 2px rgb(0 0 0 / .5), 0 8px 22px -8px rgb(0 0 0 / .7);
   }
 }
@@ -186,7 +191,7 @@ main {
   box-shadow: var(--shadow);
   animation: flash-out .5s ease 5s forwards;
 }
-.flash--alert { border-left-color: #8f1d1d; }
+.flash--alert { border-left-color: var(--danger); }
 @keyframes flash-out { to { opacity: 0; visibility: hidden; } }
 
 /* ---------- Type & structure ---------- */
@@ -229,7 +234,9 @@ main {
 /* ---------- Buttons, stamps, forms ---------- */
 
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: .45em;
   font-family: var(--mono);
   font-size: .7rem;
   letter-spacing: .16em;
@@ -247,8 +254,16 @@ main {
 .btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn--primary:hover { background: var(--ink); border-color: var(--ink); }
 .btn--quiet { border-color: var(--line); color: var(--ink-soft); }
-.btn--danger { border-color: #8f1d1d; color: #8f1d1d; background: transparent; }
-.btn--danger:hover { background: #8f1d1d; color: var(--paper-raised); }
+.btn--danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+.btn--danger:hover { background: var(--danger); color: var(--paper-raised); }
+/* Destructive hint for a pill whose default state isn't itself dangerous
+   (e.g. "on this device" — only the removal it triggers is). */
+.btn--evict:hover { border-color: var(--danger); color: var(--danger); background: transparent; }
+
+/* Icon sizing: .app-icon alone (stamp/inline use) vs. inside a .btn, where
+   it needs to sit taller against the mono small-caps label. */
+.app-icon { width: .9em; height: .9em; }
+.btn .app-icon { width: 1.15em; height: 1.15em; flex-shrink: 0; }
 
 .stamp {
   display: inline-block;
@@ -263,7 +278,10 @@ main {
 }
 .stamp--ready { border-color: var(--accent); color: var(--accent); }
 .stamp--pending { border-style: dashed; }
-.stamp--failed { border-color: #8f1d1d; color: #8f1d1d; }
+.stamp--failed { border-color: var(--danger); color: var(--danger); }
+/* A stamp that's actually a link (e.g. a file format filter) rather than
+   a status marker — hover reads as interactive, matching .btn/.chip. */
+.stamp--link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); cursor: pointer; }
 
 label {
   display: block;
@@ -527,7 +545,7 @@ mark {
   padding: 0 .2rem;
   font-size: .68rem;
   line-height: 1;
-  background: #8f1d1d;
+  background: var(--danger);
   color: #fcf9f1;
   border-radius: 2px;
   box-shadow: var(--shadow);
@@ -611,7 +629,7 @@ mark {
   padding: .7rem .8rem;
   background: var(--paper-sunken);
   border: 1px solid var(--line);
-  border-left: 3px solid #8f1d1d;
+  border-left: 3px solid var(--danger);
   color: var(--ink);
   max-height: 22rem;
   overflow: auto;
@@ -622,6 +640,14 @@ mark {
 .meta-list b { color: var(--ink); font-weight: 600; }
 
 .actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+
+/* Book detail page's primary actions: stacked rows (read/download,
+   per-device sends, manage/danger) instead of one big wrapping cloud. */
+.action-deck { display: flex; flex-direction: column; gap: .7rem; margin-top: 1rem; }
+.action-row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+/* Pushes whatever follows (the danger zone) to the row's right edge;
+   collapses to 0 and wraps below on narrow screens like any flex item. */
+.action-row__spacer { flex: 1; }
 
 /* ---------- Upload ---------- */
 
@@ -677,6 +703,21 @@ code, .mono { font-family: var(--mono); font-size: .85em; }
   margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Same intent as .sr-only, standard clip-path variant — used for short
+   inline text fallbacks next to an aria-hidden icon (e.g. the preferred
+   star), rather than .sr-only's live-region-style announcements above. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
