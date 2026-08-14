@@ -149,6 +149,29 @@ RSpec.describe "In-browser reader", type: :request do
     end
   end
 
+  describe "GET /books/:id/read for a plain-text (.txt) book" do
+    let!(:txt_file) do
+      create(:book_file, book: book, format: "txt").tap do |file|
+        FileUtils.mkdir_p(file.absolute_path.dirname)
+        File.write(file.absolute_path, "Chapter One.\n\nIt was a dark and stormy night.")
+        file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+      end
+    end
+
+    before { sign_in(user) }
+
+    it "renders the reader shell for the txt format and serves the file as text/plain" do
+      get read_book_path(book)
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('data-reader-format-value="txt"')
+
+      get read_book_file_path(book)
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("text/plain")
+      expect(response.body).to eq("Chapter One.\n\nIt was a dark and stormy night.")
+    end
+  end
+
   describe "PUT /books/:id/read/position" do
     it "requires authentication" do
       expect {
