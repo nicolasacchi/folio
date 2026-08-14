@@ -27,6 +27,9 @@ const isFBZ = ({ name, type }) =>
     type === 'application/x-zip-compressed-fb2'
     || name.endsWith('.fb2.zip') || name.endsWith('.fbz')
 
+const isTXT = ({ name, type }) =>
+    type === 'text/plain' || name.endsWith('.txt')
+
 const makeZipLoader = async file => {
     const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } =
         await import('./vendor/zip.js')
@@ -116,6 +119,10 @@ export const makeBook = async file => {
         else if (isFB2(file)) {
             const { makeFB2 } = await import('./fb2.js')
             book = await makeFB2(file)
+        }
+        else if (isTXT(file)) {
+            const { makeTXT } = await import('./txt.js')
+            book = await makeTXT(file)
         }
     }
     if (!book) throw new UnsupportedTypeError('File type not supported')

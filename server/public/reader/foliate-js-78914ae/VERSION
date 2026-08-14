@@ -39,8 +39,23 @@ re-pull this wasm/ dir from the matching pdfjs-dist version (filenames
 have moved between pdf.js releases before) and re-verify against the new
 worker's fetch list.
 
+txt.js — added 2026-08-14, NOT part of upstream foliate-js (foliate-js's
+own repo never ships this file). Book::READABLE_FORMATS includes "txt"
+and the server happily serves one, but view.js's makeBook() had no
+dispatch branch for it, so opening a plain .txt book always fell through
+to `UnsupportedTypeError`. Adds a minimal makeTXT() adapter, modeled on
+fb2.js (the simplest upstream adapter, same Book interface contract):
+reads the whole file via TextDecoder, splits on blank lines into escaped
+`<p>` paragraphs, wraps them in one XHTML section — no chapters/TOC/cover,
+since a bare .txt file has none of those.
+
 Local patches on top of the otherwise-verbatim vendored files (see
 git log / git diff for the exact diffs — this is only the index):
+  - view.js:
+    - makeBook(): dispatch to the new txt.js adapter above, as the last
+      branch after the MOBI/FB2 checks — a small isTXT(file) sniff
+      (`type === 'text/plain'` or a `.txt` filename), mirroring the
+      existing isFB2/isCBZ/isFBZ checks' own name/type pattern.
   - pdf.js (top-level, foliate-js's PDF loader, NOT under vendor/pdfjs/):
     - makePDF(): pass `wasmUrl`/`iccUrl` (both -> vendor/pdfjs/wasm/) to
       pdfjsLib.getDocument(), same pattern as the existing cMapUrl/
