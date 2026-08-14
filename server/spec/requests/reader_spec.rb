@@ -32,7 +32,9 @@ RSpec.describe "In-browser reader", type: :request do
         get read_book_path(book)
         csp = response.headers["Content-Security-Policy"]
         expect(csp).to be_present
-        expect(csp).to match(/script-src 'self' 'nonce-[^']+'/) # no unsafe-inline/unsafe-eval
+        # wasm-unsafe-eval permits only Wasm compile/instantiate (pdf.js image
+        # codecs), not eval/Function() — still no unsafe-inline/unsafe-eval.
+        expect(csp).to match(/script-src 'self' 'wasm-unsafe-eval' 'nonce-[^']+'/)
         expect(csp).to include("object-src 'none'")
         expect(response.body).to include('type="importmap"') # importmap tag still renders (and is nonced)
 
@@ -112,6 +114,38 @@ RSpec.describe "In-browser reader", type: :request do
       epub_file.destroy!
       get read_book_file_path(book)
       expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "GET /books/:id/read/file with an OCR'd scanned PDF" do
+    let!(:pdf_file) do
+      create(:book_file, book: book, format: "pdf").tap do |file|
+        FileUtils.mkdir_p(file.absolute_path.dirname)
+        File.write(file.absolute_path, "raw scanned pdf bytes")
+        file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+      end
+    end
+
+    before { sign_in(user) }
+
+    it "serves the fresh OCR text-layer companion instead of the raw scan" do
+      ocr_path = "ocr/#{pdf_file.id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+      File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+      pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+
+      get read_book_file_path(book)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/pdf")
+      expect(response.body.b).to eq("ocr'd pdf bytes with a text layer")
+    end
+
+    it "falls back to the raw file when there is no fresh OCR companion" do
+      get read_book_file_path(book)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.b).to eq("raw scanned pdf bytes")
     end
   end
 

@@ -16,16 +16,25 @@ class ReaderController < ApplicationController
   # whoever created it — i.e. THIS page — so `script-src :self` here (no
   # `unsafe-inline`/`unsafe-eval`, and no nonce a book's own markup could
   # ever carry) is what actually stops a malicious book's inline <script>
-  # from running with this session's cookies. This does not fully close the
-  # gap (the iframe is still same-origin, so anything that doesn't need
-  # script — e.g. reading the DOM — is unaffected); serving book content
-  # from a separate origin remains the complete fix and is out of scope
-  # here. `style_src` keeps `unsafe_inline` because foliate-js injects
+  # from running with this session's cookies. `wasm_unsafe_eval` below only
+  # permits compiling/instantiating WebAssembly modules (needed by the
+  # vendored pdf.js's image codecs); unlike `unsafe_eval` it does not permit
+  # `eval`/`Function()`/string-to-JS, so this guarantee still holds. This
+  # does not fully close the gap (the iframe is still same-origin, so
+  # anything that doesn't need script — e.g. reading the DOM — is
+  # unaffected); serving book content from a separate origin remains the
+  # complete fix and is out of scope here. `style_src` keeps `unsafe_inline`
+  # because foliate-js injects
   # per-theme <style> tags straight into each section's document
   # (renderer.setStyles) with no way for us to nonce vendored code.
   content_security_policy do |policy|
     policy.default_src :self
-    policy.script_src  :self
+    # `wasm-unsafe-eval` (not the much broader `unsafe-eval`) is required by
+    # Chrome/strict-CSP browsers for `WebAssembly.instantiate` itself — the
+    # vendored pdf.js decodes JPXDecode/JBIG2Decode page images via wasm
+    # modules (see vendor/pdfjs/wasm/), which silently fail to even
+    # instantiate without this even though the module bytes fetch fine.
+    policy.script_src  :self, :wasm_unsafe_eval
     policy.style_src   :self, :unsafe_inline
     policy.img_src     :self, :data, :blob, "https://upload.wikimedia.org"
     policy.font_src    :self, :data
@@ -101,12 +110,12 @@ class ReaderController < ApplicationController
 
   def file
     @file = @book.readable_file
-    return head :not_found if @file.nil? || !File.exist?(@file.absolute_path)
+    return head :not_found if @file.nil? || !File.exist?(@file.read_source_path)
 
-    fresh_when last_modified: File.mtime(@file.absolute_path)
+    fresh_when last_modified: File.mtime(@file.read_source_path)
     return if request.fresh?(response)
 
-    send_file @file.absolute_path,
+    send_file @file.read_source_path,
       type: MIME_TYPES.fetch(@file.format, "application/octet-stream"),
       disposition: "inline"
   end
