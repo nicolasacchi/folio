@@ -4,7 +4,7 @@
   <% if @file %>
     <div id="reader-root" class="reader-root"
          data-controller="reader"
-         data-reader-file-url-value="<%= read_book_file_path(@book) %>"
+         data-reader-file-url-value="<%= read_book_file_path(@book, raw: @raw ? 1 : nil) %>"
          data-reader-filename-value="<%= @file.filename %>"
          data-reader-format-value="<%= @file.format %>"
          data-reader-book-id-value="<%= @book.id %>"

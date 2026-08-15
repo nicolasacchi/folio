@@ -231,6 +231,14 @@ main {
 .muted { color: var(--ink-soft); }
 .small { font-size: .85rem; }
 
+/* A button_to action (needs a real <form> POST/DELETE, unlike the plain
+   <a> "small muted" links elsewhere) that should still read as quiet
+   inline text rather than a button — e.g. the book page's "original"
+   variant links next to the Kindle send pills. Mirrors .top-link's reset;
+   font-family only (not the `font` shorthand) so it doesn't fight
+   .small's font-size when both classes land on the same element. */
+.link-quiet { border: 0; background: none; padding: 0; font-family: inherit; cursor: pointer; }
+
 /* ---------- Buttons, stamps, forms ---------- */
 
 .btn {

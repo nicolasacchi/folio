@@ -102,6 +102,9 @@ class ReaderController < ApplicationController
     if @file
       @initial_position = @book.reader_positions.find_by(user: Current.user)
       @text_length = mobi_text_length
+      # Threaded into the file URL the reader shell fetches (see
+      # reader/show.html.erb) so #file resolves the same variant.
+      @raw = params[:raw].present?
     else
       ensure_epub_conversion
       @preparing_conversion = @book.conversions.active.where(target_format: "epub").order(:created_at).first
@@ -110,12 +113,37 @@ class ReaderController < ApplicationController
 
   def file
     @file = @book.readable_file
-    return head :not_found if @file.nil? || !File.exist?(@file.read_source_path)
+    # The OCR/original choice lives entirely in the URL (?raw=1) rather
+    # than session state, so the two variants are already distinct browser
+    # cache keys. Existence check, fresh_when and send_file all read this
+    # same chosen path so nothing downstream can pick a different variant
+    # than what was validated.
+    raw = params[:raw].present?
+    path = raw ? @file&.absolute_path : @file&.read_source_path
+    return head :not_found if @file.nil? || !File.exist?(path)
 
-    fresh_when last_modified: File.mtime(@file.read_source_path)
+    # This app runs with strict_freshness (Rails 8.1 default): once a
+    # request carries If-None-Match, the ETag alone decides freshness —
+    # Last-Modified is never consulted as a fallback. So the ETag has to
+    # carry the STORED hash of the bytes actually being served, not just
+    # the path: an OCR re-run rewrites this same storage/ocr/<public_id>
+    # .ocr.pdf in place, and a library rescan can rewrite a changed
+    # external file's bytes at its unchanged path (see
+    # Library::Scan#refresh_changed_file) — in both cases the path never
+    # changes even though the served bytes do. ocr_sha256 and sha256 are
+    # exactly the columns OcrBookJob and Library::Scan update every time
+    # those bytes are regenerated, which is what makes them the right
+    # etag ingredient: a stale cached copy correctly misses instead of
+    # 304ing forever. `serving_ocr` mirrors #read_source_path's own
+    # ocr_fresh? check so the sha picked always matches the path actually
+    # being served in both the raw=1 and default branches. Path stays in
+    # the etag array too, for raw/OCR variant separation.
+    serving_ocr = !raw && @file.ocr_fresh?
+    content_sha = serving_ocr ? @file.ocr_sha256 : @file.sha256
+    fresh_when etag: [ path.to_s, content_sha ], last_modified: File.mtime(path)
     return if request.fresh?(response)
 
-    send_file @file.read_source_path,
+    send_file path,
       type: MIME_TYPES.fetch(@file.format, "application/octet-stream"),
       disposition: "inline"
   end

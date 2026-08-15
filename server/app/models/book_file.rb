@@ -75,30 +75,35 @@ class BookFile < ApplicationRecord
     Library::KindlePrep.preparable?(self) && !prepared_fresh?
   end
 
-  def delivery_path
+  # raw: true is the per-Delivery "send the untouched scan" choice (see
+  # Delivery#raw) — it skips the ocr_fresh? branch only. Prepared
+  # precedence stays first regardless: PATCHABLE_FORMATS excludes pdf and
+  # OCR only ever applies to pdf rows, so prepared and OCR never compete
+  # and raw only ever bypasses OCR, never a prepared copy.
+  def delivery_path(raw: false)
     if prepared_fresh?
       prepared_absolute_path
-    elsif ocr_fresh?
+    elsif ocr_fresh? && !raw
       ocr_absolute_path
     else
       absolute_path
     end
   end
 
-  def delivery_sha256
+  def delivery_sha256(raw: false)
     if prepared_fresh?
       prepared_sha256
-    elsif ocr_fresh?
+    elsif ocr_fresh? && !raw
       ocr_sha256
     else
       sha256
     end
   end
 
-  def delivery_size
+  def delivery_size(raw: false)
     if prepared_fresh?
       prepared_size
-    elsif ocr_fresh?
+    elsif ocr_fresh? && !raw
       ocr_size
     else
       size

@@ -26,6 +26,14 @@ RSpec.describe "In-browser reader", type: :request do
         expect(response.body).to include(read_book_file_path(book))
       end
 
+      it "threads ?raw=1 into the file URL the reader shell fetches" do
+        sign_in(user)
+        get read_book_path(book, raw: 1)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include(CGI.escapeHTML(read_book_file_path(book, raw: 1)))
+      end
+
       it "scopes a restrictive script-src Content-Security-Policy to the reader page only" do
         sign_in(user)
 
@@ -146,6 +154,106 @@ RSpec.describe "In-browser reader", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body.b).to eq("raw scanned pdf bytes")
+    end
+  end
+
+  describe "GET /books/:id/read/file?raw=1 alongside the default OCR companion" do
+    let!(:pdf_file) do
+      create(:book_file, book: book, format: "pdf").tap do |file|
+        FileUtils.mkdir_p(file.absolute_path.dirname)
+        File.write(file.absolute_path, "raw scanned pdf bytes")
+        file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+      end
+    end
+
+    let(:ocr_path) { "ocr/#{pdf_file.id}.ocr.pdf" }
+
+    before do
+      sign_in(user)
+      FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+      File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+      pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+    end
+
+    it "serves the OCR companion by default and the untouched original with raw=1" do
+      get read_book_file_path(book)
+      expect(response.body.b).to eq("ocr'd pdf bytes with a text layer")
+
+      get read_book_file_path(book, raw: 1)
+      expect(response.body.b).to eq("raw scanned pdf bytes")
+    end
+
+    it "gives the two variants distinct ETags" do
+      get read_book_file_path(book)
+      ocr_etag = response.headers["ETag"]
+
+      get read_book_file_path(book, raw: 1)
+      raw_etag = response.headers["ETag"]
+
+      expect(ocr_etag).to be_present
+      expect(raw_etag).to be_present
+      expect(ocr_etag).not_to eq(raw_etag)
+    end
+
+    # The regression this guards: Last-Modified alone has one-second
+    # resolution, and the raw file predates the OCR companion made from
+    # it — so a naive `fresh_when last_modified:` with no ETag could
+    # legitimately 304 a raw=1 request against the OCR file's (newer)
+    # Last-Modified. Presenting the OCR variant's own validators to the
+    # raw URL (as a client that had it cached from a prior visit would)
+    # must not 304 — that would leave the client showing its old OCR
+    # bytes under a URL that's actually supposed to be the raw scan.
+    it "never lets one variant's conditional GET validators freshen the other variant's response" do
+      get read_book_file_path(book)
+      ocr_etag = response.headers["ETag"]
+      ocr_last_modified = response.headers["Last-Modified"]
+
+      get read_book_file_path(book, raw: 1),
+        headers: { "If-None-Match" => ocr_etag, "If-Modified-Since" => ocr_last_modified }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.b).to eq("raw scanned pdf bytes")
+    end
+
+    it "still 304s each variant's own URL against its own prior validators" do
+      get read_book_file_path(book, raw: 1)
+      raw_etag = response.headers["ETag"]
+      raw_last_modified = response.headers["Last-Modified"]
+
+      get read_book_file_path(book, raw: 1),
+        headers: { "If-None-Match" => raw_etag, "If-Modified-Since" => raw_last_modified }
+
+      expect(response).to have_http_status(:not_modified)
+    end
+
+    # The regression this guards: with only `etag: path` (the path string
+    # never changes when an OCR re-run rewrites the same
+    # storage/ocr/<public_id>.ocr.pdf in place), strict_freshness means an
+    # If-None-Match from before the rewrite would 304 forever against the
+    # now-stale cached copy. Folding ocr_sha256 into the etag (updated by
+    # OcrBookJob on every regeneration, mirrored here) fixes that.
+    it "does not 304 a stale ETag once the OCR companion is regenerated with different bytes at the same path" do
+      get read_book_file_path(book)
+      stale_etag = response.headers["ETag"]
+
+      new_bytes = "re-ocr'd pdf bytes, a different text layer"
+      File.write(Library.base_root.join(ocr_path), new_bytes)
+      pdf_file.update!(ocr_sha256: Library.sha256(Library.base_root.join(ocr_path)))
+
+      get read_book_file_path(book), headers: { "If-None-Match" => stale_etag }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.b).to eq(new_bytes.b)
+    end
+
+    it "still 304s the OCR variant against its own current validators once content is unchanged" do
+      get read_book_file_path(book)
+      etag = response.headers["ETag"]
+      last_modified = response.headers["Last-Modified"]
+
+      get read_book_file_path(book), headers: { "If-None-Match" => etag, "If-Modified-Since" => last_modified }
+
+      expect(response).to have_http_status(:not_modified)
     end
   end
 
