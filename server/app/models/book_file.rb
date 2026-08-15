@@ -56,8 +56,12 @@ class BookFile < ApplicationRecord
   end
 
   # What actually goes to the Kindle: the prepared copy (store identity
-  # neutralized + cover embedded, see Library::KindlePrep) when current,
-  # else the raw file.
+  # neutralized + cover embedded, see Library::KindlePrep) when current;
+  # else the OCR'd companion (#ocr_fresh?) when current; else the raw
+  # file. Prepared must win when both exist — it's the copy with the
+  # Kindle store identity patched in — but the two never actually compete
+  # today: PATCHABLE_FORMATS excludes pdf, and OCR only ever applies to
+  # pdf rows.
   def prepared_fresh?
     prepared_path.present? && prepared_source_sha256 == sha256 &&
       File.exist?(prepared_absolute_path)
@@ -72,15 +76,33 @@ class BookFile < ApplicationRecord
   end
 
   def delivery_path
-    prepared_fresh? ? prepared_absolute_path : absolute_path
+    if prepared_fresh?
+      prepared_absolute_path
+    elsif ocr_fresh?
+      ocr_absolute_path
+    else
+      absolute_path
+    end
   end
 
   def delivery_sha256
-    prepared_fresh? ? prepared_sha256 : sha256
+    if prepared_fresh?
+      prepared_sha256
+    elsif ocr_fresh?
+      ocr_sha256
+    else
+      sha256
+    end
   end
 
   def delivery_size
-    prepared_fresh? ? prepared_size : size
+    if prepared_fresh?
+      prepared_size
+    elsif ocr_fresh?
+      ocr_size
+    else
+      size
+    end
   end
 
   # Preparation may change the container (azw3 → joint mobi), so the
@@ -97,7 +119,9 @@ class BookFile < ApplicationRecord
   # The OCR text-layer companion (see Library::Ocr, OcrBookJob) is fresh
   # when it was made from the file's current bytes and still exists on
   # disk — mirrors #prepared_fresh?. Only ever true for pdf book_files;
-  # other formats never get ocr_path populated.
+  # other formats never get ocr_path populated. Feeds both reading
+  # (#read_source_path) and Kindle delivery (#delivery_path, see the
+  # precedence note above #prepared_fresh?).
   def ocr_fresh?
     ocr_path.present? && ocr_source_sha256 == sha256 && File.exist?(ocr_absolute_path)
   end
@@ -106,10 +130,11 @@ class BookFile < ApplicationRecord
     Library.base_root.join(ocr_path)
   end
 
-  # What text extraction (and, eventually, the reader) should read: the
-  # OCR'd companion when it's fresh, else the raw file. The Kindle
-  # delivery path (#delivery_path / #prepared_path) is untouched by this —
-  # OCR only feeds search/reading, never what ships to a device.
+  # What text extraction and the reader should read: the OCR'd companion
+  # when it's fresh, else the raw file. Kept separate from #delivery_path
+  # even though both now fall through to the same OCR companion — this one
+  # never considers #prepared_fresh? (a Kindle-store-patched copy is never
+  # what search/reading should read from).
   def read_source_path
     ocr_fresh? ? ocr_absolute_path : absolute_path
   end

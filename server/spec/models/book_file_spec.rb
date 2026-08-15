@@ -82,6 +82,47 @@ RSpec.describe BookFile, type: :model do
     end
   end
 
+  describe "#delivery_path / #delivery_sha256 / #delivery_size precedence" do
+    let!(:pdf) { create(:book_file, :on_disk, book: book, format: "pdf", sha256: "src-sha") }
+
+    it "falls back to the raw file when neither a prepared nor an OCR copy is fresh" do
+      expect(pdf.delivery_path).to eq(pdf.absolute_path)
+      expect(pdf.delivery_sha256).to eq(pdf.sha256)
+      expect(pdf.delivery_size).to eq(pdf.size)
+    end
+
+    it "prefers the OCR companion over the raw file once it's fresh" do
+      relative = "ocr/#{book.public_id}.ocr.pdf"
+      companion = Library.base_root.join(relative)
+      FileUtils.mkdir_p(companion.dirname)
+      File.write(companion, "ocr'd bytes")
+      pdf.update!(ocr_path: relative, ocr_sha256: "ocr-sha", ocr_size: 11, ocr_source_sha256: "src-sha")
+
+      expect(pdf.delivery_path).to eq(pdf.ocr_absolute_path)
+      expect(pdf.delivery_sha256).to eq("ocr-sha")
+      expect(pdf.delivery_size).to eq(11)
+    end
+
+    it "still prefers the prepared copy over a fresh OCR companion" do
+      prepared_relative = "prepared/#{book.public_id}.pdf"
+      prepared = Library.base_root.join(prepared_relative)
+      FileUtils.mkdir_p(prepared.dirname)
+      File.write(prepared, "prepared bytes")
+      pdf.update!(prepared_path: prepared_relative, prepared_sha256: "prepared-sha",
+        prepared_size: 14, prepared_source_sha256: "src-sha")
+
+      ocr_relative = "ocr/#{book.public_id}.ocr.pdf"
+      ocr = Library.base_root.join(ocr_relative)
+      FileUtils.mkdir_p(ocr.dirname)
+      File.write(ocr, "ocr'd bytes")
+      pdf.update!(ocr_path: ocr_relative, ocr_sha256: "ocr-sha", ocr_size: 11, ocr_source_sha256: "src-sha")
+
+      expect(pdf.delivery_path).to eq(pdf.prepared_absolute_path)
+      expect(pdf.delivery_sha256).to eq("prepared-sha")
+      expect(pdf.delivery_size).to eq(14)
+    end
+  end
+
   describe "destroying a file with an OCR companion" do
     let!(:pdf) { create(:book_file, book: book, format: "pdf") }
 

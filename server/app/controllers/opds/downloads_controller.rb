@@ -7,18 +7,19 @@ module Opds
   class DownloadsController < BaseController
     before_action :set_book
 
-    # Streams the raw file — the real EPUB/AZW3/PDF a Calibre-style OPDS
-    # client expects, not the Kindle delivery/prepared copy the device API
-    # and web #download default to (BookFile#delivery_path neutralizes the
-    # store identity and is regenerated on demand; it's meaningless outside
-    # the device pipeline). ?fmt= picks the format; omitted falls back to
-    # the book's preferred Kindle-ready file, same default as
-    # BooksController#download.
+    # Streams the real EPUB/AZW3/PDF a Calibre-style OPDS client expects,
+    # not the Kindle delivery/prepared copy the device API and web
+    # #download default to (BookFile#delivery_path neutralizes the store
+    # identity and is regenerated on demand; it's meaningless outside the
+    # device pipeline) — plus its OCR text layer when there is one
+    # (#read_source_path), same as the in-browser reader. ?fmt= picks the
+    # format; omitted falls back to the book's preferred Kindle-ready file,
+    # same default as BooksController#download.
     def file
       book_file = params[:fmt].present? ? @book.file_for(params[:fmt]) : @book.kindle_file
-      return head :not_found if book_file.nil? || !book_file.available? || !File.exist?(book_file.absolute_path)
+      return head :not_found if book_file.nil? || !book_file.available? || !File.exist?(book_file.read_source_path)
 
-      send_file book_file.absolute_path,
+      send_file book_file.read_source_path,
         filename: book_file.filename,
         type: Opds::MimeTypes.for(book_file.format),
         disposition: "attachment"

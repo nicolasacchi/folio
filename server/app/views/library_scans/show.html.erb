@@ -123,9 +123,9 @@
     <%= button_to "Convert all to Kindle (#{number_with_delimiter(@catalog[:to_convert])})", catalog_convert_all_path,
           class: "btn btn--primary", disabled: @catalog[:to_convert].zero?,
           form: { data: { turbo_frame: "_top", turbo_confirm: "Queue an AZW3 conversion for #{number_with_delimiter(@catalog[:to_convert])} books? They convert one at a time in the background (roughly a day per 10k books); converted copies land in Folio's own storage. You can cancel queued work anytime." } } %>
-    <%= button_to "Index full text (#{number_with_delimiter(@catalog[:fulltext_missing])})", catalog_index_fulltext_path,
-          class: "btn", disabled: @catalog[:fulltext_missing].zero?,
-          form: { data: { turbo_frame: "_top", turbo_confirm: "Queue Calibre text extraction for #{number_with_delimiter(@catalog[:fulltext_missing])} books so search can look inside them? Runs serially in the background; shares the conversion queue." } } %>
+    <%= button_to "Index pending full text (#{number_with_delimiter(@catalog[:fulltext_pending])})", catalog_index_fulltext_path,
+          class: "btn", disabled: @catalog[:fulltext_pending].zero?,
+          form: { data: { turbo_frame: "_top", turbo_confirm: "Queue Calibre text extraction for #{number_with_delimiter(@catalog[:fulltext_pending])} books already opted in to full-text search but not yet indexed? Runs serially in the background on the indexing queue." } } %>
     <%= button_to "Merge all duplicates (#{number_with_delimiter(@catalog[:duplicate_groups])} groups)", catalog_merge_duplicates_path,
           class: "btn", disabled: @catalog[:duplicate_groups].zero?,
           form: { data: { turbo_frame: "_top", turbo_confirm: "Merge every duplicate-editions group into its best edition (most formats, then cover, then oldest)? Conflicting formats stay put; source-folder files are never touched." } } %>

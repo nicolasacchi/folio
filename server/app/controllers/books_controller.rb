@@ -1,5 +1,5 @@
 class BooksController < ApplicationController
-  before_action :set_book, only: [ :show, :edit, :update, :destroy, :cover, :download, :reindex ]
+  before_action :set_book, only: [ :show, :edit, :update, :destroy, :cover, :download, :reindex, :unindex ]
 
   PER_PAGE = 48
   SORTS = %w[recent title author].freeze
@@ -140,19 +140,35 @@ class BooksController < ApplicationController
 
   def download
     file = params[:fmt].present? ? @book.file_for(params[:fmt]) : @book.kindle_file
-    if file.nil? || !File.exist?(file.absolute_path)
+    # ?raw=1 bypasses the OCR companion for whoever specifically wants the
+    # untouched scan (e.g. to re-run OCR elsewhere) — everyone else gets
+    # the text layer for free once one exists, same as the web reader.
+    path = params[:raw].present? ? file&.absolute_path : file&.read_source_path
+    if file.nil? || !File.exist?(path)
       return redirect_to @book, alert: "File not available."
     end
 
-    send_file file.absolute_path, filename: file.filename, type: "application/octet-stream"
+    send_file path, filename: file.filename, type: "application/octet-stream"
   end
 
-  # Full-text extraction is deliberately not part of folder scans (Calibre-
-  # converting thousands of books up front would take days); this queues it
-  # for one book on demand.
+  # Full-text extraction is opt-in per book (the search DB hit 20GB
+  # indexing every book unconditionally, and its writes hung the
+  # single-threaded indexing worker): this flips the flag on and queues
+  # the extraction for this one book on demand.
   def reindex
+    @book.update!(fulltext_enabled: true)
     IndexBookJob.perform_later(@book.id)
     redirect_to @book, notice: "Full-text indexing queued."
+  end
+
+  # Flips the flag off and re-runs the job so it rewrites the search row
+  # with the fulltext cleared (stored fulltext + has_fulltext), and (via
+  # IndexBookJob's had_fulltext check) triggers one embed run that clears
+  # this book's chunk vectors too.
+  def unindex
+    @book.update!(fulltext_enabled: false)
+    IndexBookJob.perform_later(@book.id)
+    redirect_to @book, notice: "Removing from search index…"
   end
 
   private

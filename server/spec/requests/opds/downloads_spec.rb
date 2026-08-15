@@ -45,6 +45,50 @@ RSpec.describe "OPDS downloads", type: :request do
 
       expect(response).to have_http_status(:not_found)
     end
+
+    context "with a fresh OCR companion on the requested file" do
+      let!(:pdf) do
+        create(:book_file, :on_disk, book: book, format: "pdf").tap do |file|
+          File.write(file.absolute_path, "raw scanned pdf bytes")
+          file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+        end
+      end
+
+      it "streams the OCR'd bytes instead of the raw scan" do
+        ocr_path = "ocr/#{pdf.id}.ocr.pdf"
+        FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+        File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+        pdf.update!(ocr_path: ocr_path, ocr_source_sha256: pdf.sha256)
+
+        get "/opds/entries/#{book.public_id}/file", params: { fmt: "pdf" }, headers: auth
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.b).to eq("ocr'd pdf bytes with a text layer")
+        expect(response.headers["Content-Type"]).to include("application/pdf")
+      end
+    end
+
+    context "with a stale OCR companion (ocr_source_sha256 no longer matches sha256) on the requested file" do
+      let!(:pdf) do
+        create(:book_file, :on_disk, book: book, format: "pdf").tap do |file|
+          File.write(file.absolute_path, "raw scanned pdf bytes")
+          file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+        end
+      end
+
+      it "streams the raw scan, not the stale companion" do
+        ocr_path = "ocr/#{pdf.id}.ocr.pdf"
+        FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+        File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+        pdf.update!(ocr_path: ocr_path, ocr_source_sha256: "no-longer-matches")
+
+        get "/opds/entries/#{book.public_id}/file", params: { fmt: "pdf" }, headers: auth
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.b).to eq("raw scanned pdf bytes")
+        expect(response.headers["Content-Type"]).to include("application/pdf")
+      end
+    end
   end
 
   describe "GET /opds/entries/:public_id/cover" do

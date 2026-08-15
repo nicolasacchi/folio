@@ -44,4 +44,34 @@ RSpec.describe ConvertBookJob do
       expect(Calibre).to have_received(:convert).with(pdf_source.ocr_absolute_path, anything, options: anything)
     end
   end
+
+  describe "fulltext reindex follow-up" do
+    before do
+      allow(Calibre).to receive(:convert)
+      allow(Library::Ingest).to receive(:call)
+        .and_return(Library::Ingest::Result.new(book, source, false, false))
+    end
+
+    it "queues IndexBookJob on its own queue for an opted-in book still missing fulltext" do
+      book.update!(fulltext_enabled: true)
+
+      expect { described_class.perform_now(conversion.id) }
+        .to have_enqueued_job(IndexBookJob).with(book.id).on_queue("indexing")
+    end
+
+    it "does not queue IndexBookJob for an opted-in book that already has fulltext" do
+      book.update!(fulltext_enabled: true)
+      BookSearch.index_book!(book, fulltext: "already extracted")
+
+      expect { described_class.perform_now(conversion.id) }.not_to have_enqueued_job(IndexBookJob)
+    end
+
+    # The catalog defaults fulltext_enabled: false — without this gate,
+    # every conversion of every opted-out book would fire a pointless FTS
+    # write (and, before this fix, onto the :conversion queue, blocking
+    # reader auto-conversions and Kindle prep behind a minutes-long extraction).
+    it "does not queue IndexBookJob for a book that is not opted in to full-text search" do
+      expect { described_class.perform_now(conversion.id) }.not_to have_enqueued_job(IndexBookJob)
+    end
+  end
 end

@@ -105,6 +105,84 @@ RSpec.describe "Book detail page", type: :request do
     end
   end
 
+  describe "Files section download links" do
+    let!(:book) { create(:book) }
+    let!(:pdf_file) { create(:book_file, book: book, format: "pdf") }
+
+    it "offers only the plain download link with no fresh OCR companion" do
+      get book_path(book)
+
+      expect(response.body).to include(download_book_path(book, fmt: "pdf"))
+      expect(response.body).not_to include(CGI.escapeHTML(download_book_path(book, fmt: "pdf", raw: 1)))
+    end
+
+    it "adds a secondary original-file link once BookFile#ocr_fresh? is true" do
+      ocr_path = "ocr/#{pdf_file.id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+      File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+      pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+
+      get book_path(book)
+
+      expect(response.body).to include(download_book_path(book, fmt: "pdf"))
+      expect(response.body).to include(CGI.escapeHTML(download_book_path(book, fmt: "pdf", raw: 1)))
+      expect(response.body).to include(">original<")
+    end
+  end
+
+  describe "full-text index button" do
+    let!(:book) { create(:book) }
+
+    it "shows the opt-in button when fulltext is not enabled" do
+      get book_path(book)
+
+      expect(response.body).to include("Index full text")
+      expect(response.body).to include(reindex_book_path(book))
+      expect(response.body).not_to include("in search index")
+      expect(response.body).not_to include("indexing pending")
+    end
+
+    it "shows an in-index stamp and a remove button once fulltext is enabled and indexed" do
+      book.update!(fulltext_enabled: true, has_fulltext: true)
+
+      get book_path(book)
+
+      expect(response.body).to include("in search index")
+      expect(response.body).to include("Remove from index")
+      expect(response.body).to include(unindex_book_path(book))
+      expect(response.body).not_to include("Index full text")
+    end
+
+    it "shows a pending stamp with re-run and remove buttons once enabled but not yet indexed" do
+      book.update!(fulltext_enabled: true, has_fulltext: false)
+
+      get book_path(book)
+
+      expect(response.body).to include("indexing pending")
+      expect(response.body).to include("Re-run")
+      expect(response.body).to include("Remove from index")
+      expect(response.body).to include(reindex_book_path(book))
+      expect(response.body).to include(unindex_book_path(book))
+    end
+
+    # After "Remove from index" flips fulltext_enabled off, has_fulltext
+    # stays true until the queued IndexBookJob clears the row — without this
+    # state the opt-in button would render, implying the book is out of the
+    # index while its text is actually still stored and searchable.
+    it "shows a removal-pending stamp with a re-opt-in button once disabled but still indexed" do
+      book.update!(fulltext_enabled: false, has_fulltext: true)
+
+      get book_path(book)
+
+      expect(response.body).to include("removal pending")
+      expect(response.body).to include("Keep in index")
+      expect(response.body).to include(reindex_book_path(book))
+      expect(response.body).not_to include("Index full text")
+      expect(response.body).not_to include("in search index")
+      expect(response.body).not_to include("indexing pending")
+    end
+  end
+
   describe "annotation location labels" do
     it "explains the Kindle-location abbreviation" do
       book = create(:book)

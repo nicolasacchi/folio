@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_14_144055) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_15_000000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -71,6 +71,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_14_144055) do
     t.text "description"
     t.datetime "enriched_at"
     t.string "enrichment_source"
+    t.boolean "fulltext_enabled", default: false, null: false
     t.boolean "has_fulltext", default: false, null: false
     t.string "language"
     t.string "public_id", null: false
@@ -83,6 +84,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_14_144055) do
     t.index ["author"], name: "index_books_on_author"
     t.index ["category"], name: "index_books_on_category"
     t.index ["created_at"], name: "index_books_on_created_at"
+    t.index ["fulltext_enabled"], name: "index_books_on_fulltext_enabled"
     t.index ["has_fulltext"], name: "index_books_on_has_fulltext"
     t.index ["public_id"], name: "index_books_on_public_id", unique: true
     t.index ["series"], name: "index_books_on_series"
