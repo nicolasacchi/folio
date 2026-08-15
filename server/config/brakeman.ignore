@@ -7,52 +7,52 @@
       "check_name": "SendFile",
       "message": "Model attribute used in file name",
       "file": "app/controllers/books_controller.rb",
-      "line": 132,
+      "line": 138,
       "note": "Path is the book's own stored cover_path from the DB record; params only select which book. No user-controlled path segment.",
       "confidence": "Medium"
     },
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "fb814ba1614b531373bb664c0d6abb31aa2e715250ea54c96d18c9d3a790963e",
+      "fingerprint": "920bb0d4a853baa7f8d7214f47b8860af6aeba286bc6e67e45284931590fd382",
       "check_name": "SendFile",
       "message": "Model attribute used in file name",
       "file": "app/controllers/books_controller.rb",
-      "line": 141,
-      "note": "Path is the book_file's own absolute_path from the DB; params[:fmt] only selects a format row via where(format:). No traversal.",
+      "line": 151,
+      "note": "Refreshed fingerprint for the same finding as the old fb814ba1... entry (line shifted by the OCR feature). Path is book_file#absolute_path/#read_source_path; the latter (BookFile#read_source_path in app/models/book_file.rb) only ever returns the OCR companion (ocr_absolute_path) or the original absolute_path, both built from DB columns the app itself writes (path/ocr_path), never from params. params[:fmt] only selects a format row via file_for. No traversal.",
       "confidence": "Weak"
     },
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "f176c09140e71041ffb7af1ee1c0cdde12c984418712cbe641012eaa88551dd4",
+      "fingerprint": "bf1940b4bb6a32b8399e12e8c3c5ecb403ee5543af0d615b3f79ddb4032cc6c7",
       "check_name": "SendFile",
       "message": "Model attribute used in file name",
       "file": "app/controllers/reader_controller.rb",
-      "line": 108,
-      "note": "Path is the book's own readable_file.absolute_path from the DB. Session-authenticated. No user-controlled path segment.",
+      "line": 146,
+      "note": "Refreshed fingerprint for the same finding as the old 92a171ef... entry (line shifted by the raw/OCR-variant etag fix). Path is the book's own readable_file.absolute_path or .read_source_path from the DB, chosen by the ?raw=1 boolean flag (never a path itself) -- both app-derived DB columns (path/ocr_path), never params. Session-authenticated. No user-controlled path segment.",
       "confidence": "Medium"
     },
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "6e49bf296167b0d8f67ed7e3a005b290a363cfd6ef5918f16a349f5aa8c164f7",
+      "fingerprint": "f837d32087a81ef40401f72e86022a842aca44386ad231757752dfe0e2bdc021",
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/api/v1/book_files_controller.rb",
-      "line": 12,
-      "note": "Path is the delivered book_file's own delivery_path; the book is resolved via find_delivered_book! (scoped to this device's manifest). params[:fmt] selects a format row, not a path.",
+      "line": 17,
+      "note": "Refreshed fingerprint for the same finding as the old 6e49bf29... entry (line shifted by the per-device raw/original variant feature). Path is the delivered book_file's own delivery_path(raw:); raw comes from this device's own Delivery#raw boolean column (see Delivery, never a path segment), and the book is resolved via find_delivered_book! (scoped to this device's manifest). params[:fmt] selects a format row, not a path.",
       "confidence": "Weak"
     },
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "4e066a37ba756eb4f81ee8fc63d682548d29fb59e369243d39395f3599f240b2",
+      "fingerprint": "b1434b4c2034f490f9759b065052cc066e6413c148656e22dd6024dcee7cf8c8",
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/opds/downloads_controller.rb",
-      "line": 21,
-      "note": "OPDS acquisition: path is the book_file's own absolute_path from the DB; the book is found by public_id within available_books, params[:fmt] selects a format row. Same safe pattern as books#download. HTTP Basic auth gates it.",
+      "line": 22,
+      "note": "Refreshed fingerprint for the OPDS #file action (now reads book_file#read_source_path instead of #absolute_path). Path is still entirely app-derived -- BookFile#read_source_path returns either the OCR companion or the original path, both DB columns the app writes itself; book found by public_id (SecureRandom.hex(10), server-generated) within available_books; params[:fmt] selects a format row, not a path.",
       "confidence": "Weak"
     },
     {
@@ -62,7 +62,7 @@
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/opds/downloads_controller.rb",
-      "line": 33,
+      "line": 34,
       "note": "OPDS cover: path is the book's own cover_path from the DB record found by public_id within available_books. No user-controlled path segment. HTTP Basic auth gates it.",
       "confidence": "Weak"
     },
@@ -73,7 +73,7 @@
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/opds/downloads_controller.rb",
-      "line": 40,
+      "line": 41,
       "note": "OPDS thumbnail: path is produced by Library::Thumbnails.ensure for the book found by public_id within available_books. Server-generated path, no user input. HTTP Basic auth gates it.",
       "confidence": "Weak"
     },
@@ -87,7 +87,29 @@
       "line": 89,
       "note": "Loads a Marshal cache this same service wrote (anchor.rb writes it with Marshal.dump), keyed by book_file.sha256 under the app's own cache dir. The data is app-generated, never remote input; exploiting it requires arbitrary write to the cache dir, which is a prior compromise.",
       "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "c378de3ab204c5287d08c51968fbc9e5af2ea0129362181b7057b357eb989447",
+      "check_name": "FileAccess",
+      "message": "Model attribute used in file name",
+      "file": "app/jobs/ocr_book_job.rb",
+      "line": 26,
+      "note": "New with the per-book OCR feature. File.rename(staging, dest): both paths are Library::Ocr.root (a fixed app directory, see Library::Ocr.root) joined with the book's own public_id (Book#assign_public_id uses SecureRandom.hex(10) -- server-generated at creation, never user input) as a filename component. conversion_id is an internal job argument (enqueued by the app, not derived from a request param) used only to look up the Conversion/Book rows.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "b3bd1869fe7bdfd5b8535ee8b8f208e01da2643e40511e0339ddd8fe6f412335",
+      "check_name": "FileAccess",
+      "message": "Model attribute used in file name",
+      "file": "app/jobs/ocr_book_job.rb",
+      "line": 28,
+      "note": "New with the per-book OCR feature. FileUtils.rm_f cleans up the same staging path constructed and reasoned about in the File.rename finding at line 26 (Library::Ocr.root + book.public_id, both app-controlled/server-generated).",
+      "confidence": "Weak"
     }
   ],
-  "brakeman_version": "8.0.5"
+  "brakeman_version": "8.0.6"
 }
