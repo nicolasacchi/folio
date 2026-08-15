@@ -94,9 +94,40 @@
         <%= link_to edit_book_path(@book), class: "btn btn--quiet" do %>
           <%= render "shared/icon", name: "pencil" %>Edit
         <% end %>
-        <%= button_to reindex_book_path(@book), class: "btn btn--quiet",
-              title: "Extract the book's text with Calibre so search can look inside it" do %>
-          <%= render "shared/icon", name: "text-search" %>Index full text
+        <%# Full-text search is opt-in per book (see IndexBookJob) — the
+            four states below cover every fulltext_enabled x has_fulltext
+            combination. %>
+        <% if !@book.fulltext_enabled? && @book.has_fulltext? %>
+          <%# "Remove from index" flips fulltext_enabled off immediately, but
+              has_fulltext stays true until the queued IndexBookJob clears
+              the row — without this state the book would show the opt-in
+              button while its text is actually still stored and searchable. %>
+          <span class="stamp stamp--pending">removal pending</span>
+          <%= button_to reindex_book_path(@book), class: "btn btn--quiet",
+                title: "Cancel the pending removal and keep this book's text in the search index" do %>
+            <%= render "shared/icon", name: "text-search" %>Keep in index
+          <% end %>
+        <% elsif !@book.fulltext_enabled? %>
+          <%= button_to reindex_book_path(@book), class: "btn btn--quiet",
+                title: "Extract the book's text with Calibre so search can look inside it" do %>
+            <%= render "shared/icon", name: "text-search" %>Index full text
+          <% end %>
+        <% elsif @book.has_fulltext? %>
+          <span class="stamp stamp--ready">in search index</span>
+          <%= button_to unindex_book_path(@book), class: "btn btn--quiet",
+                title: "Remove the extracted text from the search index" do %>
+            <%= render "shared/icon", name: "x" %>Remove from index
+          <% end %>
+        <% else %>
+          <span class="stamp stamp--pending">indexing pending</span>
+          <%= button_to reindex_book_path(@book), class: "btn btn--quiet",
+                title: "Retry Calibre text extraction" do %>
+            <%= render "shared/icon", name: "text-search" %>Re-run
+          <% end %>
+          <%= button_to unindex_book_path(@book), class: "btn btn--quiet",
+                title: "Opt this book back out of the search index" do %>
+            <%= render "shared/icon", name: "x" %>Remove from index
+          <% end %>
         <% end %>
         <%# Only offered when the candidate pdf is actually what the browser
             reader would open: on a mixed-format book (e.g. epub + pdf),
@@ -214,6 +245,12 @@
       <% if file.available? %>
         <%= link_to download_book_path(@book, fmt: file.format), class: "btn btn--quiet", data: { turbo: false } do %>
           <%= render "shared/icon", name: "download" %>Download
+        <% end %>
+        <%# The main link above now serves the OCR'd bytes for this row — offer
+            the untouched scan too, for whoever specifically wants it. %>
+        <% if file.ocr_fresh? %>
+          <%= link_to "original", download_book_path(@book, fmt: file.format, raw: 1),
+                class: "small muted", data: { turbo: false }, title: "Download the untouched scan, without the OCR text layer" %>
         <% end %>
       <% end %>
     </div>

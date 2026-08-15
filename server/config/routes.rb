@@ -8,7 +8,8 @@ Rails.application.routes.draw do
     member do
       get :cover
       get :download # ?fmt=azw3, defaults to the Kindle-ready file
-      post :reindex # queue full-text extraction + reindex
+      post :reindex # opt in + queue full-text extraction
+      post :unindex # opt out + queue removal of stored fulltext
     end
     resources :conversions, only: [ :create ]
   end

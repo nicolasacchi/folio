@@ -11,7 +11,9 @@ class LibraryScansController < ApplicationController
       {
         books: Book.count,
         to_convert: Book.count - deliverable,
-        fulltext_missing: Book.where(has_fulltext: false).count,
+        # Opted-in but not yet indexed — Book.where(has_fulltext: false)
+        # alone would read ~29k forever now that fulltext is opt-in.
+        fulltext_pending: Book.where(fulltext_enabled: true, has_fulltext: false).count,
         duplicate_groups: Library::DuplicateGroups.count,
         to_enrich: Book.where(description: [ nil, "" ]).where(enriched_at: nil).count,
         embedded: Library::Embeddings.available? ? Library::Embeddings.count : nil,

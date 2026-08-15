@@ -14,7 +14,7 @@ RSpec.describe "Library scan progress", type: :request do
     @previous_cache = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new
     Rails.cache.write("catalog_counts", {
-      books: 0, to_convert: 0, fulltext_missing: 0, duplicate_groups: 0,
+      books: 0, to_convert: 0, fulltext_pending: 0, duplicate_groups: 0,
       to_enrich: 0, embedded: nil, queued: 0, failed_conversions: 0
     })
     # The view's "Last scan" section only renders once SCAN_ROOTS is
@@ -70,14 +70,14 @@ RSpec.describe "Library scan progress", type: :request do
       RSpec::Mocks.configuration.verify_partial_doubles = true
     end
 
-    it "counts fulltext_missing off the has_fulltext flag rather than scanning the FTS index" do
-      create(:book, has_fulltext: true)
-      create(:book, has_fulltext: false)
-      create(:book, has_fulltext: false)
+    it "counts fulltext_pending off opted-in books missing has_fulltext, not the whole catalog" do
+      create(:book, fulltext_enabled: true, has_fulltext: true)
+      create(:book, fulltext_enabled: true, has_fulltext: false)
+      create(:book, fulltext_enabled: false, has_fulltext: false)
 
       get library_scan_path
 
-      expect(response.body).to include("Index full text (2)")
+      expect(response.body).to include("Index pending full text (1)")
     end
   end
 
@@ -95,7 +95,7 @@ RSpec.describe "Library scan progress", type: :request do
 
     it "shows a real fraction for embed_all against the catalog's book count" do
       Rails.cache.write("catalog_counts", {
-        books: 500, to_convert: 0, fulltext_missing: 0, duplicate_groups: 0,
+        books: 500, to_convert: 0, fulltext_pending: 0, duplicate_groups: 0,
         to_enrich: 0, embedded: 120, queued: 0, failed_conversions: 0
       })
       Rails.cache.write(CatalogOperationJob::PROGRESS_CACHE_KEY,

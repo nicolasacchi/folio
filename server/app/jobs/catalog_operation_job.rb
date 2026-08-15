@@ -50,17 +50,19 @@ class CatalogOperationJob < ApplicationJob
     write_progress(operation: "convert_all", state: "done", queued: queued, finished_at: Time.current.to_i)
   end
 
-  # Queue Calibre text extraction for every book search can't see inside
-  # yet. Leave these on IndexBookJob's own :indexing queue (single process,
-  # so they still chew through serially instead of saturating the box).
-  # Overriding the queue here once sent 8,498 jobs to :conversion; when that
-  # worker later failed to register they sat unclaimed for eight days while
-  # a third of the catalog stayed unsearchable.
+  # Queue Calibre text extraction for every opted-in book search can't see
+  # inside yet (fulltext is opt-in per book — see #reindex/#unindex on
+  # BooksController). Leave these on IndexBookJob's own :indexing queue
+  # (single process, so they still chew through serially instead of
+  # saturating the box). Overriding the queue here once sent 8,498 jobs to
+  # :conversion; when that worker later failed to register they sat
+  # unclaimed for eight days while a third of the catalog stayed
+  # unsearchable.
   def index_fulltext
     have = BookSearch.book_ids_with_fulltext
     queued = 0
     write_progress(operation: "index_fulltext", state: "running", queued: 0)
-    Book.where.not(id: have).find_each do |book|
+    Book.where(fulltext_enabled: true).where.not(id: have).find_each do |book|
       IndexBookJob.perform_later(book.id)
       queued += 1
       write_progress(operation: "index_fulltext", state: "running", queued: queued) if (queued % 500).zero?

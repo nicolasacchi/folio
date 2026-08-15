@@ -28,10 +28,28 @@ RSpec.describe CatalogOperationJob do
   # IndexBookJob's own queue. When that worker later failed to register,
   # 8,498 jobs sat unclaimed for eight days.
   it "queues fulltext extraction on IndexBookJob's own queue" do
-    create(:book)
+    create(:book, fulltext_enabled: true)
 
     expect { described_class.perform_now("index_fulltext") }
       .to have_enqueued_job(IndexBookJob).on_queue("indexing")
+  end
+
+  # Fulltext is opt-in per book — the catalog-wide button means "extract
+  # for every opted-in book still missing it", not the whole catalog.
+  it "does not fan out to books that are not opted in to full-text indexing" do
+    create(:book, fulltext_enabled: false)
+
+    expect { described_class.perform_now("index_fulltext") }
+      .not_to have_enqueued_job(IndexBookJob)
+  end
+
+  it "skips opted-in books that already have fulltext" do
+    already_indexed = create(:book, fulltext_enabled: true, has_fulltext: true)
+    BookSearch.index_book!(already_indexed, fulltext: "already extracted")
+    pending = create(:book, fulltext_enabled: true, has_fulltext: false)
+
+    expect { described_class.perform_now("index_fulltext") }
+      .to have_enqueued_job(IndexBookJob).with(pending.id).exactly(:once)
   end
 
   describe '"embed_all"' do

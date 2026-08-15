@@ -37,10 +37,18 @@ class ConvertBookJob < ApplicationJob
     # A queued-for-device book needs its delivery copy rebuilt from the
     # fresh file (cover + personal-document identity).
     PrepareKindleFileJob.perform_later(book.id) if book.deliveries.active.exists?
-    # Keep Calibre-heavy work serialized on this queue: at batch-convert
-    # scale, fulltext extraction on the 3-thread default queue would run
-    # three ebook-converts in parallel on top of conversions.
-    IndexBookJob.set(queue: :conversion).perform_later(book.id) unless had_fulltext
+    # had_fulltext (captured above, before the conversion ran) is what
+    # tells "still missing" apart from "already indexed" — only queue
+    # extraction for a book that's actually opted in and doesn't have it
+    # yet, or every conversion of every opted-out book (the common case,
+    # since fulltext defaults off) would fire a pointless FTS write. Left
+    # on IndexBookJob's own :indexing queue rather than forced onto
+    # :conversion: pinning another job's queue here is the anti-pattern
+    # that once stranded 8,498 jobs for eight days when that worker failed
+    # to register (see CatalogOperationJob#index_fulltext) — and a
+    # minutes-long extraction on this queue would block reader
+    # auto-conversions and Kindle prep behind it.
+    IndexBookJob.perform_later(book.id) if book.fulltext_enabled? && !had_fulltext
   rescue Calibre::Error, Library::Ingest::UnsupportedFormat => error
     conversion.mark_failed!(error.message)
   rescue StandardError => error
