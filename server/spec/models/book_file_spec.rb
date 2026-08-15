@@ -103,6 +103,20 @@ RSpec.describe BookFile, type: :model do
       expect(pdf.delivery_size).to eq(11)
     end
 
+    it "raw: true bypasses the OCR companion, falling back to the raw file" do
+      relative = "ocr/#{book.public_id}.ocr.pdf"
+      companion = Library.base_root.join(relative)
+      FileUtils.mkdir_p(companion.dirname)
+      File.write(companion, "ocr'd bytes")
+      pdf.update!(ocr_path: relative, ocr_sha256: "ocr-sha", ocr_size: 11, ocr_source_sha256: "src-sha")
+
+      expect(pdf.delivery_path(raw: true)).to eq(pdf.absolute_path)
+      expect(pdf.delivery_sha256(raw: true)).to eq(pdf.sha256)
+      expect(pdf.delivery_size(raw: true)).to eq(pdf.size)
+      # raw: false (the default) is unaffected.
+      expect(pdf.delivery_path).to eq(pdf.ocr_absolute_path)
+    end
+
     it "still prefers the prepared copy over a fresh OCR companion" do
       prepared_relative = "prepared/#{book.public_id}.pdf"
       prepared = Library.base_root.join(prepared_relative)

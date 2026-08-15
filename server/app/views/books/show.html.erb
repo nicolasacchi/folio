@@ -52,6 +52,13 @@
           <%= link_to read_book_path(@book), class: "btn btn--primary" do %>
             <%= render "shared/icon", name: "book-open" %>Read in browser
           <% end %>
+          <%# The reader serves the OCR text layer by default when there is
+              one (see BookFile#read_source_path) — offer the untouched scan
+              too, for whoever specifically wants it. %>
+          <% if @book.readable_file&.ocr_fresh? %>
+            <%= link_to "original", read_book_path(@book, raw: 1), class: "small muted",
+                  title: "Open the scanned original, without the OCR text layer" %>
+          <% end %>
         <% end %>
         <% if (kindle_file = @book.kindle_file) %>
           <%= link_to download_book_path(@book, fmt: kindle_file.format), class: "btn", data: { turbo: false } do %>
@@ -61,6 +68,18 @@
       </div>
 
       <% if @devices.any? %>
+        <%# The device gets the OCR text layer by default when the kindle_file
+            has one (see BookFile#delivery_path) — offer a per-device "send
+            the untouched scan instead" affordance next to it, and its
+            mirror once that switch has been made ("text layer", raw=0, to
+            switch back). Only where a send is still pending (nothing on the
+            device would need undoing) or already delivered (switching
+            either way needs no extra plumbing: the manifest sha changes and
+            kindled re-fetches, see Delivery#raw); skipped entirely while an
+            eviction is queued (that state's own "Keep" action already
+            un-does the pending removal — a second, unrelated action there
+            would be confusing). %>
+        <% ocr_original = @book.kindle_file&.ocr_fresh? %>
         <div class="action-row">
           <% @devices.each do |device| %>
             <% delivery = @deliveries[device.id] %>
@@ -68,6 +87,10 @@
             <% if delivery.nil? || delivery.removed? %>
               <%= button_to deliveries_path(book_id: @book.id, device_id: device.id), class: "btn" do %>
                 <%= render "shared/icon", name: "send" %>Send to <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %>
+              <% end %>
+              <% if ocr_original %>
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 1), class: "small muted link-quiet",
+                      title: "Send the untouched scan to #{device.name}, without the OCR text layer" do %>original<% end %>
               <% end %>
             <% elsif delivery.evict_requested? %>
               <%= button_to eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet",
@@ -80,10 +103,24 @@
                     form: { data: { turbo_confirm: "Delete “#{@book.title}” from #{device.name} on next sync?" } } do %>
                 <%= render "shared/icon", name: "check" %>On <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %><%= render "shared/icon", name: "x" %>
               <% end %>
+              <% if ocr_original && !delivery.raw %>
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 1), class: "small muted link-quiet",
+                      title: "Re-send #{device.name}'s copy as the untouched scan, without the OCR text layer" do %>original<% end %>
+              <% elsif ocr_original && delivery.raw %>
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 0), class: "small muted link-quiet",
+                      title: "Re-send #{device.name}'s copy with the OCR text layer" do %>text layer<% end %>
+              <% end %>
             <% else %>
               <%= button_to delivery_path(delivery), method: :delete, class: "btn btn--quiet btn--evict",
                     title: "Remove from queue" do %>
                 <%= render "shared/icon", name: "clock" %>Queued <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %><%= render "shared/icon", name: "x" %>
+              <% end %>
+              <% if ocr_original && !delivery.raw %>
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 1), class: "small muted link-quiet",
+                      title: "Switch #{device.name}'s queued send to the untouched scan, without the OCR text layer" do %>original<% end %>
+              <% elsif ocr_original && delivery.raw %>
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 0), class: "small muted link-quiet",
+                      title: "Switch #{device.name}'s queued send back to the OCR text layer" do %>text layer<% end %>
               <% end %>
             <% end %>
           <% end %>

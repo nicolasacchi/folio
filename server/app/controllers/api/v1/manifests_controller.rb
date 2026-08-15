@@ -11,6 +11,7 @@ class Api::V1::ManifestsController < Api::V1::BaseController
     deliveries = current_device.deliveries.active.where(evict_requested_at: nil)
       .includes(book: [ :book_files, :reading_states ])
     books = deliveries.map(&:book).sort_by { |book| book.title.to_s.downcase }
+    deliveries_by_book = deliveries.index_by(&:book_id)
 
     items = books.filter_map do |book|
       file = book.kindle_file
@@ -20,6 +21,11 @@ class Api::V1::ManifestsController < Api::V1::BaseController
       # rebuild in the background; the sha change re-delivers next poll.
       PrepareKindleFileJob.perform_later(book.id) if file.needs_preparation?
 
+      # This device's own OCR/original choice (Delivery#raw) — passed into
+      # delivery_size/delivery_sha256 so a raw switch alone changes the sha
+      # and re-triggers a re-fetch next poll.
+      raw = deliveries_by_book.fetch(book.id).raw
+
       {
         id: book.public_id,
         title: book.title,
@@ -27,8 +33,8 @@ class Api::V1::ManifestsController < Api::V1::BaseController
         series: book.series,
         format: file.delivery_format,
         filename: file.delivery_filename,
-        size: file.delivery_size,
-        sha256: file.delivery_sha256,
+        size: file.delivery_size(raw: raw),
+        sha256: file.delivery_sha256(raw: raw),
         url: api_v1_book_file_path(public_id: book.public_id, fmt: file.format),
         thumbnail: thumbnail_summary(book, file),
         reading_state: reading_state_summary(book)

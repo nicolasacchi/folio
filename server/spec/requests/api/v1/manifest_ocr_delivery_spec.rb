@@ -50,6 +50,26 @@ RSpec.describe "API v1 device delivery of an OCR'd scanned pdf", type: :request 
     expect(response.headers["Content-Disposition"]).to include(pdf.delivery_filename)
   end
 
+  context "when this device's delivery requests the raw variant (Delivery#raw)" do
+    before { delivery.update!(raw: true) }
+
+    it "reports the raw file's sha256/size in the manifest and streams its bytes, even though the OCR companion is fresh" do
+      get "/api/v1/manifest", headers: headers
+
+      item = response.parsed_body.fetch("items").first
+      expect(item).to include(
+        "sha256" => pdf.sha256,
+        "size" => pdf.size
+      )
+
+      get "/api/v1/books/#{book.public_id}/file", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.b).to eq("raw scanned pdf bytes".b)
+      expect(response.headers["Content-Disposition"]).to include(pdf.delivery_filename)
+    end
+  end
+
   context "when the OCR companion goes stale (ocr_source_sha256 no longer matches sha256)" do
     before { pdf.update!(ocr_source_sha256: "no-longer-matches") }
 

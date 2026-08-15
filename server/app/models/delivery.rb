@@ -7,6 +7,13 @@
 # Removal mirrors delivery: `evict_requested_at` puts the book in the
 # manifest's `removals` list, the daemon deletes the file and acks, and
 # `removed_at` closes the loop (the row stays as on-device history).
+#
+# `raw` is this device's per-delivery variant choice (see
+# BookFile#delivery_path) — true bypasses the OCR companion for a book
+# whose scan has one, so this one device gets the untouched original
+# instead. Changing it needs no extra plumbing: the manifest recomputes
+# delivery_sha256 with it on every poll, so a sha change alone triggers a
+# re-fetch (see DeliveriesController#create).
 class Delivery < ApplicationRecord
   belongs_to :book
   belongs_to :device

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_15_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_15_000001) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -114,6 +114,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_000000) do
     t.integer "device_id", null: false
     t.string "evict_reason"
     t.datetime "evict_requested_at"
+    t.boolean "raw", default: false, null: false
     t.datetime "removed_at"
     t.datetime "updated_at", null: false
     t.index ["book_id", "device_id"], name: "index_deliveries_on_book_id_and_device_id", unique: true

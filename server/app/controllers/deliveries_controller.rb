@@ -9,6 +9,16 @@ class DeliveriesController < ApplicationController
     end
 
     delivery = Delivery.find_or_create_by!(book: book, device: device)
+    # ?raw=1 asks for the untouched scan instead of the OCR companion, ?raw=0
+    # explicitly asks back for it (see BookFile#delivery_path) — the param
+    # has to be genuinely absent (not just falsy) to leave an existing
+    # delivery's own choice alone, or a plain re-send click (no raw param
+    # at all) would quietly reset an already-raw delivery to false. A fresh
+    # delivery already defaults to raw: false via the column default.
+    if params[:raw].present?
+      requested_raw = ActiveModel::Type::Boolean.new.cast(params[:raw])
+      delivery.update!(raw: requested_raw) if delivery.raw != requested_raw
+    end
     # Re-sending a book that was previously removed (or queued for
     # removal) re-arms the existing row.
     requeued = delivery.removed? || delivery.evict_requested?

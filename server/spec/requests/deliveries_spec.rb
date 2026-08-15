@@ -59,6 +59,46 @@ RSpec.describe "Deliveries", type: :request do
         post "/deliveries", params: { book_id: book.id, device_id: device.id }
       }.not_to have_enqueued_job(EnsureKindleFormatJob)
     end
+
+    describe "?raw=1 (the untouched-original variant)" do
+      it "defaults a fresh delivery to raw: false" do
+        post "/deliveries", params: { book_id: book.id, device_id: device.id }
+
+        expect(Delivery.last.raw).to be(false)
+      end
+
+      it "persists raw: true on a fresh delivery" do
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+
+        expect(Delivery.last.raw).to be(true)
+      end
+
+      it "flips an existing delivery's raw on re-send, without creating a second row" do
+        delivery = create(:delivery, book: book, device: device, raw: false)
+
+        expect {
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+        }.not_to change(Delivery, :count)
+
+        expect(delivery.reload.raw).to be(true)
+      end
+
+      it "leaves an already-raw delivery's raw untouched on a plain re-send (no raw param at all)" do
+        delivery = create(:delivery, book: book, device: device, raw: true)
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id }
+
+        expect(delivery.reload.raw).to be(true)
+      end
+
+      it "flips an already-raw delivery back with an explicit raw=0" do
+        delivery = create(:delivery, book: book, device: device, raw: true)
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 0 }
+
+        expect(delivery.reload.raw).to be(false)
+      end
+    end
   end
 
   describe "DELETE /deliveries/:id" do

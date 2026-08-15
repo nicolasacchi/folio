@@ -130,6 +130,130 @@ RSpec.describe "Book detail page", type: :request do
     end
   end
 
+  describe "original (raw) variant links" do
+    let!(:book) { create(:book) }
+    let!(:pdf_file) { create(:book_file, book: book, format: "pdf") }
+
+    def make_ocr_fresh!
+      ocr_path = "ocr/#{pdf_file.id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+      File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+      pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+    end
+
+    describe "the reader's original link" do
+      it "is hidden with no fresh OCR companion" do
+        get book_path(book)
+
+        expect(response.body).not_to include(CGI.escapeHTML(read_book_path(book, raw: 1)))
+      end
+
+      it "appears once BookFile#ocr_fresh? is true" do
+        make_ocr_fresh!
+
+        get book_path(book)
+
+        expect(response.body).to include(CGI.escapeHTML(read_book_path(book, raw: 1)))
+      end
+    end
+
+    describe "the per-device Kindle send original link" do
+      let!(:device) { create(:device, name: "My Kindle") }
+
+      it "is hidden with no fresh OCR companion" do
+        get book_path(book)
+
+        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+      end
+
+      it "appears next to an unqueued device's Send pill once BookFile#ocr_fresh? is true" do
+        make_ocr_fresh!
+
+        get book_path(book)
+
+        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+      end
+
+      it "appears next to an already-delivered device's pill (switching post-delivery needs no extra plumbing)" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current)
+
+        get book_path(book)
+
+        expect(response.body).to include("On #{device.name}")
+        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+      end
+
+      it "appears next to a still-queued (not yet delivered) device's pill" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device)
+
+        get book_path(book)
+
+        expect(response.body).to include("Queued #{device.name}")
+        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+      end
+
+      it "is hidden once that device's delivery is already raw (nothing left to switch to)" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+
+        get book_path(book)
+
+        expect(response.body).to include("On #{device.name}")
+        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+      end
+
+      it "is hidden while an eviction is queued (the Keep action already covers that state)" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current).request_eviction!("test")
+
+        get book_path(book)
+
+        expect(response.body).to include("Keep on #{device.name}")
+        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+      end
+    end
+
+    describe "the per-device Kindle send 'text layer' switch-back link (mirrors the original link once a delivery is raw)" do
+      let!(:device) { create(:device, name: "My Kindle") }
+
+      it "appears next to an already-delivered device's raw pill" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+
+        get book_path(book)
+
+        expect(response.body).to include("On #{device.name}")
+        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 0)))
+        # ">text layer<" alone would also match the unrelated Files-section
+        # stamp (rendered by the same make_ocr_fresh! setup) — the title is
+        # what's actually unique to this switch-back button.
+        expect(response.body).to include("Re-send #{device.name}&#39;s copy with the OCR text layer")
+      end
+
+      it "appears next to a still-queued device's raw pill" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, raw: true)
+
+        get book_path(book)
+
+        expect(response.body).to include("Queued #{device.name}")
+        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 0)))
+        expect(response.body).to include("Switch #{device.name}&#39;s queued send back to the OCR text layer")
+      end
+
+      it "is absent (in favor of the 'original' link) once that delivery is not raw" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+
+        get book_path(book)
+
+        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 0)))
+      end
+    end
+  end
+
   describe "full-text index button" do
     let!(:book) { create(:book) }
 
