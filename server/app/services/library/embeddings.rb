@@ -90,10 +90,18 @@ module Library::Embeddings
     end
   end
 
+  # ONNX Runtime defaults intra/inter-op parallelism to one thread per CPU
+  # core, so a single "single-threaded" :indexing-queue worker (see
+  # config/queue.yml) was observed pegging 2-3 cores (230%+ CPU) on this
+  # host's shared 8-core box during a chunk-embedding backfill. Pin both to
+  # 1 so the queue's own concurrency model (1 process, 1 thread) is what
+  # actually bounds this job's CPU footprint.
+  EMBEDDER_SESSION_OPTIONS = { intra_op_num_threads: 1, inter_op_num_threads: 1 }.freeze
+
   def embedder
     @embedder ||= begin
       require "informers"
-      Informers.pipeline("embedding", MODEL)
+      Informers.pipeline("embedding", MODEL, session_options: EMBEDDER_SESSION_OPTIONS)
     end
   end
 
