@@ -38,7 +38,10 @@ gem "bootsnap", require: false
 gem "thruster", require: false
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
+# image_processing 2.x made ruby-vips a soft dependency — declare it
+# explicitly since Library::Thumbnails calls ImageProcessing::Vips directly.
 gem "image_processing", "~> 2.0"
+gem "ruby-vips"
 
 # No longer a default gem as of Ruby 3.4 — the vocab notebook's CSV export
 # (VocabEntries::Export) needs it explicitly bundled.
