@@ -105,6 +105,11 @@ class ReaderController < ApplicationController
       # Threaded into the file URL the reader shell fetches (see
       # reader/show.html.erb) so #file resolves the same variant.
       @raw = params[:raw].present?
+      # "none" | "ocr" | "raw" — mirrors BookFile#read_source_path/#ocr_fresh?
+      # so the badge the view renders always names what #file actually
+      # serves. No OCR companion at all means there's nothing to switch
+      # between, regardless of ?raw=.
+      @variant = @file.ocr_fresh? ? (@raw ? "raw" : "ocr") : "none"
     else
       ensure_epub_conversion
       @preparing_conversion = @book.conversions.active.where(target_format: "epub").order(:created_at).first

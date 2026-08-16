@@ -9,7 +9,11 @@ const makeExcerpt = (strs, { startIndex, startOffset, endIndex, endOffset }) => 
     const match = start === end
         ? start.slice(startOffset, endOffset)
         : start.slice(startOffset)
-            + strs.slice(start + 1, end).join('')
+            // Indices, not the string values themselves — `start`/`end` are
+            // strings, so `start + 1` was concatenation, not arithmetic,
+            // and `strs.slice()` silently coerced it to 0, dropping every
+            // text node strictly between the match's start and end.
+            + strs.slice(startIndex + 1, endIndex).join('')
             + end.slice(0, endOffset)
     const trimmedStart = normalizeWhitespace(start.slice(0, startOffset)).trimStart()
     const trimmedEnd = normalizeWhitespace(end.slice(endOffset)).trimEnd()

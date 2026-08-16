@@ -167,6 +167,13 @@
   white-space: nowrap;
 }
 
+/* OCR/raw variant indicator (reader/show.html.erb) — a plain .stamp, but
+   pinned to its own width (unlike .reader-title above) so it never
+   competes with the title for the shrink budget on narrow bars. */
+.reader-variant-badge {
+  flex: 0 0 auto;
+}
+
 /* ---------- Icon buttons ----------
    Shared by the top bar, panel-header close buttons, and the floating
    popovers' close buttons — one borderless box style everywhere. Sized for

@@ -34,6 +34,14 @@ RSpec.describe "In-browser reader", type: :request do
         expect(response.body).to include(CGI.escapeHTML(read_book_file_path(book, raw: 1)))
       end
 
+      it "declares variant 'none' and renders no variant badge without an OCR companion" do
+        sign_in(user)
+        get read_book_path(book)
+
+        expect(response.body).to include('data-reader-variant-value="none"')
+        expect(response.body).not_to include("reader-variant-badge")
+      end
+
       it "scopes a restrictive script-src Content-Security-Policy to the reader page only" do
         sign_in(user)
 
@@ -254,6 +262,43 @@ RSpec.describe "In-browser reader", type: :request do
       get read_book_file_path(book), headers: { "If-None-Match" => etag, "If-Modified-Since" => last_modified }
 
       expect(response).to have_http_status(:not_modified)
+    end
+  end
+
+  describe "GET /books/:id/read — OCR/raw variant badge" do
+    let!(:pdf_file) do
+      create(:book_file, book: book, format: "pdf").tap do |file|
+        FileUtils.mkdir_p(file.absolute_path.dirname)
+        File.write(file.absolute_path, "raw scanned pdf bytes")
+        file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+      end
+    end
+
+    let(:ocr_path) { "ocr/#{pdf_file.id}.ocr.pdf" }
+
+    before do
+      sign_in(user)
+      FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+      File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+      pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+    end
+
+    it "defaults to the ocr variant, with a 'text layer' badge linking to the raw scan" do
+      get read_book_path(book)
+
+      expect(response.body).to include('data-reader-variant-value="ocr"')
+      expect(response.body).to include(%(href="#{read_book_path(book, raw: 1)}"))
+      expect(response.body).to include(%(title="Switch to the original scan"))
+      expect(response.body).to include(">text layer<")
+    end
+
+    it "switches to the raw variant on ?raw=1, with an 'original scan' badge linking back to the ocr text layer" do
+      get read_book_path(book, raw: 1)
+
+      expect(response.body).to include('data-reader-variant-value="raw"')
+      expect(response.body).to include(%(href="#{read_book_path(book)}"))
+      expect(response.body).to include(%(title="Switch to the OCR text-layer version"))
+      expect(response.body).to include(">original scan<")
     end
   end
 

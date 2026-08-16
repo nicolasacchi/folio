@@ -198,7 +198,13 @@ export default class extends Controller {
     serverPreferences: Object,
     cfi: String,
     fraction: Number,
-    textLength: Number
+    textLength: Number,
+    // "ocr" | "raw" | "none" — which BookFile variant this session is
+    // reading (rendered by the server as data-reader-variant-value; see
+    // BookFile#ocr_fresh?). Defaults to "none" so a page that doesn't set
+    // the attribute (or an older cached page) behaves like any other
+    // format rather than being mistaken for the raw scan below.
+    variant: { type: String, default: "none" }
   }
 
   connect() {
@@ -657,7 +663,7 @@ export default class extends Controller {
         if (token !== this.searchToken) return // superseded by a newer search
 
         if (result === "done") {
-          this.searchStatusTarget.textContent = found ? "" : "No matches."
+          this.searchStatusTarget.textContent = found ? "" : this.emptySearchMessage()
           return
         }
         if (result.subitems) {
@@ -671,6 +677,18 @@ export default class extends Controller {
       console.error("[reader] search failed", error)
       if (token === this.searchToken) this.searchStatusTarget.textContent = "Search failed."
     }
+  }
+
+  // Raw-scan PDFs have no OCR text layer, so every page's search document
+  // is empty (see pdf.js's `createDocument`) and a plain "No matches."
+  // reads as a bug rather than an explanation. Only raw PDFs hit this —
+  // any other variant (or a page that never set the attribute) falls
+  // through to the ordinary message.
+  emptySearchMessage() {
+    if (this.variantValue === "raw") {
+      return "No matches — this is the original scan and has no text layer. Switch to the text-layer version (book page or reader badge) to search."
+    }
+    return "No matches."
   }
 
   appendSearchGroup({ label, subitems }) {
