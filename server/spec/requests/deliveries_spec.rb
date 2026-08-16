@@ -99,6 +99,90 @@ RSpec.describe "Deliveries", type: :request do
         expect(delivery.reload.raw).to be(false)
       end
     end
+
+    describe "flash message naming the OCR/raw variant" do
+      let!(:pdf_file) { create(:book_file, book: book, format: "pdf") }
+
+      def make_ocr_fresh!
+        ocr_path = "ocr/#{pdf_file.id}.ocr.pdf"
+        FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+        File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+        pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+      end
+
+      it "names the text-layer variant when a fresh send defaults to it" do
+        make_ocr_fresh!
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id }
+        follow_redirect!
+
+        expect(response.body).to include("Queued for #{device.name} (text layer).")
+      end
+
+      it "names the original-scan variant when a fresh send asks for it" do
+        make_ocr_fresh!
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+        follow_redirect!
+
+        expect(response.body).to include("Queued for #{device.name} (original scan).")
+      end
+
+      it "says so explicitly when flipping an existing delivery to the original scan" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+        follow_redirect!
+
+        expect(response.body).to include("Switched #{device.name} to the original scan — it will re-deliver.")
+      end
+
+      it "says so explicitly when flipping an existing delivery back to the text layer" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 0 }
+        follow_redirect!
+
+        expect(response.body).to include("Switched #{device.name} to the text layer — it will re-deliver.")
+      end
+
+      it "says 'Queued', not 'Switched', when re-sending a previously removed delivery with a different variant" do
+        make_ocr_fresh!
+        delivery = create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        delivery.mark_removed!
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+        follow_redirect!
+
+        expect(response.body).to include("Queued for #{device.name} (original scan).")
+        expect(response.body).not_to include("Switched")
+      end
+
+      it "keeps the plain 'Already queued' message when nothing about the variant changes" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id }
+        follow_redirect!
+
+        expect(response.body).to include("Already queued for #{device.name}.")
+        expect(response.body).not_to include("Switched")
+      end
+
+      it "keeps today's plain messages verbatim for a book with no OCR companion" do
+        plain_book = create(:book)
+        create(:book_file, book: plain_book, format: "azw3")
+
+        post "/deliveries", params: { book_id: plain_book.id, device_id: device.id }
+        follow_redirect!
+
+        expect(response.body).to include("Queued for #{device.name}.")
+        expect(response.body).not_to include("(text layer)")
+        expect(response.body).not_to include("(original scan)")
+      end
+    end
   end
 
   describe "DELETE /deliveries/:id" do

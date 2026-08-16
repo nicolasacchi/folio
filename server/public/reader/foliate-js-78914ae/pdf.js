@@ -206,6 +206,43 @@ const makeTOCItem = item => ({
     subitems: item.items.length ? item.items.map(makeTOCItem) : null,
 })
 
+// Builds a throwaway, single-page Document for search only (see
+// `createDocument` on `book.sections` below) — never rendered, never shown
+// to the reader. Structure mirrors txt.js's minimal `html > body > p`
+// shape: pdf.js's text content items already come out in reading order, so
+// a fresh paragraph per `hasEOL` line break, with a trailing space after
+// every item, is enough for search.js's text-walker to find matches and
+// build a readable excerpt. It does NOT need to structurally
+// match the page's real TextLayer (the canvas + TextLayer only exist once
+// a page is actually rendered on screen, see render() above) — the
+// fixed-layout renderer navigates by page index alone and never re-resolves
+// a search result's CFI against a DOM node (fixed-layout.js#goTo only
+// reads `resolved.index`), so this document only needs to exist long
+// enough to be searched.
+const makeSearchDocument = textContent => {
+    const doc = document.implementation.createDocument(
+        'http://www.w3.org/1999/xhtml', 'html')
+    const body = doc.createElement('body')
+    doc.documentElement.append(body)
+    let p = doc.createElement('p')
+    body.append(p)
+    for (const { str, hasEOL } of textContent.items) {
+        // The search haystack is `strs.join('')` over every text node in
+        // the walked document (see search.js's simpleSearch/segmenterSearch)
+        // — it does NOT insert anything between nodes on its own. A trailing
+        // space on every item (not just ones that stay on the same line)
+        // keeps a real word boundary at each `hasEOL` line wrap too;
+        // omitting it there would glue the last word of one line straight
+        // onto the first word of the next for ordinary wrapped prose.
+        if (str) p.append(doc.createTextNode(str + ' '))
+        if (hasEOL) {
+            p = doc.createElement('p')
+            body.append(p)
+        }
+    }
+    return doc
+}
+
 export const makePDF = async file => {
     const transport = new pdfjsLib.PDFDataRangeTransport(file.size, [])
     transport.requestDataRange = (begin, end) => {
@@ -261,6 +298,24 @@ export const makePDF = async file => {
             const url = await renderPage(await pdf.getPage(i + 1), probeState)
             cache.set(i, url)
             return url
+        },
+        // Lazy, per-page text extraction — only fetched when a search
+        // actually walks this section (see view.js's `#searchBook`
+        // generator), never eagerly for the whole book. `pdf.getPage` is
+        // cached by pdf.js itself, so this doesn't pay twice for a page
+        // that's already been rendered on screen.
+        createDocument: async () => {
+            try {
+                const page = await pdf.getPage(i + 1)
+                return makeSearchDocument(await page.getTextContent())
+            } catch (error) {
+                // Isolated per-page failure (e.g. a broken content stream on
+                // one page) — same trade-off as render()'s try/catch above:
+                // don't let one bad page abort search across the rest of
+                // the book.
+                console.error('[pdf.js] page text extraction failed', error)
+                return makeSearchDocument({ items: [] })
+            }
         },
         size: 1000,
     }))

@@ -4,6 +4,7 @@
   <% if @file %>
     <div id="reader-root" class="reader-root"
          data-controller="reader"
+         data-reader-variant-value="<%= @variant %>"
          data-reader-file-url-value="<%= read_book_file_path(@book, raw: @raw ? 1 : nil) %>"
          data-reader-filename-value="<%= @file.filename %>"
          data-reader-format-value="<%= @file.format %>"
@@ -48,6 +49,13 @@
           <% end %>
         </div>
         <span class="reader-title"><%= @book.title %></span>
+        <% if @variant == "ocr" %>
+          <%= link_to "text layer", read_book_path(@book, raw: 1), class: "stamp reader-variant-badge",
+                data: { turbo: false }, title: "Switch to the original scan" %>
+        <% elsif @variant == "raw" %>
+          <%= link_to "original scan", read_book_path(@book), class: "stamp reader-variant-badge",
+                data: { turbo: false }, title: "Switch to the OCR text-layer version" %>
+        <% end %>
         <div class="reader-bar-actions">
           <button type="button" class="reader-icon-btn" data-action="reader#openToc" aria-label="Table of contents" title="Contents">
             <%= render "reader/icon", name: "list" %>
