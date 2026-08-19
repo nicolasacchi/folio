@@ -6,7 +6,7 @@ RSpec.describe TextCompanionJob do
   let(:conversion) { create(:conversion, :text, book: book, book_file: source) }
 
   def stub_extract_text(text: "x" * 300)
-    allow(Calibre).to receive(:extract_text).and_return(text)
+    allow(Library::TextCompanion).to receive(:extract_text).and_return(text)
   end
 
   def stub_convert_success
@@ -22,7 +22,7 @@ RSpec.describe TextCompanionJob do
 
   it "does nothing when the conversion is no longer pending" do
     conversion.update!(status: "completed")
-    expect(Calibre).not_to receive(:extract_text)
+    expect(Library::TextCompanion).not_to receive(:extract_text)
 
     expect { described_class.perform_now(conversion.id) }.not_to raise_error
   end
@@ -59,7 +59,7 @@ RSpec.describe TextCompanionJob do
       expect(source).to be_text_kindle_usable
     end
 
-    it "extracts from the OCR companion (not the raw scan) when one is fresh" do
+    it "passes the source book_file to Library::TextCompanion.extract_text and captures its OCR-aware sha when fresh" do
       ocr_path = "ocr/#{book.public_id}.ocr.pdf"
       FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
       File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes")
@@ -67,7 +67,7 @@ RSpec.describe TextCompanionJob do
 
       described_class.perform_now(conversion.id)
 
-      expect(Calibre).to have_received(:extract_text).with(source.ocr_absolute_path)
+      expect(Library::TextCompanion).to have_received(:extract_text).with(source)
       expect(source.reload.text_source_sha256).to eq("ocr-sha")
     end
 
@@ -203,7 +203,7 @@ RSpec.describe TextCompanionJob do
   end
 
   it "marks the conversion failed and re-raises an unexpected error so the job can be retried" do
-    allow(Calibre).to receive(:extract_text).and_raise(StandardError, "disk exploded")
+    allow(Library::TextCompanion).to receive(:extract_text).and_raise(StandardError, "disk exploded")
 
     expect { described_class.perform_now(conversion.id) }.to raise_error(StandardError, "disk exploded")
 

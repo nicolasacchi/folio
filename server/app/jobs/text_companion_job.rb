@@ -14,11 +14,12 @@
 class TextCompanionJob < ApplicationJob
   queue_as :conversion
 
-  # Calibre.extract_text returns "" on total failure, but can also return
-  # a near-empty string for pdfs with nothing real to extract (a
-  # cover-only scan, a page OCR that came back unreadable) — either way
-  # there's nothing worth a companion, so this is the floor below which
-  # the conversion fails outright rather than storing one nobody can read.
+  # Library::TextCompanion.extract_text can return "" (Calibre's
+  # non-pdf fallback, on total failure) or a near-empty string for pdfs
+  # with nothing real to extract (a cover-only scan, a page OCR that came
+  # back unreadable) — either way there's nothing worth a companion, so
+  # this is the floor below which the conversion fails outright rather
+  # than storing one nobody can read.
   MIN_TEXT_LENGTH = 200
 
   def perform(conversion_id)
@@ -57,7 +58,7 @@ class TextCompanionJob < ApplicationJob
   private
 
   def build_text!(source, book, source_content_sha)
-    text = Calibre.extract_text(source.read_source_path)
+    text = Library::TextCompanion.extract_text(source)
     if text.strip.length < MIN_TEXT_LENGTH
       raise Library::TextCompanion::Error,
         "extracted text too short (#{text.strip.length} chars) to build a usable text version"
