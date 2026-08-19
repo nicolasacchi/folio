@@ -12,5 +12,14 @@ FactoryBot.define do
       book_file { association :book_file, book: book, format: "pdf" }
       target_format { "pdf" }
     end
+
+    # A text-companion build is also pdf-sourced (see TextCompanionJob) —
+    # target_format "txt" names the primary artifact (the reader-facing
+    # companion), mirroring :ocr's convention.
+    trait :text do
+      kind { "text" }
+      book_file { association :book_file, book: book, format: "pdf" }
+      target_format { "txt" }
+    end
   end
 end

@@ -103,18 +103,46 @@ RSpec.describe BookFile, type: :model do
       expect(pdf.delivery_size).to eq(11)
     end
 
-    it "raw: true bypasses the OCR companion, falling back to the raw file" do
+    it "variant: 'original' bypasses the OCR companion, falling back to the raw file" do
       relative = "ocr/#{book.public_id}.ocr.pdf"
       companion = Library.base_root.join(relative)
       FileUtils.mkdir_p(companion.dirname)
       File.write(companion, "ocr'd bytes")
       pdf.update!(ocr_path: relative, ocr_sha256: "ocr-sha", ocr_size: 11, ocr_source_sha256: "src-sha")
 
-      expect(pdf.delivery_path(raw: true)).to eq(pdf.absolute_path)
-      expect(pdf.delivery_sha256(raw: true)).to eq(pdf.sha256)
-      expect(pdf.delivery_size(raw: true)).to eq(pdf.size)
-      # raw: false (the default) is unaffected.
+      expect(pdf.delivery_path(variant: "original")).to eq(pdf.absolute_path)
+      expect(pdf.delivery_sha256(variant: "original")).to eq(pdf.sha256)
+      expect(pdf.delivery_size(variant: "original")).to eq(pdf.size)
+      # variant: "auto" (the default) is unaffected.
       expect(pdf.delivery_path).to eq(pdf.ocr_absolute_path)
+    end
+
+    describe "variant: 'text'" do
+      it "prefers the text-companion AZW3 once it's usable" do
+        relative = "text/#{book.public_id}.azw3"
+        kindle_text = Library.base_root.join(relative)
+        FileUtils.mkdir_p(kindle_text.dirname)
+        File.write(kindle_text, "azw3 bytes")
+        text_relative = "text/#{book.public_id}.txt"
+        FileUtils.mkdir_p(Library.base_root.join(text_relative).dirname)
+        File.write(Library.base_root.join(text_relative), "plain text")
+        pdf.update!(
+          text_path: text_relative, text_source_sha256: "src-sha",
+          text_kindle_path: relative, text_kindle_sha256: "text-kindle-sha", text_kindle_size: 10
+        )
+
+        expect(pdf.delivery_path(variant: "text")).to eq(kindle_text)
+        expect(pdf.delivery_sha256(variant: "text")).to eq("text-kindle-sha")
+        expect(pdf.delivery_size(variant: "text")).to eq(10)
+        expect(pdf.delivery_format(variant: "text")).to eq("azw3")
+      end
+
+      it "falls back through the 'auto' chain when the AZW3 isn't usable yet" do
+        expect(pdf).not_to be_text_kindle_usable
+        expect(pdf.delivery_path(variant: "text")).to eq(pdf.absolute_path)
+        expect(pdf.delivery_sha256(variant: "text")).to eq(pdf.sha256)
+        expect(pdf.delivery_format(variant: "text")).to eq("pdf")
+      end
     end
 
     it "still prefers the prepared copy over a fresh OCR companion" do
@@ -154,6 +182,88 @@ RSpec.describe BookFile, type: :model do
 
     it "does not raise when there is no OCR companion" do
       expect(pdf.ocr_path).to be_nil
+      expect { pdf.destroy! }.not_to raise_error
+    end
+  end
+
+  describe "#text_fresh? / #text_kindle_usable?" do
+    let!(:pdf) { create(:book_file, :on_disk, book: book, format: "pdf", sha256: "src-sha") }
+
+    def write_text_companion!(source_sha: "src-sha")
+      relative = "text/#{book.public_id}.txt"
+      FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+      File.write(Library.base_root.join(relative), "plain text")
+      pdf.update!(text_path: relative, text_source_sha256: source_sha)
+    end
+
+    it "is not fresh with no text companion" do
+      expect(pdf).not_to be_text_fresh
+      expect(pdf).not_to be_text_kindle_usable
+    end
+
+    it "is fresh once the companion matches the current source content sha and exists on disk" do
+      write_text_companion!
+
+      expect(pdf).to be_text_fresh
+    end
+
+    it "is stale once the source sha changes, even with a companion on disk" do
+      write_text_companion!(source_sha: "old-sha")
+
+      expect(pdf).not_to be_text_fresh
+    end
+
+    it "compares against the OCR companion's sha (not the raw sha) once the OCR companion is fresh" do
+      ocr_relative = "ocr/#{book.public_id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_relative).dirname)
+      File.write(Library.base_root.join(ocr_relative), "ocr'd bytes")
+      pdf.update!(ocr_path: ocr_relative, ocr_sha256: "ocr-sha", ocr_source_sha256: "src-sha")
+
+      expect(pdf.text_source_content_sha256).to eq("ocr-sha")
+
+      write_text_companion!(source_sha: "src-sha") # matches the raw sha, not the (now current) OCR sha
+      expect(pdf).not_to be_text_fresh
+
+      write_text_companion!(source_sha: "ocr-sha")
+      expect(pdf).to be_text_fresh
+    end
+
+    it "is usable only once the text companion is fresh AND the AZW3 build exists on disk" do
+      write_text_companion!
+      expect(pdf).not_to be_text_kindle_usable
+
+      relative = "text/#{book.public_id}.azw3"
+      FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+      File.write(Library.base_root.join(relative), "azw3 bytes")
+      pdf.update!(text_kindle_path: relative)
+
+      expect(pdf).to be_text_kindle_usable
+    end
+  end
+
+  describe "destroying a file with a text companion" do
+    let!(:pdf) { create(:book_file, book: book, format: "pdf") }
+
+    it "removes both the text companion and its Kindle AZW3 build from disk" do
+      text_relative = "text/#{book.public_id}.txt"
+      text_companion = Library.base_root.join(text_relative)
+      FileUtils.mkdir_p(text_companion.dirname)
+      File.write(text_companion, "plain text")
+
+      azw3_relative = "text/#{book.public_id}.azw3"
+      azw3 = Library.base_root.join(azw3_relative)
+      File.write(azw3, "azw3 bytes")
+
+      pdf.update!(text_path: text_relative, text_kindle_path: azw3_relative)
+
+      pdf.destroy!
+
+      expect(File.exist?(text_companion)).to be(false)
+      expect(File.exist?(azw3)).to be(false)
+    end
+
+    it "does not raise when there is no text companion" do
+      expect(pdf.text_path).to be_nil
       expect { pdf.destroy! }.not_to raise_error
     end
   end

@@ -21,7 +21,16 @@ class KindleWritebackJob < ApplicationJob
     book = Book.find(book_id)
     user = User.find(user_id)
 
-    position = ReaderPosition.find_by(book: book, user: user)
+    # variant: "" only (not whichever the user happens to be reading) —
+    # Reader::Anchor anchors into the book's own MOBI/AZW3 text stream
+    # (ANCHOR_FORMATS below), which has nothing to do with the separate
+    # text-companion .txt (see Library::TextCompanion): there's no
+    # anchoring support for that stream today, so a "text" position never
+    # gets written back to the physical Kindle. Picking "" explicitly
+    # (rather than an unordered find_by(book:, user:) over what's now a
+    # multi-row-per-book-per-user table) keeps that limitation from
+    # silently depending on row insertion order instead.
+    position = ReaderPosition.find_by(book: book, user: user, variant: "")
     return if position.nil? || position.context.blank?
 
     exact = position.context["exact"]

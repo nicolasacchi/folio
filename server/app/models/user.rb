@@ -19,7 +19,8 @@ class User < ApplicationRecord
     "flow" => "paginated",
     "fontFamily" => "publisher",
     "justify" => false,
-    "hyphenate" => true
+    "hyphenate" => true,
+    "keepScreenOn" => true
   }.freeze
 
   FONT_FAMILIES = %w[publisher serif sans literata bitter garamond atkinson opendyslexic].freeze
@@ -85,7 +86,7 @@ class User < ApplicationRecord
       when "fontFamily"
         s = value.to_s
         out[key] = s if FONT_FAMILIES.include?(s)
-      when "justify", "hyphenate"
+      when "justify", "hyphenate", "keepScreenOn"
         b = coerce_boolean(value)
         out[key] = b unless b.nil?
       end

@@ -1,0 +1,36 @@
+<%# Current-variant stamp + switch links to every OTHER variant this
+    book offers `device`'s `delivery` (see Delivery::VARIANTS,
+    BookFile#delivery_path) — the untouched scan (only once
+    BookFile#ocr_fresh?) and the text-only companion (only once
+    Book#text_companion_source_file exists, i.e. the kindle_file is a
+    pdf). Shared by the delivered?/queued device-row branches in
+    books/show.html.erb, which otherwise differ only in their primary
+    action button.
+
+    Locals: device, delivery, ocr_original (Boolean), text_capable
+    (Boolean). %>
+<% variant = delivery.variant %>
+<% if ocr_original && variant != "text" %>
+  <span class="stamp"><%= variant == "original" ? "original scan" : "text layer" %></span>
+  <% if variant == "original" %>
+    <%= button_to deliveries_path(book_id: delivery.book_id, device_id: device.id, variant: "auto"), class: "small muted link-quiet",
+          title: "Re-send #{device.name}'s copy with the OCR text layer" do %>switch to text layer<% end %>
+  <% else %>
+    <%= button_to deliveries_path(book_id: delivery.book_id, device_id: device.id, variant: "original"), class: "small muted link-quiet",
+          title: "Re-send #{device.name}'s copy as the untouched scan, without the OCR text layer" do %>switch to original scan<% end %>
+  <% end %>
+<% end %>
+<% if text_capable %>
+  <% if variant == "text" %>
+    <span class="stamp">text only</span>
+    <%= button_to deliveries_path(book_id: delivery.book_id, device_id: device.id, variant: "auto"), class: "small muted link-quiet",
+          title: "Re-send #{device.name}'s copy as the #{auto_variant_label(ocr_original)}" do %>switch to <%= auto_variant_label(ocr_original) %><% end %>
+    <% if ocr_original %>
+      <%= button_to deliveries_path(book_id: delivery.book_id, device_id: device.id, variant: "original"), class: "small muted link-quiet",
+            title: "Re-send #{device.name}'s copy as the untouched scan, without the OCR text layer" do %>switch to original scan<% end %>
+    <% end %>
+  <% else %>
+    <%= button_to deliveries_path(book_id: delivery.book_id, device_id: device.id, variant: "text"), class: "small muted link-quiet",
+          title: "Re-send #{device.name}'s copy as the plain-text reflow version" do %>switch to text only<% end %>
+  <% end %>
+<% end %>

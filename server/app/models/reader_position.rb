@@ -1,7 +1,14 @@
 # Where a user last left off in the in-browser reader for a given book.
-# One row per (book, user) — distinct from ReadingState, which tracks
-# per-device .sdr sync state parsed off a physical Kindle.
+# One row per (book, user, variant) — distinct from ReadingState, which
+# tracks per-device .sdr sync state parsed off a physical Kindle.
+#
+# `variant` splits pagination that genuinely differs: "" covers ocr/raw/
+# none (they all paginate identically), "text" is the separate text-only
+# companion (see Library::TextCompanion) — a different underlying file
+# with its own, incompatible cfis.
 class ReaderPosition < ApplicationRecord
+  VARIANTS = [ "", "text" ].freeze
+
   belongs_to :book
   belongs_to :user
 
@@ -9,5 +16,6 @@ class ReaderPosition < ApplicationRecord
   # position) — opaque to the server, just round-tripped for the client.
   serialize :context, coder: JSON
 
-  validates :user_id, uniqueness: { scope: :book_id }
+  validates :variant, inclusion: { in: VARIANTS }
+  validates :user_id, uniqueness: { scope: [ :book_id, :variant ] }
 end

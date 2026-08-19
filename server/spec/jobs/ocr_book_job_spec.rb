@@ -87,4 +87,33 @@ RSpec.describe OcrBookJob do
   it "does nothing when the conversion no longer exists" do
     expect { described_class.perform_now(-1) }.not_to raise_error
   end
+
+  describe "refreshing a stale text companion after a re-OCR" do
+    def write_text_companion!(source_sha:)
+      relative = "text/#{book.public_id}.txt"
+      FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+      File.write(Library.base_root.join(relative), "plain text")
+      source.update!(text_path: relative, text_source_sha256: source_sha)
+    end
+
+    it "queues TextCompanionJob when a text companion already existed and this OCR run staled it" do
+      write_text_companion!(source_sha: "some-old-ocr-sha")
+      stub_ocr
+
+      expect { described_class.perform_now(conversion.id) }.to have_enqueued_job(TextCompanionJob)
+    end
+
+    it "does not queue TextCompanionJob when there was no text companion to begin with" do
+      stub_ocr
+
+      expect { described_class.perform_now(conversion.id) }.not_to have_enqueued_job(TextCompanionJob)
+    end
+
+    it "does not queue TextCompanionJob when the existing companion happens to still be fresh" do
+      stub_ocr # always writes the same "ocr'd pdf bytes" — a stable, predictable ocr_sha256
+      write_text_companion!(source_sha: Digest::SHA256.hexdigest("ocr'd pdf bytes"))
+
+      expect { described_class.perform_now(conversion.id) }.not_to have_enqueued_job(TextCompanionJob)
+    end
+  end
 end

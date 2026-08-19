@@ -5,11 +5,12 @@
     <div id="reader-root" class="reader-root"
          data-controller="reader"
          data-reader-variant-value="<%= @variant %>"
-         data-reader-file-url-value="<%= read_book_file_path(@book, raw: @raw ? 1 : nil) %>"
-         data-reader-filename-value="<%= @file.filename %>"
-         data-reader-format-value="<%= @file.format %>"
+         data-reader-file-url-value="<%= read_book_file_path(@book, raw: @raw ? 1 : nil, text: @variant == "text" ? 1 : nil) %>"
+         data-reader-filename-value="<%= @reader_filename %>"
+         data-reader-format-value="<%= @reader_format %>"
          data-reader-book-id-value="<%= @book.id %>"
          data-reader-public-id-value="<%= @book.public_id %>"
+         data-reader-position-variant-value="<%= @position_variant %>"
          data-reader-position-url-value="<%= read_book_position_path(@book) %>"
          data-reader-state-url-value="<%= read_book_state_path(@book) %>"
          data-reader-annotations-url-value="/books/<%= @book.id %>/read/annotations"
@@ -49,12 +50,20 @@
           <% end %>
         </div>
         <span class="reader-title"><%= @book.title %></span>
-        <% if @variant == "ocr" %>
-          <%= link_to "text layer", read_book_path(@book, raw: 1), class: "stamp reader-variant-badge",
-                data: { turbo: false }, title: "Switch to the original scan" %>
-        <% elsif @variant == "raw" %>
-          <%= link_to "original scan", read_book_path(@book), class: "stamp reader-variant-badge",
-                data: { turbo: false }, title: "Switch to the OCR text-layer version" %>
+        <%# Current-variant stamp + quiet switch links to every OTHER
+            variant this book/file actually offers — see ReaderHelper.
+            Renders nothing for a plain file with neither an OCR nor a
+            text companion (variant_switches empty, variant_stamp nil). %>
+        <% variant_stamp = reader_variant_stamp_label(@variant) %>
+        <% variant_switches = reader_variant_switches(@book, @file, @variant) %>
+        <% if variant_stamp || variant_switches.any? %>
+          <div class="reader-variant-badge">
+            <% if variant_stamp %><span class="stamp"><%= variant_stamp %></span><% end %>
+            <% variant_switches.each do |switch| %>
+              <%= link_to switch[:label], switch[:url], class: "small link-quiet",
+                    data: { turbo: false }, title: switch[:title] %>
+            <% end %>
+          </div>
         <% end %>
         <div class="reader-bar-actions">
           <button type="button" class="reader-icon-btn" data-action="reader#openToc" aria-label="Table of contents" title="Contents">
@@ -191,6 +200,16 @@
                     data-action="reader#setHyphenate" data-reader-hyphenate-param="false">Off</button>
             <button type="button" class="reader-toggle" data-reader-target="hyphenateButton"
                     data-action="reader#setHyphenate" data-reader-hyphenate-param="true">On</button>
+          </div>
+        </div>
+
+        <div class="reader-settings-row" data-reader-target="keepScreenOnRow">
+          <label>Keep screen on</label>
+          <div class="reader-toggle-group">
+            <button type="button" class="reader-toggle" data-reader-target="keepScreenOnButton"
+                    data-action="reader#setKeepScreenOn" data-reader-keep-screen-on-param="false">Off</button>
+            <button type="button" class="reader-toggle" data-reader-target="keepScreenOnButton"
+                    data-action="reader#setKeepScreenOn" data-reader-keep-screen-on-param="true">On</button>
           </div>
         </div>
 

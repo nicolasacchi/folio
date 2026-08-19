@@ -56,6 +56,27 @@ RSpec.describe Library::StorageGc do
     expect(stats.removed).to eq(1)
   end
 
+  it "treats text_path/text_kindle_path exactly like ocr_path: keeps referenced companions, sweeps orphans" do
+    book = create(:book)
+    create(:book_file, book: book, format: "pdf", text_path: "text/#{book.public_id}.txt",
+      text_kindle_path: "text/#{book.public_id}.azw3")
+
+    referenced_text = root.join("text", "#{book.public_id}.txt")
+    referenced_azw3 = root.join("text", "#{book.public_id}.azw3")
+    old_text_orphan = root.join("text", "staging-orphan.txt")
+
+    write(referenced_text, mtime: 7.hours.ago)
+    write(referenced_azw3, mtime: 7.hours.ago)
+    write(old_text_orphan, mtime: 7.hours.ago)
+
+    stats = described_class.sweep!
+
+    expect(File.exist?(referenced_text)).to be(true)
+    expect(File.exist?(referenced_azw3)).to be(true)
+    expect(File.exist?(old_text_orphan)).to be(false)
+    expect(stats.removed).to eq(1)
+  end
+
   it "never touches directories outside the swept set" do
     untouched = root.join("library", "some-book", "original.epub")
     write(untouched, mtime: 7.hours.ago)

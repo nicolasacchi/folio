@@ -50,8 +50,8 @@ RSpec.describe "API v1 device delivery of an OCR'd scanned pdf", type: :request 
     expect(response.headers["Content-Disposition"]).to include(pdf.delivery_filename)
   end
 
-  context "when this device's delivery requests the raw variant (Delivery#raw)" do
-    before { delivery.update!(raw: true) }
+  context "when this device's delivery requests the original variant (Delivery#variant)" do
+    before { delivery.update!(variant: "original") }
 
     it "reports the raw file's sha256/size in the manifest and streams its bytes, even though the OCR companion is fresh" do
       get "/api/v1/manifest", headers: headers
@@ -87,6 +87,56 @@ RSpec.describe "API v1 device delivery of an OCR'd scanned pdf", type: :request 
       expect(response).to have_http_status(:ok)
       expect(response.body.b).to eq("raw scanned pdf bytes".b)
       expect(response.headers["Content-Disposition"]).to include(pdf.delivery_filename)
+    end
+  end
+
+  context "when this device's delivery requests the text variant (Delivery#variant == 'text')" do
+    before { delivery.update!(variant: "text") }
+
+    it "falls back to the 'auto' chain (the fresh OCR companion) when the text-companion AZW3 isn't built yet" do
+      get "/api/v1/manifest", headers: headers
+
+      item = response.parsed_body.fetch("items").first
+      expect(item).to include(
+        "format" => "pdf",
+        "sha256" => Digest::SHA256.hexdigest(ocr_bytes),
+        "size" => ocr_bytes.bytesize
+      )
+
+      get "/api/v1/books/#{book.public_id}/file", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.b).to eq(ocr_bytes.b)
+    end
+
+    it "upgrades to the text-companion AZW3 (a different sha, re-triggering delivery) once it's built" do
+      azw3_bytes = "reflowable azw3 bytes"
+      azw3_relative = "text/#{book.public_id}.azw3"
+      FileUtils.mkdir_p(Library.base_root.join(azw3_relative).dirname)
+      File.write(Library.base_root.join(azw3_relative), azw3_bytes)
+      text_relative = "text/#{book.public_id}.txt"
+      FileUtils.mkdir_p(Library.base_root.join(text_relative).dirname)
+      File.write(Library.base_root.join(text_relative), "plain text")
+      pdf.update!(
+        text_path: text_relative, text_source_sha256: pdf.text_source_content_sha256,
+        text_kindle_path: azw3_relative, text_kindle_sha256: Digest::SHA256.hexdigest(azw3_bytes),
+        text_kindle_size: azw3_bytes.bytesize
+      )
+
+      get "/api/v1/manifest", headers: headers
+
+      item = response.parsed_body.fetch("items").first
+      expect(item).to include(
+        "format" => "azw3",
+        "sha256" => Digest::SHA256.hexdigest(azw3_bytes),
+        "size" => azw3_bytes.bytesize
+      )
+
+      get "/api/v1/books/#{book.public_id}/file", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.b).to eq(azw3_bytes.b)
+      expect(response.headers["Content-Disposition"]).to include(pdf.delivery_filename(variant: "text"))
     end
   end
 end

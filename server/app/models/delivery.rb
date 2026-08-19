@@ -8,17 +8,22 @@
 # manifest's `removals` list, the daemon deletes the file and acks, and
 # `removed_at` closes the loop (the row stays as on-device history).
 #
-# `raw` is this device's per-delivery variant choice (see
-# BookFile#delivery_path) — true bypasses the OCR companion for a book
-# whose scan has one, so this one device gets the untouched original
-# instead. Changing it needs no extra plumbing: the manifest recomputes
-# delivery_sha256 with it on every poll, so a sha change alone triggers a
-# re-fetch (see DeliveriesController#create).
+# `variant` is this device's per-delivery choice (see
+# BookFile#delivery_path): "auto" prefers the OCR companion when a scan
+# has one; "original" bypasses it for the untouched scan; "text" prefers
+# the text-companion AZW3 (see Library::TextCompanion, TextCompanionJob),
+# falling back to the "auto" chain until that build lands. Changing it
+# needs no extra plumbing: the manifest recomputes delivery_sha256 with it
+# on every poll, so a sha change alone triggers a re-fetch (see
+# DeliveriesController#create).
 class Delivery < ApplicationRecord
+  VARIANTS = %w[auto original text].freeze
+
   belongs_to :book
   belongs_to :device
 
   validates :book_id, uniqueness: { scope: :device_id }
+  validates :variant, inclusion: { in: VARIANTS }
 
   # Queue and on-device state ignores rows already removed from the device.
   scope :active, -> { where(removed_at: nil) }

@@ -130,7 +130,7 @@ RSpec.describe "Book detail page", type: :request do
     end
   end
 
-  describe "original (raw) variant links" do
+  describe "delivery variant links" do
     let!(:book) { create(:book) }
     let!(:pdf_file) { create(:book_file, book: book, format: "pdf") }
 
@@ -139,6 +139,13 @@ RSpec.describe "Book detail page", type: :request do
       FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
       File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
       pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+    end
+
+    def make_text_fresh!
+      text_relative = "text/#{book.public_id}.txt"
+      FileUtils.mkdir_p(Library.base_root.join(text_relative).dirname)
+      File.write(Library.base_root.join(text_relative), "plain text companion")
+      pdf_file.update!(text_path: text_relative, text_source_sha256: pdf_file.sha256)
     end
 
     describe "the reader's 'Original scan' button" do
@@ -162,13 +169,90 @@ RSpec.describe "Book detail page", type: :request do
       end
     end
 
-    describe "the per-device Kindle send original link" do
+    describe "the reader's 'Text only' / 'Build text version' read-row controls" do
+      it "is absent for a book with no pdf at all" do
+        other = create(:book)
+        create(:book_file, book: other, format: "epub")
+
+        get book_path(other)
+
+        expect(response.body).not_to include("Build text version")
+        expect(response.body).not_to include(">Text only<")
+      end
+
+      it "is absent for a mixed-format book where a richer format is already preferred for reading" do
+        create(:book_file, :epub_fixture, book: book)
+
+        get book_path(book)
+
+        expect(response.body).not_to include("Build text version")
+      end
+
+      it "shows 'Build text version' when the companion doesn't exist yet and nothing is building" do
+        get book_path(book)
+
+        expect(response.body).to include("Build text version")
+        expect(response.body).to include(build_text_book_path(book))
+      end
+
+      it "shows a pending stamp instead of the build button while a text conversion is active" do
+        create(:conversion, :text, book: book, book_file: pdf_file, status: "running")
+
+        get book_path(book)
+
+        expect(response.body).to include("building text version…")
+        expect(response.body).not_to include("Build text version")
+      end
+
+      it "shows 'Build text version' again once a previous attempt failed (no longer active)" do
+        create(:conversion, :text, book: book, book_file: pdf_file, status: "failed")
+
+        get book_path(book)
+
+        expect(response.body).to include("Build text version")
+      end
+
+      it "shows the 'Text only' reading button once the companion is fresh" do
+        make_text_fresh!
+
+        get book_path(book)
+
+        doc = Nokogiri::HTML5.parse(response.body)
+        link = doc.at_css(%(a[href="#{read_book_path(book, text: 1)}"]))
+        expect(link).to be_present
+        expect(link.text).to include("Text only")
+        expect(response.body).not_to include("Build text version")
+      end
+    end
+
+    describe "Files section text-only download link" do
+      it "is absent with no fresh text companion" do
+        get book_path(book)
+
+        expect(response.body).not_to include(CGI.escapeHTML(download_book_path(book, fmt: "pdf", text: 1)))
+      end
+
+      it "adds a 'text only' download link and stamp once BookFile#text_fresh? is true" do
+        make_text_fresh!
+
+        get book_path(book)
+
+        expect(response.body).to include(CGI.escapeHTML(download_book_path(book, fmt: "pdf", text: 1)))
+        expect(response.body).to include(">text only<")
+      end
+    end
+
+    describe "the per-device Kindle send original-scan link" do
       let!(:device) { create(:device, name: "My Kindle") }
+
+      def original_link_href
+        CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, variant: "original"))
+      end
 
       it "is hidden with no fresh OCR companion" do
         get book_path(book)
 
-        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+        expect(response.body).not_to include(original_link_href)
       end
 
       it "appears next to an unqueued device's Send pill once BookFile#ocr_fresh? is true" do
@@ -176,7 +260,7 @@ RSpec.describe "Book detail page", type: :request do
 
         get book_path(book)
 
-        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+        expect(response.body).to include(original_link_href)
       end
 
       it "appears next to an already-delivered device's pill (switching post-delivery needs no extra plumbing)" do
@@ -186,7 +270,7 @@ RSpec.describe "Book detail page", type: :request do
         get book_path(book)
 
         expect(response.body).to include("On #{device.name}")
-        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+        expect(response.body).to include(original_link_href)
       end
 
       it "appears next to a still-queued (not yet delivered) device's pill" do
@@ -196,17 +280,17 @@ RSpec.describe "Book detail page", type: :request do
         get book_path(book)
 
         expect(response.body).to include("Queued #{device.name}")
-        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+        expect(response.body).to include(original_link_href)
       end
 
-      it "is hidden once that device's delivery is already raw (nothing left to switch to)" do
+      it "is hidden once that device's delivery is already 'original' (nothing left to switch to)" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "original")
 
         get book_path(book)
 
         expect(response.body).to include("On #{device.name}")
-        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+        expect(response.body).not_to include(original_link_href)
       end
 
       it "is hidden while an eviction is queued (the Keep action already covers that state)" do
@@ -216,45 +300,97 @@ RSpec.describe "Book detail page", type: :request do
         get book_path(book)
 
         expect(response.body).to include("Keep on #{device.name}")
-        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 1)))
+        expect(response.body).not_to include(original_link_href)
       end
     end
 
-    describe "the per-device Kindle send 'text layer' switch-back link (mirrors the original link once a delivery is raw)" do
+    describe "the per-device Kindle send 'text layer' switch-back link (mirrors the original link once a delivery is 'original')" do
       let!(:device) { create(:device, name: "My Kindle") }
 
-      it "appears next to an already-delivered device's raw pill" do
+      def auto_link_href
+        CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, variant: "auto"))
+      end
+
+      it "appears next to an already-delivered device's 'original' pill" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "original")
 
         get book_path(book)
 
         expect(response.body).to include("On #{device.name}")
-        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 0)))
+        expect(response.body).to include(auto_link_href)
         # ">text layer<" alone would also match the unrelated Files-section
         # stamp (rendered by the same make_ocr_fresh! setup) — the title is
         # what's actually unique to this switch-back button.
         expect(response.body).to include("Re-send #{device.name}&#39;s copy with the OCR text layer")
       end
 
-      it "appears next to a still-queued device's raw pill" do
+      it "appears next to a still-queued device's 'original' pill" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, raw: true)
+        create(:delivery, book: book, device: device, variant: "original")
 
         get book_path(book)
 
         expect(response.body).to include("Queued #{device.name}")
-        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 0)))
-        expect(response.body).to include("Switch #{device.name}&#39;s queued send back to the OCR text layer")
+        expect(response.body).to include(auto_link_href)
       end
 
-      it "is absent (in favor of the 'original' link) once that delivery is not raw" do
+      it "is absent (in favor of the 'original' link) once that delivery is 'auto'" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
 
         get book_path(book)
 
-        expect(response.body).not_to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, raw: 0)))
+        expect(response.body).not_to include(auto_link_href)
+      end
+    end
+
+    describe "the per-device Kindle send text-only link" do
+      let!(:device) { create(:device, name: "My Kindle") }
+
+      def text_link_href
+        CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, variant: "text"))
+      end
+
+      it "is hidden when the kindle_file isn't a pdf" do
+        create(:book_file, book: book, format: "azw3")
+
+        get book_path(book)
+
+        expect(response.body).not_to include(text_link_href)
+      end
+
+      it "appears next to an unqueued device's Send pill (the AZW3 doesn't have to exist yet)" do
+        get book_path(book)
+
+        expect(response.body).to include(text_link_href)
+      end
+
+      it "appears next to an already-delivered device's pill" do
+        create(:delivery, book: book, device: device, delivered_at: Time.current)
+
+        get book_path(book)
+
+        expect(response.body).to include("On #{device.name}")
+        expect(response.body).to include(text_link_href)
+      end
+
+      it "is hidden once that device's delivery is already 'text' (nothing left to switch to)" do
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "text")
+
+        get book_path(book)
+
+        expect(response.body).to include("On #{device.name}")
+        expect(response.body).not_to include(text_link_href)
+      end
+
+      it "switches back to 'auto' with a plain label when there is no OCR companion to name it after" do
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "text")
+
+        get book_path(book)
+
+        expect(response.body).to include(CGI.escapeHTML(deliveries_path(book_id: book.id, device_id: device.id, variant: "auto")))
+        expect(response.body).to include(">switch to original file<")
       end
     end
 
@@ -262,34 +398,45 @@ RSpec.describe "Book detail page", type: :request do
       let!(:device) { create(:device, name: "My Kindle") }
 
       # Scopes to the specific device's own action-row rather than the
-      # whole page — the Files section renders its own "text layer" stamp
-      # (from the same make_ocr_fresh! pdf_file) regardless of delivery
-      # state, so an unscoped text search would false-positive.
+      # whole page — the Files section renders its own "text layer"/"text
+      # only" stamps regardless of delivery state, so an unscoped text
+      # search would false-positive.
       def device_row(doc)
         doc.css(".action-row").find { |row| row.text.include?(device.name) }
       end
 
-      it "shows 'text layer' next to an already-delivered non-raw delivery" do
+      it "shows 'text layer' next to an already-delivered 'auto' delivery" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
 
         get book_path(book)
 
         expect(device_row(Nokogiri::HTML5.parse(response.body)).css("span.stamp").map(&:text)).to include("text layer")
       end
 
-      it "shows 'original scan' next to an already-delivered raw delivery" do
+      it "shows 'original scan' next to an already-delivered 'original' delivery" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "original")
 
         get book_path(book)
 
         expect(device_row(Nokogiri::HTML5.parse(response.body)).css("span.stamp").map(&:text)).to include("original scan")
       end
 
+      it "shows 'text only' next to a 'text' delivery, instead of the OCR stamp" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "text")
+
+        get book_path(book)
+
+        stamps = device_row(Nokogiri::HTML5.parse(response.body)).css("span.stamp").map(&:text)
+        expect(stamps).to include("text only")
+        expect(stamps).not_to include("text layer", "original scan")
+      end
+
       it "shows the stamp next to a still-queued (not yet delivered) delivery too" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, raw: true)
+        create(:delivery, book: book, device: device, variant: "original")
 
         get book_path(book)
 
@@ -313,7 +460,7 @@ RSpec.describe "Book detail page", type: :request do
         expect(device_row(Nokogiri::HTML5.parse(response.body)).css("span.stamp")).to be_empty
       end
 
-      it "is absent when the kindle file has no fresh OCR companion" do
+      it "is absent for a plain 'auto' delivery when the kindle file has no fresh OCR companion" do
         create(:delivery, book: book, device: device, delivered_at: Time.current)
 
         get book_path(book)
@@ -325,35 +472,71 @@ RSpec.describe "Book detail page", type: :request do
     describe "device row switch-link labels" do
       let!(:device) { create(:device, name: "My Kindle") }
 
-      def button_text_for(doc, raw:)
-        form = doc.at_css(%(form[action="#{deliveries_path(book_id: book.id, device_id: device.id, raw: raw)}"]))
+      def button_text_for(doc, variant:)
+        form = doc.at_css(%(form[action="#{deliveries_path(book_id: book.id, device_id: device.id, variant: variant)}"]))
         form&.at_css("button")&.text&.strip
       end
 
-      it "labels the first-send raw option 'send original scan'" do
+      it "labels the first-send original-scan option 'send original scan'" do
         make_ocr_fresh!
 
         get book_path(book)
 
-        expect(button_text_for(Nokogiri::HTML5.parse(response.body), raw: 1)).to eq("send original scan")
+        expect(button_text_for(Nokogiri::HTML5.parse(response.body), variant: "original")).to eq("send original scan")
       end
 
-      it "labels the switch link 'switch to original scan' on a non-raw, already-queued/delivered device" do
+      it "labels the switch link 'switch to original scan' on an 'auto', already-queued/delivered device" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
 
         get book_path(book)
 
-        expect(button_text_for(Nokogiri::HTML5.parse(response.body), raw: 1)).to eq("switch to original scan")
+        expect(button_text_for(Nokogiri::HTML5.parse(response.body), variant: "original")).to eq("switch to original scan")
       end
 
-      it "labels the switch link 'switch to text layer' on a raw, already-queued/delivered device" do
+      it "labels the switch link 'switch to text layer' on an 'original', already-queued/delivered device" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "original")
 
         get book_path(book)
 
-        expect(button_text_for(Nokogiri::HTML5.parse(response.body), raw: 0)).to eq("switch to text layer")
+        expect(button_text_for(Nokogiri::HTML5.parse(response.body), variant: "auto")).to eq("switch to text layer")
+      end
+
+      it "labels the first-send text-only option 'send text only'" do
+        get book_path(book)
+
+        expect(button_text_for(Nokogiri::HTML5.parse(response.body), variant: "text")).to eq("send text only")
+      end
+
+      it "labels the switch link 'switch to text only' on a non-'text', already-queued/delivered device" do
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
+
+        get book_path(book)
+
+        expect(button_text_for(Nokogiri::HTML5.parse(response.body), variant: "text")).to eq("switch to text only")
+      end
+
+      # The partial promises "switch links to every OTHER variant" — on a
+      # 'text' delivery with fresh OCR that's both "auto" (text layer) AND
+      # "original", not just "auto" via an extra hop.
+      it "offers a direct switch-to-original-scan link (not just auto) on a 'text' delivery with fresh OCR" do
+        make_ocr_fresh!
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "text")
+
+        get book_path(book)
+
+        doc = Nokogiri::HTML5.parse(response.body)
+        expect(button_text_for(doc, variant: "auto")).to eq("switch to text layer")
+        expect(button_text_for(doc, variant: "original")).to eq("switch to original scan")
+      end
+
+      it "has no direct switch-to-original-scan link on a 'text' delivery without fresh OCR (nothing to switch to)" do
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "text")
+
+        get book_path(book)
+
+        expect(button_text_for(Nokogiri::HTML5.parse(response.body), variant: "original")).to be_nil
       end
     end
   end

@@ -25,6 +25,17 @@
     {
       "warning_type": "File Access",
       "warning_code": 16,
+      "fingerprint": "c7ee19489293bbe08a4edd785e99af309c5b88f0f4db2a13665630bea84cbdc9",
+      "check_name": "SendFile",
+      "message": "Model attribute used in file name",
+      "file": "app/controllers/books_controller.rb",
+      "line": 149,
+      "note": "New with the text-only companion feature (?text=1 on #download). Path is book_file#text_absolute_path -- Library.base_root.join(text_path), where text_path is a DB column only ever written by TextCompanionJob (never from params). params[:fmt] only selects a format row via file_for; params[:text] is just a boolean flag gating this branch, never a path segment.",
+      "confidence": "Weak"
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
       "fingerprint": "bf1940b4bb6a32b8399e12e8c3c5ecb403ee5543af0d615b3f79ddb4032cc6c7",
       "check_name": "SendFile",
       "message": "Model attribute used in file name",
@@ -36,12 +47,12 @@
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "f837d32087a81ef40401f72e86022a842aca44386ad231757752dfe0e2bdc021",
+      "fingerprint": "1d8b6001a0aae0e407915964f2d3d6c9213eeeb0ef05a65095d14b6b78504018",
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/api/v1/book_files_controller.rb",
-      "line": 17,
-      "note": "Refreshed fingerprint for the same finding as the old 6e49bf29... entry (line shifted by the per-device raw/original variant feature). Path is the delivered book_file's own delivery_path(raw:); raw comes from this device's own Delivery#raw boolean column (see Delivery, never a path segment), and the book is resolved via find_delivered_book! (scoped to this device's manifest). params[:fmt] selects a format row, not a path.",
+      "line": 18,
+      "note": "Refreshed fingerprint for the same finding as the old f837d320... entry (raw boolean replaced by the 3-way Delivery#variant string). Path is the delivered book_file's own delivery_path(variant:); variant comes from this device's own Delivery#variant column (see Delivery, one of \"auto\"/\"original\"/\"text\", never a path segment), and the book is resolved via find_delivered_book! (scoped to this device's manifest). params[:fmt] selects a format row, not a path.",
       "confidence": "Weak"
     },
     {

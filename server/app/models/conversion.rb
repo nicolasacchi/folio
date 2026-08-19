@@ -4,8 +4,11 @@ class Conversion < ApplicationRecord
   # "calibre" is a normal ebook-convert format conversion (source format !=
   # target_format). "ocr" is a Library::Ocr run over a scanned PDF, which
   # is pdf -> pdf (a text-layer companion, not a new format) — see
-  # #target_differs_from_source and OcrBookJob.
-  KINDS = %w[calibre ocr].freeze
+  # #target_differs_from_source and OcrBookJob. "text" is a
+  # Library::TextCompanion build (pdf -> a plain-text reflow + its Kindle
+  # AZW3, both companions of the source row rather than new book_files
+  # rows) — see TextCompanionJob.
+  KINDS = %w[calibre ocr text].freeze
 
   # Targets Calibre can produce without extra plugins. KFX is input-only.
   TARGET_FORMATS = %w[epub azw3 mobi pdf txt docx].freeze
@@ -42,6 +45,10 @@ class Conversion < ApplicationRecord
 
   def ocr?
     kind == "ocr"
+  end
+
+  def text?
+    kind == "text"
   end
 
   # Marks running conversions whose worker appears to have died as failed,

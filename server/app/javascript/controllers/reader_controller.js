@@ -30,7 +30,8 @@ const DEFAULT_SETTINGS = {
   flow: "paginated", // paginated | scrolled
   fontFamily: "publisher", // publisher | serif | sans | webfont keys
   justify: false,
-  hyphenate: true
+  hyphenate: true,
+  keepScreenOn: true
 }
 
 const PREFS_SAVE_DEBOUNCE_MS = 1000
@@ -173,6 +174,7 @@ export default class extends Controller {
     "settingsPanel", "fontSizeReadout", "lineHeightSlider", "lineHeightReadout",
     "marginSlider", "marginReadout", "themeButton", "flowButton",
     "fontButton", "justifyButton", "hyphenateButton",
+    "keepScreenOnRow", "keepScreenOnButton",
     "fullscreenButton",
     "selectionMenu",
     "annotationPopover", "annotationPopoverBody",
@@ -204,7 +206,12 @@ export default class extends Controller {
     // BookFile#ocr_fresh?). Defaults to "none" so a page that doesn't set
     // the attribute (or an older cached page) behaves like any other
     // format rather than being mistaken for the raw scan below.
-    variant: { type: String, default: "none" }
+    variant: { type: String, default: "none" },
+    // "" | "text" — which reader_positions row (scoped by [book_id, user_id,
+    // variant]) this session reads/writes; see ReaderController#show. The
+    // default keeps position saves on the shared "" row if the attribute
+    // is ever missing (e.g. an older cached page).
+    positionVariant: { type: String, default: "" }
   }
 
   connect() {
@@ -244,6 +251,9 @@ export default class extends Controller {
     this.syncToastTimer = null
     this.backwardPromptDismissed = false
 
+    // Screen Wake Lock state — see the "-- Wake lock --" section below.
+    this.wakeLock = null
+
     this.onKeydown = this.onKeydown.bind(this)
     document.addEventListener("keydown", this.onKeydown)
     this.onFullscreenChange = this.onFullscreenChange.bind(this)
@@ -265,6 +275,9 @@ export default class extends Controller {
 
     if (this.hasFullscreenButtonTarget) {
       this.fullscreenButtonTarget.hidden = !(document.fullscreenEnabled && this.element.requestFullscreen)
+    }
+    if (this.hasKeepScreenOnRowTarget) {
+      this.keepScreenOnRowTarget.hidden = !("wakeLock" in navigator)
     }
 
     this.applyChromeTheme()
@@ -289,6 +302,7 @@ export default class extends Controller {
     this.lazyLocateToken += 1 // abort any in-flight background clippings-locate pass
     this.lookupToken += 1 // abort any in-flight /lookup fetch
     this.wikipediaToken += 1 // abort any in-flight Wikipedia fetch
+    this.releaseWakeLock()
     this.flushPosition()
   }
 
@@ -342,6 +356,7 @@ export default class extends Controller {
 
       this.syncWithKindleOnOpen() // not awaited — background banner/auto-jump, doesn't delay first paint
       this.armLivePoll()
+      this.acquireWakeLock() // not awaited — best-effort, never blocks first paint
     } catch (error) {
       console.error("[reader] failed to open book", error)
       this.showError()
@@ -1968,6 +1983,7 @@ export default class extends Controller {
     this.saveSettings()
     if (key === "theme") this.applyChromeTheme()
     if (key === "flow") this.applyFlow()
+    if (key === "keepScreenOn") this.applyWakeLockSetting() // applies immediately, not just on next open()/visibility flip
     this.applyContentStyles()
     this.renderSettingsUI()
   }
@@ -2011,6 +2027,10 @@ export default class extends Controller {
     this.updateSetting("hyphenate", event.params.hyphenate)
   }
 
+  setKeepScreenOn(event) {
+    this.updateSetting("keepScreenOn", event.params.keepScreenOn)
+  }
+
   renderSettingsUI() {
     if (this.hasFontSizeReadoutTarget) this.fontSizeReadoutTarget.textContent = `${this.settings.fontSize}%`
     if (this.hasLineHeightSliderTarget) this.lineHeightSliderTarget.value = this.settings.lineHeight
@@ -2027,6 +2047,8 @@ export default class extends Controller {
       btn.classList.toggle("is-active", btn.dataset.readerJustifyParam === String(this.settings.justify)))
     this.hyphenateButtonTargets.forEach((btn) =>
       btn.classList.toggle("is-active", btn.dataset.readerHyphenateParam === String(this.settings.hyphenate)))
+    this.keepScreenOnButtonTargets.forEach((btn) =>
+      btn.classList.toggle("is-active", btn.dataset.readerKeepScreenOnParam === String(this.settings.keepScreenOn)))
   }
 
   // Chrome (our own page) can use CSS custom properties; the book's
@@ -2120,6 +2142,50 @@ export default class extends Controller {
     this.element.classList.toggle("reader-fullscreen", document.fullscreenElement === this.element)
   }
 
+  // -- Wake lock: keep the screen on while reading -------------------------
+  //
+  // The Screen Wake Lock API is unsupported on a lot of the reading crowd
+  // (iOS Safari as of this writing, notably) — feature-detected once in
+  // connect() to hide the settings row, and re-checked here since a stale
+  // reference could otherwise be requested on a browser that never had it.
+  // A held lock is a live browser resource tied to page visibility: the
+  // platform itself releases it (firing 'release') the moment the tab is
+  // hidden, so it has to be re-acquired every time the tab becomes visible
+  // again (handleVisibilityChange()) rather than once per session.
+
+  applyWakeLockSetting() {
+    if (this.settings.keepScreenOn) this.acquireWakeLock()
+    else this.releaseWakeLock()
+  }
+
+  async acquireWakeLock() {
+    if (!("wakeLock" in navigator)) return
+    if (!this.settings.keepScreenOn) return
+    if (document.visibilityState !== "visible") return
+    if (this.wakeLock) return // already held
+
+    try {
+      const lock = await navigator.wakeLock.request("screen")
+      // Guards against a stale release (e.g. the platform revoking this
+      // exact lock on visibility change) later nulling out a *newer* lock
+      // acquired in between — only clear the field if this is still it.
+      lock.addEventListener("release", () => {
+        if (this.wakeLock === lock) this.wakeLock = null
+      })
+      this.wakeLock = lock
+    } catch (error) {
+      // Browsers reject wakeLock.request for reasons outside our control
+      // (low battery, OS policy…) — never let that throw out of here.
+      this.wakeLock = null
+    }
+  }
+
+  releaseWakeLock() {
+    const lock = this.wakeLock
+    this.wakeLock = null
+    if (lock) lock.release().catch(() => {})
+  }
+
   // -- Position / progress -----------------------------------------------
 
   onProgressInput(event) {
@@ -2175,7 +2241,10 @@ export default class extends Controller {
     // KindleWritebackJob); an empty context just means "no write-back
     // this time" server-side (ReaderController#update_position's
     // "no_context" outcome), never an error here.
-    const body = { cfi: position.cfi, fraction: position.fraction, percent: position.percent, context: position.context || {} }
+    const body = {
+      cfi: position.cfi, fraction: position.fraction, percent: position.percent,
+      context: position.context || {}, variant: this.positionVariantValue
+    }
     try {
       const data = await this.putPosition(body)
       this.handleWritebackDecision(data?.writeback, body)
@@ -2258,9 +2327,11 @@ export default class extends Controller {
   handleVisibilityChange() {
     if (document.visibilityState === "visible") {
       this.armLivePoll()
+      this.acquireWakeLock() // released while hidden — the platform lock doesn't survive a background tab
       return
     }
     this.clearLivePoll()
+    this.releaseWakeLock()
     // The same reliable-fallback reasoning as the pagehide listener in
     // connect() — visibilitychange -> hidden fires for tab switches, tab
     // close, and OS backgrounding alike (including on iOS Safari, where

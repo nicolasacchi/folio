@@ -34,8 +34,7 @@ RSpec.describe "Deliveries", type: :request do
       }.not_to change(Delivery, :count)
 
       expect(response).to redirect_to(book_path(book))
-      follow_redirect!
-      expect(response.body).to match(/No Kindle selected|preferred Kindle/i)
+      expect(flash[:alert]).to match(/No Kindle selected|preferred Kindle/i)
     end
 
     it "is idempotent for an already-queued book" do
@@ -60,47 +59,112 @@ RSpec.describe "Deliveries", type: :request do
       }.not_to have_enqueued_job(EnsureKindleFormatJob)
     end
 
-    describe "?raw=1 (the untouched-original variant)" do
-      it "defaults a fresh delivery to raw: false" do
+    describe "variant selection (?variant=, plus legacy ?raw= mapping)" do
+      it "defaults a fresh delivery to variant: 'auto'" do
         post "/deliveries", params: { book_id: book.id, device_id: device.id }
 
-        expect(Delivery.last.raw).to be(false)
+        expect(Delivery.last.variant).to eq("auto")
       end
 
-      it "persists raw: true on a fresh delivery" do
-        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+      it "persists variant: 'original' on a fresh delivery" do
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "original" }
 
-        expect(Delivery.last.raw).to be(true)
+        expect(Delivery.last.variant).to eq("original")
       end
 
-      it "flips an existing delivery's raw on re-send, without creating a second row" do
-        delivery = create(:delivery, book: book, device: device, raw: false)
+      it "flips an existing delivery's variant on re-send, without creating a second row" do
+        delivery = create(:delivery, book: book, device: device, variant: "auto")
 
         expect {
-          post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "original" }
         }.not_to change(Delivery, :count)
 
-        expect(delivery.reload.raw).to be(true)
+        expect(delivery.reload.variant).to eq("original")
       end
 
-      it "leaves an already-raw delivery's raw untouched on a plain re-send (no raw param at all)" do
-        delivery = create(:delivery, book: book, device: device, raw: true)
+      it "leaves an already-'original' delivery's variant untouched on a plain re-send (no variant param at all)" do
+        delivery = create(:delivery, book: book, device: device, variant: "original")
 
         post "/deliveries", params: { book_id: book.id, device_id: device.id }
 
-        expect(delivery.reload.raw).to be(true)
+        expect(delivery.reload.variant).to eq("original")
       end
 
-      it "flips an already-raw delivery back with an explicit raw=0" do
-        delivery = create(:delivery, book: book, device: device, raw: true)
+      it "flips an already-'original' delivery back with an explicit variant=auto" do
+        delivery = create(:delivery, book: book, device: device, variant: "original")
 
-        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 0 }
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "auto" }
 
-        expect(delivery.reload.raw).to be(false)
+        expect(delivery.reload.variant).to eq("auto")
+      end
+
+      it "ignores an unrecognized variant value (leaves the delivery's variant alone)" do
+        delivery = create(:delivery, book: book, device: device, variant: "auto")
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "bogus" }
+
+        expect(delivery.reload.variant).to eq("auto")
+      end
+
+      describe "legacy ?raw= param" do
+        it "maps raw=1 onto variant: 'original'" do
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
+
+          expect(Delivery.last.variant).to eq("original")
+        end
+
+        it "maps raw=0 onto variant: 'auto'" do
+          delivery = create(:delivery, book: book, device: device, variant: "original")
+
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 0 }
+
+          expect(delivery.reload.variant).to eq("auto")
+        end
+
+        it "is ignored once an explicit variant= is also given" do
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "text", raw: 1 }
+
+          expect(Delivery.last.variant).to eq("text")
+        end
       end
     end
 
-    describe "flash message naming the OCR/raw variant" do
+    describe "variant=text" do
+      it "queues TextCompanionJob when the kindle_file is a pdf and the companion isn't usable yet" do
+        create(:book_file, book: book, format: "pdf")
+
+        expect {
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "text" }
+        }.to have_enqueued_job(TextCompanionJob)
+
+        expect(Delivery.last.variant).to eq("text")
+      end
+
+      it "does not queue TextCompanionJob when the kindle_file isn't a pdf" do
+        create(:book_file, book: book, format: "azw3")
+
+        expect {
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "text" }
+        }.not_to have_enqueued_job(TextCompanionJob)
+      end
+
+      it "does not queue TextCompanionJob once the text-companion AZW3 is already usable" do
+        pdf = create(:book_file, :on_disk, book: book, format: "pdf")
+        relative = "text/#{book.public_id}.azw3"
+        FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+        File.write(Library.base_root.join(relative), "azw3 bytes")
+        text_relative = "text/#{book.public_id}.txt"
+        FileUtils.mkdir_p(Library.base_root.join(text_relative).dirname)
+        File.write(Library.base_root.join(text_relative), "text")
+        pdf.update!(text_path: text_relative, text_source_sha256: pdf.sha256, text_kindle_path: relative)
+
+        expect {
+          post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "text" }
+        }.not_to have_enqueued_job(TextCompanionJob)
+      end
+    end
+
+    describe "flash message naming the variant" do
       let!(:pdf_file) { create(:book_file, book: book, format: "pdf") }
 
       def make_ocr_fresh!
@@ -110,77 +174,80 @@ RSpec.describe "Deliveries", type: :request do
         pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
       end
 
-      it "names the text-layer variant when a fresh send defaults to it" do
+      it "names the text-layer variant when a fresh send defaults to auto" do
         make_ocr_fresh!
 
         post "/deliveries", params: { book_id: book.id, device_id: device.id }
-        follow_redirect!
 
-        expect(response.body).to include("Queued for #{device.name} (text layer).")
+        expect(flash[:notice]).to eq("Queued for #{device.name} (text layer).")
       end
 
       it "names the original-scan variant when a fresh send asks for it" do
         make_ocr_fresh!
 
-        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
-        follow_redirect!
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "original" }
 
-        expect(response.body).to include("Queued for #{device.name} (original scan).")
+        expect(flash[:notice]).to eq("Queued for #{device.name} (original scan).")
       end
 
       it "says so explicitly when flipping an existing delivery to the original scan" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
 
-        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
-        follow_redirect!
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "original" }
 
-        expect(response.body).to include("Switched #{device.name} to the original scan — it will re-deliver.")
+        expect(flash[:notice]).to eq("Switched #{device.name} to the original scan — it will re-deliver.")
       end
 
       it "says so explicitly when flipping an existing delivery back to the text layer" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: true)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "original")
 
-        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 0 }
-        follow_redirect!
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "auto" }
 
-        expect(response.body).to include("Switched #{device.name} to the text layer — it will re-deliver.")
+        expect(flash[:notice]).to eq("Switched #{device.name} to the text layer — it will re-deliver.")
+      end
+
+      it "names the text-only variant on a fresh send, even without a fresh OCR companion" do
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "text" }
+
+        expect(flash[:notice]).to eq("Queued for #{device.name} (text only).")
+      end
+
+      it "says so explicitly (in its own wording) when flipping an existing delivery to the text-only version" do
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
+
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "text" }
+
+        expect(flash[:notice]).to eq("Switched #{device.name} to the text-only version — it will re-deliver.")
       end
 
       it "says 'Queued', not 'Switched', when re-sending a previously removed delivery with a different variant" do
         make_ocr_fresh!
-        delivery = create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        delivery = create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
         delivery.mark_removed!
 
-        post "/deliveries", params: { book_id: book.id, device_id: device.id, raw: 1 }
-        follow_redirect!
+        post "/deliveries", params: { book_id: book.id, device_id: device.id, variant: "original" }
 
-        expect(response.body).to include("Queued for #{device.name} (original scan).")
-        expect(response.body).not_to include("Switched")
+        expect(flash[:notice]).to eq("Queued for #{device.name} (original scan).")
       end
 
       it "keeps the plain 'Already queued' message when nothing about the variant changes" do
         make_ocr_fresh!
-        create(:delivery, book: book, device: device, delivered_at: Time.current, raw: false)
+        create(:delivery, book: book, device: device, delivered_at: Time.current, variant: "auto")
 
         post "/deliveries", params: { book_id: book.id, device_id: device.id }
-        follow_redirect!
 
-        expect(response.body).to include("Already queued for #{device.name}.")
-        expect(response.body).not_to include("Switched")
+        expect(flash[:notice]).to eq("Already queued for #{device.name}.")
       end
 
-      it "keeps today's plain messages verbatim for a book with no OCR companion" do
+      it "keeps today's plain messages verbatim for a book with no OCR companion and no variant requested" do
         plain_book = create(:book)
         create(:book_file, book: plain_book, format: "azw3")
 
         post "/deliveries", params: { book_id: plain_book.id, device_id: device.id }
-        follow_redirect!
 
-        expect(response.body).to include("Queued for #{device.name}.")
-        expect(response.body).not_to include("(text layer)")
-        expect(response.body).not_to include("(original scan)")
+        expect(flash[:notice]).to eq("Queued for #{device.name}.")
       end
     end
   end

@@ -42,6 +42,7 @@ module Library
     FileUtils.rm_rf(reading_states_root.join(book.public_id))
     FileUtils.rm_f(Dir.glob(base_root.join("prepared", "#{book.public_id}.*").to_s))
     FileUtils.rm_f(Dir.glob(base_root.join("ocr", "#{book.public_id}.*").to_s))
+    FileUtils.rm_f(Dir.glob(base_root.join("text", "#{book.public_id}.*").to_s))
     FileUtils.rm_f(base_root.join("thumbnails", "#{book.public_id}.jpg"))
   end
 

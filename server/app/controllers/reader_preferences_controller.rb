@@ -13,7 +13,7 @@ class ReaderPreferencesController < ApplicationController
     raw = params[:preferences].presence || params
     raw.permit(
       :fontSize, :lineHeight, :margin, :theme, :flow, :fontFamily,
-      :justify, :hyphenate
+      :justify, :hyphenate, :keepScreenOn
     )
   end
 end

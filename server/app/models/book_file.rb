@@ -75,50 +75,85 @@ class BookFile < ApplicationRecord
     Library::KindlePrep.preparable?(self) && !prepared_fresh?
   end
 
-  # raw: true is the per-Delivery "send the untouched scan" choice (see
-  # Delivery#raw) — it skips the ocr_fresh? branch only. Prepared
-  # precedence stays first regardless: PATCHABLE_FORMATS excludes pdf and
-  # OCR only ever applies to pdf rows, so prepared and OCR never compete
-  # and raw only ever bypasses OCR, never a prepared copy.
-  def delivery_path(raw: false)
-    if prepared_fresh?
-      prepared_absolute_path
-    elsif ocr_fresh? && !raw
-      ocr_absolute_path
+  # variant: is the per-Delivery choice (see Delivery::VARIANTS,
+  # Delivery#variant): "auto" is the historical default precedence
+  # (prepared > OCR companion > raw); "original" skips the ocr_fresh?
+  # branch only (today's old raw:true); "text" prefers the text-companion
+  # AZW3 (see Library::TextCompanion, TextCompanionJob) when it's usable,
+  # else falls all the way back through the "auto" chain — a device asking
+  # for the text variant should get *something* immediately (the pdf),
+  # then re-deliver once the AZW3 build lands (its sha changes). Prepared
+  # precedence stays first for "auto"/"original" regardless of either:
+  # PATCHABLE_FORMATS excludes pdf and OCR only ever applies to pdf rows,
+  # so prepared and OCR never actually compete.
+  def delivery_path(variant: "auto")
+    case variant
+    when "text"
+      text_kindle_usable? ? text_kindle_absolute_path : delivery_path(variant: "auto")
+    when "original"
+      prepared_fresh? ? prepared_absolute_path : absolute_path
     else
-      absolute_path
+      if prepared_fresh?
+        prepared_absolute_path
+      elsif ocr_fresh?
+        ocr_absolute_path
+      else
+        absolute_path
+      end
     end
   end
 
-  def delivery_sha256(raw: false)
-    if prepared_fresh?
-      prepared_sha256
-    elsif ocr_fresh? && !raw
-      ocr_sha256
+  def delivery_sha256(variant: "auto")
+    case variant
+    when "text"
+      text_kindle_usable? ? text_kindle_sha256 : delivery_sha256(variant: "auto")
+    when "original"
+      prepared_fresh? ? prepared_sha256 : sha256
     else
-      sha256
+      if prepared_fresh?
+        prepared_sha256
+      elsif ocr_fresh?
+        ocr_sha256
+      else
+        sha256
+      end
     end
   end
 
-  def delivery_size(raw: false)
-    if prepared_fresh?
-      prepared_size
-    elsif ocr_fresh? && !raw
-      ocr_size
+  def delivery_size(variant: "auto")
+    case variant
+    when "text"
+      text_kindle_usable? ? text_kindle_size : delivery_size(variant: "auto")
+    when "original"
+      prepared_fresh? ? prepared_size : size
     else
-      size
+      if prepared_fresh?
+        prepared_size
+      elsif ocr_fresh?
+        ocr_size
+      else
+        size
+      end
     end
   end
 
-  # Preparation may change the container (azw3 → joint mobi), so the
-  # delivered name/format follow the prepared file, keeping the human
-  # "Title -- Author" stem.
-  def delivery_format
-    prepared_fresh? ? File.extname(prepared_path).delete_prefix(".").presence || format : format
+  # Preparation (azw3 → joint mobi) or a text-companion AZW3 build may
+  # change the container, so the delivered format follows whichever file
+  # actually gets served in each of those two cases; every other case
+  # (including "auto" falling back to the OCR companion, which is still a
+  # pdf) keeps the book_file's own #format.
+  def delivery_format(variant: "auto")
+    if variant == "text" && text_kindle_usable?
+      File.extname(text_kindle_path).delete_prefix(".").presence || format
+    elsif prepared_fresh?
+      File.extname(prepared_path).delete_prefix(".").presence || format
+    else
+      format
+    end
   end
 
-  def delivery_filename
-    "#{File.basename(filename, '.*')}.#{delivery_format}"
+  def delivery_filename(variant: "auto")
+    "#{File.basename(filename, '.*')}.#{delivery_format(variant: variant)}"
   end
 
   # The OCR text-layer companion (see Library::Ocr, OcrBookJob) is fresh
@@ -144,19 +179,57 @@ class BookFile < ApplicationRecord
     ocr_fresh? ? ocr_absolute_path : absolute_path
   end
 
+  # The plain-text reflow companion (see Library::TextCompanion,
+  # TextCompanionJob) is fresh when it was made from the file's current
+  # content and still exists on disk — mirrors #ocr_fresh?/#prepared_fresh?.
+  # Only ever true for pdf book_files (the only source TextCompanionJob
+  # builds from).
+  def text_fresh?
+    text_path.present? && text_source_sha256 == text_source_content_sha256 && File.exist?(text_absolute_path)
+  end
+
+  def text_absolute_path
+    Library.base_root.join(text_path)
+  end
+
+  # What #text_fresh? (and TextCompanionJob, when stamping a freshly-built
+  # companion) compares text_source_sha256 against: the OCR companion's
+  # sha when it's fresh, else the raw file's — so a re-OCR automatically
+  # stales the text companion, the same way it stales anything else read
+  # off #read_source_path.
+  def text_source_content_sha256
+    ocr_fresh? ? ocr_sha256 : sha256
+  end
+
+  # The Kindle-ready AZW3 built from the text companion (see
+  # TextCompanionJob) is usable once the companion itself is fresh AND the
+  # AZW3 build actually succeeded and is still on disk — the AZW3 half can
+  # fail (or simply not have run yet) even when the plain-text companion
+  # is fine.
+  def text_kindle_usable?
+    text_fresh? && text_kindle_path.present? && File.exist?(text_kindle_absolute_path)
+  end
+
+  def text_kindle_absolute_path
+    Library.base_root.join(text_kindle_path)
+  end
+
   private
 
   # Never touch external files: the scan roots are someone else's data
   # (and mounted read-only in production). The prepared delivery copy
-  # (see Library::KindlePrep) and the OCR companion (see Library::Ocr) are
+  # (see Library::KindlePrep), the OCR companion (see Library::Ocr) and
+  # the text companion + its AZW3 build (see Library::TextCompanion) are
   # always local, regenerable files — even for an external source — so
-  # both are removed unconditionally; the whole point of this hook is that
+  # all are removed unconditionally; the whole point of this hook is that
   # a lone book_file destroy (book survives) doesn't leave them orphaned
-  # under storage/prepared or storage/ocr.
+  # under storage/prepared, storage/ocr or storage/text.
   def remove_from_disk
     FileUtils.rm_f(absolute_path) unless external?
     FileUtils.rm_f(prepared_absolute_path) if prepared_path.present?
     FileUtils.rm_f(ocr_absolute_path) if ocr_path.present?
+    FileUtils.rm_f(text_absolute_path) if text_path.present?
+    FileUtils.rm_f(text_kindle_absolute_path) if text_kindle_path.present?
   end
 
   # Keeping the ledger row (as "removed") means the next scan will not

@@ -33,6 +33,17 @@ RSpec.describe Conversion, type: :model do
     end
   end
 
+  describe "kind: text" do
+    let!(:pdf) { create(:book_file, book: book, format: "pdf") }
+
+    it "is a valid pdf -> txt companion build" do
+      text_conversion = build(:conversion, :text, book: book, book_file: pdf)
+      expect(text_conversion).to be_valid
+      expect(text_conversion).to be_text
+      expect(text_conversion).not_to be_ocr
+    end
+  end
+
   it "lets the database reject a second active conversion for the same book/target (index_conversions_on_active_book_target)" do
     create(:conversion, book: book, book_file: source, target_format: "azw3", status: "pending")
 
