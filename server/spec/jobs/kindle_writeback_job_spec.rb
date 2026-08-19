@@ -38,6 +38,15 @@ RSpec.describe KindleWritebackJob do
     expect { described_class.perform_now(book.id, user.id) }.not_to raise_error
   end
 
+  it "ignores a 'text' variant position — only the shared (variant: '') row anchors into the physical Kindle" do
+    marker = "a marker that only the text-variant position has"
+    azw3_with_text(("a" * 200) + marker + ("b" * 200))
+    create(:reader_position, book: book, user: user, variant: "text", context: { "exact" => marker })
+
+    expect(Reader::KindleWriteback).not_to receive(:call)
+    described_class.perform_now(book.id, user.id)
+  end
+
   it "does nothing when the saved context has no exact anchor" do
     create(:reader_position, book: book, user: user, context: {})
 

@@ -325,6 +325,244 @@ RSpec.describe "In-browser reader", type: :request do
     end
   end
 
+  describe "the text-only companion (see Library::TextCompanion, TextCompanionJob)" do
+    let!(:pdf_file) do
+      create(:book_file, book: book, format: "pdf").tap do |file|
+        FileUtils.mkdir_p(file.absolute_path.dirname)
+        File.write(file.absolute_path, "raw scanned pdf bytes")
+        file.update!(size: File.size(file.absolute_path), sha256: Library.sha256(file.absolute_path))
+      end
+    end
+
+    def make_text_fresh!
+      relative = "text/#{book.public_id}.txt"
+      FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+      File.write(Library.base_root.join(relative), "plain text companion body")
+      # #text_source_content_sha256 (not the raw #sha256) — compares
+      # against the OCR companion's sha once one is fresh (see
+      # BookFile#text_fresh?), so this has to be read fresh each call
+      # rather than hardcoded, for specs that make the OCR companion
+      # fresh first.
+      pdf_file.update!(text_path: relative, text_sha256: Library.sha256(Library.base_root.join(relative)),
+        text_source_sha256: pdf_file.reload.text_source_content_sha256)
+    end
+
+    before { sign_in(user) }
+
+    describe "GET /books/:id/read" do
+      it "declares variant 'text' and swaps the filename/format to the companion's own when ?text=1 is fresh" do
+        make_text_fresh!
+
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include('data-reader-variant-value="text"')
+        expect(response.body).to include(%(data-reader-filename-value="#{book.public_id}.txt"))
+        expect(response.body).to include('data-reader-format-value="txt"')
+        expect(response.body).to include(CGI.escapeHTML(read_book_file_path(book, text: 1)))
+      end
+
+      it "falls back to the default variant when ?text=1 is requested but the companion isn't fresh" do
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include('data-reader-variant-value="none"')
+        expect(response.body).to include(%(data-reader-filename-value="#{pdf_file.filename}"))
+      end
+
+      it "shows a 'text only' badge with a switch link back to the default variant" do
+        make_text_fresh!
+
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include(">text only<")
+        expect(response.body).to include(%(href="#{read_book_path(book)}"))
+        expect(response.body).to include(%(title="Switch to the original file"))
+      end
+
+      it "offers a 'text only' switch link from the default variant once the companion is fresh" do
+        make_text_fresh!
+
+        get read_book_path(book)
+
+        expect(response.body).to include('data-reader-variant-value="none"')
+        expect(response.body).to include(%(href="#{read_book_path(book, text: 1)}"))
+        expect(response.body).to include(">text only<")
+      end
+
+      it "offers both the OCR and text switch links together once both companions are fresh" do
+        ocr_path = "ocr/#{pdf_file.id}.ocr.pdf"
+        FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+        File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes with a text layer")
+        pdf_file.update!(ocr_path: ocr_path, ocr_source_sha256: pdf_file.sha256)
+        make_text_fresh!
+
+        get read_book_path(book)
+
+        expect(response.body).to include('data-reader-variant-value="ocr"')
+        expect(response.body).to include(%(href="#{read_book_path(book, raw: 1)}"))
+        expect(response.body).to include(%(href="#{read_book_path(book, text: 1)}"))
+      end
+    end
+
+    describe "GET /books/:id/read/file" do
+      it "serves the text companion as text/plain when ?text=1 is fresh" do
+        make_text_fresh!
+
+        get read_book_file_path(book, text: 1)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.media_type).to eq("text/plain")
+        expect(response.body).to eq("plain text companion body")
+      end
+
+      it "falls back to the raw/ocr resolution when the companion isn't fresh" do
+        get read_book_file_path(book, text: 1)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.b).to eq("raw scanned pdf bytes")
+      end
+
+      it "gives the text variant its own ETag, distinct from the default variant's" do
+        make_text_fresh!
+
+        get read_book_file_path(book)
+        default_etag = response.headers["ETag"]
+
+        get read_book_file_path(book, text: 1)
+        text_etag = response.headers["ETag"]
+
+        expect(text_etag).to be_present
+        expect(text_etag).not_to eq(default_etag)
+      end
+
+      it "does not 304 a stale ETag once the companion is regenerated with different bytes at the same path" do
+        make_text_fresh!
+        get read_book_file_path(book, text: 1)
+        stale_etag = response.headers["ETag"]
+
+        new_bytes = "re-extracted text, a different companion"
+        File.write(Library.base_root.join(pdf_file.text_path), new_bytes)
+        pdf_file.update!(text_sha256: Library.sha256(Library.base_root.join(pdf_file.text_path)))
+
+        get read_book_file_path(book, text: 1), headers: { "If-None-Match" => stale_etag }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.b).to eq(new_bytes.b)
+      end
+
+      it "still 304s the text variant against its own current validators once content is unchanged" do
+        make_text_fresh!
+        get read_book_file_path(book, text: 1)
+        etag = response.headers["ETag"]
+        last_modified = response.headers["Last-Modified"]
+
+        get read_book_file_path(book, text: 1), headers: { "If-None-Match" => etag, "If-Modified-Since" => last_modified }
+
+        expect(response).to have_http_status(:not_modified)
+      end
+    end
+
+    describe "fraction-only seeding across variants" do
+      it "seeds the text variant's initial fraction from the plain variant's saved position, without its cfi" do
+        make_text_fresh!
+        create(:reader_position, book: book, user: user, variant: "", cfi: "epubcfi(/6/2!/4)", fraction: 0.5, percent: 50.0)
+
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include('data-reader-fraction-value="0.5"')
+        expect(response.body).not_to include("epubcfi(/6/2!/4)")
+      end
+
+      it "seeds the plain variant from a saved text position's fraction, without its cfi" do
+        make_text_fresh!
+        create(:reader_position, book: book, user: user, variant: "text", cfi: "epubcfi(text/9)", fraction: 0.75, percent: 75.0)
+
+        get read_book_path(book)
+
+        expect(response.body).to include('data-reader-fraction-value="0.75"')
+        expect(response.body).not_to include("epubcfi(text/9)")
+      end
+
+      it "prefers an existing row for the requested variant over cross-variant seeding" do
+        make_text_fresh!
+        create(:reader_position, book: book, user: user, variant: "", cfi: "epubcfi(/6/2!/4)", fraction: 0.1, percent: 10.0)
+        create(:reader_position, book: book, user: user, variant: "text", cfi: "epubcfi(text/1)", fraction: 0.9, percent: 90.0)
+
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include('data-reader-cfi-value="epubcfi(text/1)"')
+        expect(response.body).to include('data-reader-fraction-value="0.9"')
+      end
+
+      it "renders no initial position at all when neither variant has one yet" do
+        make_text_fresh!
+
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include('data-reader-cfi-value=""')
+      end
+    end
+
+    describe "PUT /books/:id/read/position with variant: 'text'" do
+      before { make_text_fresh! }
+
+      it "renders data-reader-position-variant-value=\"text\" on the reader shell" do
+        get read_book_path(book, text: 1)
+
+        expect(response.body).to include('data-reader-position-variant-value="text"')
+      end
+
+      it "renders data-reader-position-variant-value=\"\" for every other variant" do
+        get read_book_path(book)
+
+        expect(response.body).to include('data-reader-position-variant-value=""')
+      end
+
+      it "creates a separate row for variant: 'text', without touching the shared '' row" do
+        put read_book_position_path(book), params: { cfi: "epubcfi(/6/2!/4)", fraction: 0.1, percent: 10 }
+
+        expect {
+          put read_book_position_path(book),
+            params: { cfi: "epubcfi(text/1)", fraction: 0.4, percent: 40, variant: "text" }
+        }.to change(ReaderPosition, :count).by(1)
+
+        plain = ReaderPosition.find_by(book: book, user: user, variant: "")
+        text = ReaderPosition.find_by(book: book, user: user, variant: "text")
+        expect(plain).to have_attributes(cfi: "epubcfi(/6/2!/4)", fraction: 0.1)
+        expect(text).to have_attributes(cfi: "epubcfi(text/1)", fraction: 0.4)
+      end
+
+      it "falls back to the shared '' row for an unrecognized variant value" do
+        put read_book_position_path(book),
+          params: { cfi: "epubcfi(/6/2!/4)", fraction: 0.1, percent: 10, variant: "bogus" }
+
+        expect(ReaderPosition.count).to eq(1)
+        expect(ReaderPosition.find_by(book: book, user: user, variant: "")).to be_present
+      end
+
+      it "reports a 'not_applicable' write-back decision for a text-variant position, even with context present" do
+        create(:device, kind: "kindle", reader_writeback: true)
+
+        expect {
+          put read_book_position_path(book),
+            params: { percent: 40, context: { exact: "anchor text" }, variant: "text" }
+        }.not_to have_enqueued_job(KindleWritebackJob)
+
+        expect(JSON.parse(response.body)).to eq("writeback" => "not_applicable")
+      end
+    end
+
+    describe "GET /books/:id/read/state" do
+      it "ignores a 'text'-variant position and reports a nil web position when only that exists" do
+        create(:reader_position, book: book, user: user, variant: "text",
+          cfi: "epubcfi(text/1)", fraction: 0.5, percent: 50.0)
+
+        get read_book_state_path(book)
+
+        expect(JSON.parse(response.body)["web"]).to be_nil
+      end
+    end
+  end
+
   describe "PUT /books/:id/read/position" do
     it "requires authentication" do
       expect {

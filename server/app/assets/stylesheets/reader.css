@@ -167,11 +167,16 @@
   white-space: nowrap;
 }
 
-/* OCR/raw variant indicator (reader/show.html.erb) — a plain .stamp, but
-   pinned to its own width (unlike .reader-title above) so it never
-   competes with the title for the shrink budget on narrow bars. */
+/* Variant indicator (reader/show.html.erb, see ReaderHelper): a current-
+   variant .stamp plus zero or more quiet switch links, pinned to its own
+   width (unlike .reader-title above) so it never competes with the title
+   for the shrink budget on narrow bars. */
 .reader-variant-badge {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  white-space: nowrap;
 }
 
 /* ---------- Icon buttons ----------
@@ -655,6 +660,12 @@
   gap: 1rem;
   padding: .8rem 1rem;
   border-bottom: 1px solid var(--line);
+}
+/* Same footgun as .reader-loading/.reader-icon-btn above — the keep-screen-on
+   row is hidden via [hidden] when the Wake Lock API is unsupported
+   (reader_controller.js), which display:flex above would otherwise beat. */
+.reader-settings-row[hidden] {
+  display: none;
 }
 .reader-settings-row label { margin: 0; }
 .reader-settings-row input[type="range"] {

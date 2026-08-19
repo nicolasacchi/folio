@@ -38,6 +38,74 @@ RSpec.describe Book, type: :model do
     end
   end
 
+  describe "#text_companion_source_file" do
+    let!(:book) { create(:book) }
+
+    it "is nil when the book has no pdf file" do
+      create(:book_file, book: book, format: "epub")
+      expect(book.text_companion_source_file).to be_nil
+    end
+
+    it "is the pdf book_file when it's the book's Kindle-delivery file" do
+      pdf = create(:book_file, book: book, format: "pdf")
+      expect(book.text_companion_source_file).to eq(pdf)
+    end
+
+    it "is nil when a richer Kindle format already exists (pdf isn't the kindle_file)" do
+      create(:book_file, book: book, format: "pdf")
+      create(:book_file, book: book, format: "azw3")
+      expect(book.text_companion_source_file).to be_nil
+    end
+  end
+
+  describe "#queue_text_companion!" do
+    let!(:book) { create(:book) }
+
+    it "is nil (and queues nothing) when there is no pdf source" do
+      create(:book_file, book: book, format: "epub")
+
+      expect { expect(book.queue_text_companion!).to be_nil }
+        .not_to have_enqueued_job(TextCompanionJob)
+    end
+
+    it "creates a Conversion and queues TextCompanionJob for an eligible pdf" do
+      create(:book_file, book: book, format: "pdf")
+
+      conversion = nil
+      expect {
+        conversion = book.queue_text_companion!
+      }.to have_enqueued_job(TextCompanionJob).with { |id| conversion&.id == id }
+
+      expect(conversion).to be_a(Conversion)
+      expect(conversion).to be_text
+      expect(conversion).to be_pending
+    end
+
+    it "returns the existing active conversion instead of queueing a second one" do
+      pdf = create(:book_file, book: book, format: "pdf")
+      existing = create(:conversion, :text, book: book, book_file: pdf, status: "running")
+
+      expect { expect(book.queue_text_companion!).to eq(existing) }
+        .not_to have_enqueued_job(TextCompanionJob)
+    end
+
+    it "is nil (and queues nothing) once the text-companion AZW3 is already usable" do
+      pdf = create(:book_file, :on_disk, book: book, format: "pdf")
+      relative = "text/#{book.public_id}.azw3"
+      FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+      File.write(Library.base_root.join(relative), "azw3 bytes")
+      pdf.update!(
+        text_path: "text/#{book.public_id}.txt", text_source_sha256: pdf.sha256,
+        text_kindle_path: relative
+      )
+      FileUtils.mkdir_p(Library.base_root.join(pdf.text_path).dirname)
+      File.write(Library.base_root.join(pdf.text_path), "text")
+
+      expect { expect(book.queue_text_companion!).to be_nil }
+        .not_to have_enqueued_job(TextCompanionJob)
+    end
+  end
+
   describe "#conversion_failed_without_deliverable?" do
     let!(:book) { create(:book) }
     let!(:source) { create(:book_file, book: book, format: "epub") }

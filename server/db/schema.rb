@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_15_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_19_120002) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -57,6 +57,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_000001) do
     t.string "sha256", null: false
     t.integer "size", null: false
     t.string "source", default: "upload", null: false
+    t.string "text_kindle_path"
+    t.string "text_kindle_sha256"
+    t.integer "text_kindle_size"
+    t.string "text_path"
+    t.string "text_sha256"
+    t.integer "text_size"
+    t.string "text_source_sha256"
     t.datetime "updated_at", null: false
     t.index ["book_id", "format"], name: "index_book_files_on_book_id_and_format", unique: true
     t.index ["book_id"], name: "index_book_files_on_book_id"
@@ -114,9 +121,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_000001) do
     t.integer "device_id", null: false
     t.string "evict_reason"
     t.datetime "evict_requested_at"
-    t.boolean "raw", default: false, null: false
     t.datetime "removed_at"
     t.datetime "updated_at", null: false
+    t.string "variant", default: "auto", null: false
     t.index ["book_id", "device_id"], name: "index_deliveries_on_book_id_and_device_id", unique: true
     t.index ["book_id"], name: "index_deliveries_on_book_id"
     t.index ["device_id", "evict_requested_at"], name: "index_deliveries_on_device_active", where: "removed_at IS NULL"
@@ -217,7 +224,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_000001) do
     t.float "percent"
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
-    t.index ["book_id", "user_id"], name: "index_reader_positions_on_book_id_and_user_id", unique: true
+    t.string "variant", default: "", null: false
+    t.index ["book_id", "user_id", "variant"], name: "index_reader_positions_on_book_id_and_user_id_and_variant", unique: true
     t.index ["book_id"], name: "index_reader_positions_on_book_id"
     t.index ["user_id"], name: "index_reader_positions_on_user_id"
   end

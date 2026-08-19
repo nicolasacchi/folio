@@ -63,6 +63,28 @@
               <%= render "shared/icon", name: "scan-text" %>Original scan
             <% end %>
           <% end %>
+          <%# The text-only companion (see Library::TextCompanion,
+              TextCompanionJob) only ever applies to a pdf that's actually
+              this book's readable_file — same "no dead link on a
+              mixed-format book" guard as the Original scan button above (a
+              richer preferred format means #readable_file isn't this pdf,
+              so #text_fresh? there would just be about a file the reader
+              never opens). %>
+          <% if (text_source = @book.text_companion_source_file) && @book.readable_file == text_source %>
+            <% if text_source.text_fresh? %>
+              <%= link_to read_book_path(@book, text: 1), class: "btn",
+                    title: "Open the plain-text reflow version" do %>
+                <%= render "shared/icon", name: "file-text" %>Text only
+              <% end %>
+            <% elsif @book.conversions.active.exists?(kind: "text") %>
+              <span class="stamp stamp--pending">building text version…</span>
+            <% else %>
+              <%= button_to build_text_book_path(@book), class: "btn btn--quiet",
+                    title: "Extract a plain-text reflow version and build its Kindle AZW3" do %>
+                <%= render "shared/icon", name: "file-text" %>Build text version
+              <% end %>
+            <% end %>
+          <% end %>
         <% end %>
         <% if (kindle_file = @book.kindle_file) %>
           <%= link_to download_book_path(@book, fmt: kindle_file.format), class: "btn", data: { turbo: false } do %>
@@ -75,15 +97,22 @@
         <%# The device gets the OCR text layer by default when the kindle_file
             has one (see BookFile#delivery_path) — offer a per-device "send
             the untouched scan instead" affordance next to it, and its
-            mirror once that switch has been made ("text layer", raw=0, to
-            switch back). Only where a send is still pending (nothing on the
-            device would need undoing) or already delivered (switching
-            either way needs no extra plumbing: the manifest sha changes and
-            kindled re-fetches, see Delivery#raw); skipped entirely while an
+            mirror once that switch has been made ("text layer", variant=
+            auto, to switch back); likewise a "send the text-only version
+            instead" affordance once the kindle_file is a pdf (see
+            Book#text_companion_source_file) — the AZW3 doesn't need to
+            exist yet, sending "text" alone queues its build and the
+            device gets the plain pdf in the meantime (see
+            DeliveriesController, BookFile#delivery_path's "text" branch).
+            Only where a send is still pending (nothing on the device
+            would need undoing) or already delivered (switching needs no
+            extra plumbing: the manifest sha changes and kindled
+            re-fetches, see Delivery#variant); skipped entirely while an
             eviction is queued (that state's own "Keep" action already
             un-does the pending removal — a second, unrelated action there
             would be confusing). %>
         <% ocr_original = @book.kindle_file&.ocr_fresh? %>
+        <% text_capable = @book.text_companion_source_file.present? %>
         <div class="action-row">
           <% @devices.each do |device| %>
             <% delivery = @deliveries[device.id] %>
@@ -93,8 +122,12 @@
                 <%= render "shared/icon", name: "send" %>Send to <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %>
               <% end %>
               <% if ocr_original %>
-                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 1), class: "small muted link-quiet",
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, variant: "original"), class: "small muted link-quiet",
                       title: "Send the untouched scan to #{device.name}, without the OCR text layer" do %>send original scan<% end %>
+              <% end %>
+              <% if text_capable %>
+                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, variant: "text"), class: "small muted link-quiet",
+                      title: "Send the plain-text reflow version to #{device.name} instead" do %>send text only<% end %>
               <% end %>
             <% elsif delivery.evict_requested? %>
               <%= button_to eviction_path(delivery_id: delivery.id), method: :delete, class: "btn btn--quiet",
@@ -107,34 +140,15 @@
                     form: { data: { turbo_confirm: "Delete “#{@book.title}” from #{device.name} on next sync?" } } do %>
                 <%= render "shared/icon", name: "check" %>On <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %><%= render "shared/icon", name: "x" %>
               <% end %>
-              <%# Names what's actually on the device right now — the switch
-                  link next to it only says which way it goes, not where it
-                  started. %>
-              <% if ocr_original %>
-                <span class="stamp"><%= delivery.raw ? "original scan" : "text layer" %></span>
-              <% end %>
-              <% if ocr_original && !delivery.raw %>
-                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 1), class: "small muted link-quiet",
-                      title: "Re-send #{device.name}'s copy as the untouched scan, without the OCR text layer" do %>switch to original scan<% end %>
-              <% elsif ocr_original && delivery.raw %>
-                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 0), class: "small muted link-quiet",
-                      title: "Re-send #{device.name}'s copy with the OCR text layer" do %>switch to text layer<% end %>
-              <% end %>
+              <%= render "device_variant_switches", device: device, delivery: delivery,
+                    ocr_original: ocr_original, text_capable: text_capable %>
             <% else %>
               <%= button_to delivery_path(delivery), method: :delete, class: "btn btn--quiet btn--evict",
                     title: "Remove from queue" do %>
                 <%= render "shared/icon", name: "clock" %>Queued <%= device.name %><% if preferred %><%= render "shared/icon", name: "star" %><span class="visually-hidden">(preferred)</span><% end %><%= render "shared/icon", name: "x" %>
               <% end %>
-              <% if ocr_original %>
-                <span class="stamp"><%= delivery.raw ? "original scan" : "text layer" %></span>
-              <% end %>
-              <% if ocr_original && !delivery.raw %>
-                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 1), class: "small muted link-quiet",
-                      title: "Switch #{device.name}'s queued send to the untouched scan, without the OCR text layer" do %>switch to original scan<% end %>
-              <% elsif ocr_original && delivery.raw %>
-                <%= button_to deliveries_path(book_id: @book.id, device_id: device.id, raw: 0), class: "small muted link-quiet",
-                      title: "Switch #{device.name}'s queued send back to the OCR text layer" do %>switch to text layer<% end %>
-              <% end %>
+              <%= render "device_variant_switches", device: device, delivery: delivery,
+                    ocr_original: ocr_original, text_capable: text_capable %>
             <% end %>
           <% end %>
         </div>
@@ -291,6 +305,9 @@
              "OCR text layer present (a richer format is preferred for reading and search)" %>
         <span class="stamp stamp--ready" title="<%= ocr_stamp_title %>">text layer</span>
       <% end %>
+      <% if file.text_fresh? %>
+        <span class="stamp stamp--ready" title="Plain-text reflow companion present (see Library::TextCompanion)">text only</span>
+      <% end %>
       <span class="grow small muted"><%= format_size(file.size) %> · <%= file.source %></span>
       <% if file.available? %>
         <%= link_to download_book_path(@book, fmt: file.format), class: "btn btn--quiet", data: { turbo: false } do %>
@@ -301,6 +318,10 @@
         <% if file.ocr_fresh? %>
           <%= link_to "original", download_book_path(@book, fmt: file.format, raw: 1),
                 class: "small muted", data: { turbo: false }, title: "Download the untouched scan, without the OCR text layer" %>
+        <% end %>
+        <% if file.text_fresh? %>
+          <%= link_to "text only", download_book_path(@book, fmt: file.format, text: 1),
+                class: "small muted", data: { turbo: false }, title: "Download the plain-text reflow version" %>
         <% end %>
       <% end %>
     </div>

@@ -21,20 +21,20 @@ class Api::V1::ManifestsController < Api::V1::BaseController
       # rebuild in the background; the sha change re-delivers next poll.
       PrepareKindleFileJob.perform_later(book.id) if file.needs_preparation?
 
-      # This device's own OCR/original choice (Delivery#raw) — passed into
-      # delivery_size/delivery_sha256 so a raw switch alone changes the sha
-      # and re-triggers a re-fetch next poll.
-      raw = deliveries_by_book.fetch(book.id).raw
+      # This device's own variant choice (Delivery#variant) — passed into
+      # delivery_format/filename/size/sha256 so a variant switch alone
+      # changes the sha and re-triggers a re-fetch next poll.
+      variant = deliveries_by_book.fetch(book.id).variant
 
       {
         id: book.public_id,
         title: book.title,
         author: book.author,
         series: book.series,
-        format: file.delivery_format,
-        filename: file.delivery_filename,
-        size: file.delivery_size(raw: raw),
-        sha256: file.delivery_sha256(raw: raw),
+        format: file.delivery_format(variant: variant),
+        filename: file.delivery_filename(variant: variant),
+        size: file.delivery_size(variant: variant),
+        sha256: file.delivery_sha256(variant: variant),
         url: api_v1_book_file_path(public_id: book.public_id, fmt: file.format),
         thumbnail: thumbnail_summary(book, file),
         reading_state: reading_state_summary(book)
@@ -95,7 +95,7 @@ class Api::V1::ManifestsController < Api::V1::BaseController
       {
         id: book.public_id,
         delivery_id: delivery.id,
-        filename: file.delivery_filename,
+        filename: file.delivery_filename(variant: delivery.variant),
         thumbnail_filename: thumbnail,
         reason: delivery.evict_reason,
         ack_url: api_v1_ack_removal_path(delivery)

@@ -100,16 +100,44 @@ class ReaderController < ApplicationController
     @book_lang = normalized_book_lang
     @reader_preferences = Current.user.reader_preferences
     if @file
-      @initial_position = @book.reader_positions.find_by(user: Current.user)
-      @text_length = mobi_text_length
       # Threaded into the file URL the reader shell fetches (see
       # reader/show.html.erb) so #file resolves the same variant.
       @raw = params[:raw].present?
-      # "none" | "ocr" | "raw" — mirrors BookFile#read_source_path/#ocr_fresh?
-      # so the badge the view renders always names what #file actually
-      # serves. No OCR companion at all means there's nothing to switch
-      # between, regardless of ?raw=.
-      @variant = @file.ocr_fresh? ? (@raw ? "raw" : "ocr") : "none"
+      # ?text=1 asks for the plain-text reflow companion (see
+      # Library::TextCompanion, TextCompanionJob) — silently ignored
+      # (falls through to the ordinary ocr/raw/none resolution below)
+      # unless it's actually fresh for this exact readable_file. That
+      # covers both a stale/never-finished-building link and a book
+      # whose readable_file isn't even the text-companion source (a
+      # richer preferred format — see Book#text_companion_source_file):
+      # #file has to make the identical call so the two never disagree.
+      text_requested = params[:text].present? && @file.text_fresh?
+      # "none" | "ocr" | "raw" | "text" — mirrors
+      # BookFile#read_source_path/#ocr_fresh?/#text_fresh? so the badge
+      # the view renders always names what #file actually serves. text
+      # wins over raw when both are requested and the companion is
+      # fresh; no OCR companion at all means there's nothing to switch
+      # between there, regardless of ?raw=.
+      @variant = if text_requested
+        "text"
+      elsif @file.ocr_fresh?
+        @raw ? "raw" : "ocr"
+      else
+        "none"
+      end
+      # The .txt companion's own basename — NOT the source book_file's
+      # filename — is what actually gets fetched/opened for the text
+      # variant (see #file below); foliate-js picks its txt engine off
+      # this filename's extension (view.js), so a mismatch here would
+      # make it try to parse plain text as whatever the source format was.
+      @reader_filename = @variant == "text" ? File.basename(@file.text_path) : @file.filename
+      @reader_format = @variant == "text" ? "txt" : @file.format
+      # Which reader_positions row (see ReaderPosition, D9) this session
+      # reads/writes — "text" and every other variant never share
+      # pagination (a different underlying file, incompatible cfis).
+      @position_variant = @variant == "text" ? "text" : ""
+      @initial_position = position_for_variant(@position_variant)
+      @text_length = mobi_text_length
     else
       ensure_epub_conversion
       @preparing_conversion = @book.conversions.active.where(target_format: "epub").order(:created_at).first
@@ -118,14 +146,25 @@ class ReaderController < ApplicationController
 
   def file
     @file = @book.readable_file
+    return head :not_found if @file.nil?
+
+    # ?text=1 — the plain-text reflow companion — is its own branch: a
+    # wholly separate underlying path/sha/mime type from the source
+    # book_file, not just another #read_source_path candidate. Falls
+    # through to the ordinary ocr/raw resolution below (rather than
+    # 404ing) when the companion isn't actually fresh, exactly like
+    # #show's @variant resolution — the two must never disagree about
+    # what a given URL serves.
+    return file_text_companion if params[:text].present? && @file.text_fresh?
+
     # The OCR/original choice lives entirely in the URL (?raw=1) rather
     # than session state, so the two variants are already distinct browser
     # cache keys. Existence check, fresh_when and send_file all read this
     # same chosen path so nothing downstream can pick a different variant
     # than what was validated.
     raw = params[:raw].present?
-    path = raw ? @file&.absolute_path : @file&.read_source_path
-    return head :not_found if @file.nil? || !File.exist?(path)
+    path = raw ? @file.absolute_path : @file.read_source_path
+    return head :not_found unless File.exist?(path)
 
     # This app runs with strict_freshness (Rails 8.1 default): once a
     # request carries If-None-Match, the ETag alone decides freshness —
@@ -159,7 +198,12 @@ class ReaderController < ApplicationController
   end
 
   def state
-    position = @book.reader_positions.find_by(user: Current.user)
+    # variant: "" specifically — this endpoint compares web progress
+    # against the physical Kindle's own state (see #kindle_state_json),
+    # and a "text" position has no equivalent on the device (same reason
+    # KindleWritebackJob picks "" explicitly rather than an unordered
+    # find_by over what's now a multi-row-per-book-per-user table).
+    position = @book.reader_positions.find_by(user: Current.user, variant: "")
     render json: {
       web: position && {
         cfi: position.cfi,
@@ -183,25 +227,51 @@ class ReaderController < ApplicationController
     LANG_ALIASES[@book.language.to_s.strip.downcase] || "en"
   end
 
+  # -- text-companion file serving (used by #file) -----------------------
+
+  # Same ETag/freshness shape as the main branch of #file (see its own
+  # comment): text_sha256 is the column TextCompanionJob rewrites on
+  # every regeneration, so a stale cached copy correctly misses instead
+  # of 304ing forever against bytes that changed at the same path.
+  def file_text_companion
+    path = @file.text_absolute_path
+    return head :not_found unless File.exist?(path)
+
+    fresh_when etag: [ path.to_s, @file.text_sha256 ], last_modified: File.mtime(path)
+    return if request.fresh?(response)
+
+    send_file path, type: "text/plain", disposition: "inline"
+  end
+
   # find_or_initialize_by + save! races two tabs/windows opening the same
   # never-before-read book: both see no existing row, and the loser's
-  # save! hits ReaderPosition's user_id/book_id uniqueness validation
-  # instead of a normal update. On this app's SQLite backend that surfaces
-  # as RecordInvalid (the losing save's own uniqueness-validation SELECT
-  # already observes the winner's committed insert); RecordNotUnique is
-  # rescued too for portability to backends where the raw unique index
-  # wins the race instead. One retry against the now-existing row (which
-  # the winner just created) is always enough.
+  # save! hits ReaderPosition's user_id/book_id/variant uniqueness
+  # validation instead of a normal update. On this app's SQLite backend
+  # that surfaces as RecordInvalid (the losing save's own
+  # uniqueness-validation SELECT already observes the winner's committed
+  # insert); RecordNotUnique is rescued too for portability to backends
+  # where the raw unique index wins the race instead. One retry against
+  # the now-existing row (which the winner just created) is always enough.
   def find_or_update_position!
-    position = ReaderPosition.find_or_initialize_by(book: @book, user: Current.user)
+    variant = requested_position_variant
+    position = ReaderPosition.find_or_initialize_by(book: @book, user: Current.user, variant: variant)
     assign_position_attributes(position)
     position.save!
     position
   rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
-    position = ReaderPosition.find_by!(book: @book, user: Current.user)
+    position = ReaderPosition.find_by!(book: @book, user: Current.user, variant: variant)
     assign_position_attributes(position)
     position.save!
     position
+  end
+
+  # Which reader_positions row (see ReaderPosition, D9) this save
+  # targets. The client always sends its own positionVariantValue
+  # (reader_controller.js), but an unrecognized/missing value falls back
+  # to the shared "" row rather than raising.
+  def requested_position_variant
+    variant = params[:variant].to_s
+    ReaderPosition::VARIANTS.include?(variant) ? variant : ""
   end
 
   def assign_position_attributes(position)
@@ -213,13 +283,38 @@ class ReaderController < ApplicationController
     )
   end
 
+  # The row for `variant` if one already exists; else, when the OTHER
+  # variant has a row, a fresh (unsaved) position carrying just that
+  # row's #fraction — never its #cfi, which is meaningless across a
+  # variant change (a different underlying file with its own,
+  # incompatible cfis — see ReaderPosition). nil when neither row exists
+  # yet, same as a brand-new book.
+  def position_for_variant(variant)
+    primary = @book.reader_positions.find_by(user: Current.user, variant: variant)
+    return primary if primary
+
+    other_variant = variant == "text" ? "" : "text"
+    other = @book.reader_positions.find_by(user: Current.user, variant: other_variant)
+    return nil unless other
+
+    ReaderPosition.new(book: @book, user: Current.user, variant: variant, fraction: other.fraction)
+  end
+
   # -- write-back decision (used by #update_position) ------------------
 
-  # One of "disabled" | "no_context" | "skipped_backward" | "enqueued".
-  # See app/services/reader/kindle_writeback.rb for the actual bundle
+  # One of "disabled" | "not_applicable" | "no_context" |
+  # "skipped_backward" | "enqueued". See
+  # app/services/reader/kindle_writeback.rb for the actual bundle
   # rewrite, which KindleWritebackJob drives.
   def writeback_decision(position)
     return "disabled" unless writeback_enabled?
+    # A "text"-variant position has nothing to anchor into on the
+    # physical Kindle: Reader::Anchor only understands the book's own
+    # MOBI/AZW3 text stream (ANCHOR_FORMATS above), never the separate
+    # text-companion .txt (see Library::TextCompanion) — and
+    # KindleWritebackJob only ever reads the "" row anyway (see its own
+    # comment there). Never worth an enqueue.
+    return "not_applicable" if position.variant == "text"
     return "no_context" if position.context.blank? || position.context["exact"].blank?
     return "skipped_backward" if backward_without_confirmation?(position)
 

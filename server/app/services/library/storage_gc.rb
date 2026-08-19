@@ -25,7 +25,8 @@ module Library
 
     # Directories that hold only DB-referenced, regenerable artifacts.
     def swept_directories
-      [ Library::KindlePrep.root, Library::Ocr.root, Library.covers_root, Library::Thumbnails.root ]
+      [ Library::KindlePrep.root, Library::Ocr.root, Library::TextCompanion.root, Library.covers_root,
+       Library::Thumbnails.root ]
     end
 
     # Absolute paths (as strings) every swept directory is allowed to
@@ -38,6 +39,14 @@ module Library
       end
 
       BookFile.where.not(ocr_path: [ nil, "" ]).pluck(:ocr_path).each do |relative|
+        referenced << Library.base_root.join(relative).to_s
+      end
+
+      BookFile.where.not(text_path: [ nil, "" ]).pluck(:text_path).each do |relative|
+        referenced << Library.base_root.join(relative).to_s
+      end
+
+      BookFile.where.not(text_kindle_path: [ nil, "" ]).pluck(:text_kindle_path).each do |relative|
         referenced << Library.base_root.join(relative).to_s
       end
 

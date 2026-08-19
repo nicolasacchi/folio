@@ -10,6 +10,7 @@ Rails.application.routes.draw do
       get :download # ?fmt=azw3, defaults to the Kindle-ready file
       post :reindex # opt in + queue full-text extraction
       post :unindex # opt out + queue removal of stored fulltext
+      post :build_text # queue the text-only companion + its Kindle AZW3
     end
     resources :conversions, only: [ :create ]
   end

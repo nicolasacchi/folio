@@ -16,6 +16,15 @@ module BooksHelper
     number_to_human_size(bytes, precision: 2)
   end
 
+  # Per-device switch link "back to normal" label — used once a delivery
+  # is on the "text" variant (see Delivery::VARIANTS) and there's no fresh
+  # OCR companion to name it after (DeliveriesController's own
+  # #variant_label always says "text layer" there, but that word is
+  # misleading with nothing to actually layer onto).
+  def auto_variant_label(ocr_original)
+    ocr_original ? "text layer" : "original file"
+  end
+
   # Screen-reader announcement for the search mode toggle (books/index) —
   # the visual state is just a bolded word, so this spells out what each
   # mode actually does for the aria-live region next to it.

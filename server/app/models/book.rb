@@ -75,6 +75,46 @@ class Book < ApplicationRecord
     file if file&.available?
   end
 
+  # The pdf book_file a "text only" companion (see Library::TextCompanion,
+  # TextCompanionJob) can be built from — gated on it being the book's
+  # actual Kindle-delivery file (see KINDLE_FORMATS): a richer format
+  # already reflows on its own, so the text variant only matters for a
+  # scanned pdf. Used by BooksController's build_text action, the (later)
+  # UI gating, and DeliveriesController's variant=text handling.
+  def text_companion_source_file
+    file = kindle_file
+    file if file&.format == "pdf"
+  end
+
+  # Queues Library::TextCompanion's build for this book (see
+  # TextCompanionJob), mirroring ConversionsController#create_ocr's
+  # shape/guards: a no-op when there's no eligible pdf, the text variant
+  # is already usable, or a build is already active — returns nil for the
+  # first two, the (existing or freshly queued) Conversion otherwise.
+  #
+  # The active-conversion guard is scoped by target_format, not kind:
+  # index_conversions_on_active_book_target is UNIQUE(book_id,
+  # target_format) across every kind, and the pre-existing "Convert to"
+  # button (ConversionsController#create) can queue a plain kind:"calibre"
+  # target_format:"txt" conversion for this same book_file. Scoping by
+  # kind alone would miss that row and crash create! with
+  # ActiveRecord::RecordNotUnique; rescuing it too is defense in depth
+  # against the inherent check-then-insert race.
+  def queue_text_companion!
+    source = text_companion_source_file
+    return nil unless source
+    return nil if source.text_kindle_usable?
+
+    active = conversions.active.find_by(target_format: "txt")
+    return active if active
+
+    conversion = conversions.create!(book_file: source, target_format: "txt", kind: "text")
+    TextCompanionJob.perform_later(conversion.id)
+    conversion
+  rescue ActiveRecord::RecordNotUnique
+    conversions.active.find_by(target_format: "txt")
+  end
+
   # Best format for the in-browser reader, see READABLE_FORMATS.
   def readable_file
     by_format = book_files.select(&:available?).index_by(&:format)

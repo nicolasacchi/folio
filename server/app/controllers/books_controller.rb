@@ -1,5 +1,5 @@
 class BooksController < ApplicationController
-  before_action :set_book, only: [ :show, :edit, :update, :destroy, :cover, :download, :reindex, :unindex ]
+  before_action :set_book, only: [ :show, :edit, :update, :destroy, :cover, :download, :reindex, :unindex, :build_text ]
 
   PER_PAGE = 48
   SORTS = %w[recent title author].freeze
@@ -140,6 +140,16 @@ class BooksController < ApplicationController
 
   def download
     file = params[:fmt].present? ? @book.file_for(params[:fmt]) : @book.kindle_file
+    # ?text=1 downloads the plain-text reflow companion (see
+    # Library::TextCompanion, TextCompanionJob) instead of this book_file
+    # itself — its own branch since it's a wholly different underlying
+    # file/format, silently falling through to the normal branches below
+    # (rather than 404ing) when there's no fresh companion to serve.
+    if params[:text].present? && file&.text_fresh?
+      return send_file file.text_absolute_path,
+        filename: "#{File.basename(file.filename, '.*')}.txt", type: "text/plain"
+    end
+
     # ?raw=1 bypasses the OCR companion for whoever specifically wants the
     # untouched scan (e.g. to re-run OCR elsewhere) — everyone else gets
     # the text layer for free once one exists, same as the web reader.
@@ -169,6 +179,25 @@ class BooksController < ApplicationController
     @book.update!(fulltext_enabled: false)
     IndexBookJob.perform_later(@book.id)
     redirect_to @book, notice: "Removing from search index…"
+  end
+
+  # "Build text version" button (see Book#queue_text_companion!,
+  # TextCompanionJob): queues the plain-text reflow companion + its
+  # Kindle AZW3 build for this book's pdf. Mirrors reindex/unindex's
+  # shape — a plain flag/queue flip, no target_format picker needed.
+  def build_text
+    unless @book.text_companion_source_file
+      return redirect_to @book, alert: "No scanned PDF to build a text version from."
+    end
+
+    # queue_text_companion! returns nil here only when the companion is
+    # already usable (the no-source case was ruled out above) — a
+    # double-click or a stale page shouldn't claim it's (re)building.
+    if @book.queue_text_companion!
+      redirect_to @book, notice: "Building the text-only version…"
+    else
+      redirect_to @book, notice: "Text-only version is already built."
+    end
   end
 
   private

@@ -6,7 +6,7 @@
     used; unknown names are a bug, not a silent no-render. %>
 <%
   icon_names = %w[
-    book-open download send pencil text-search scan-text trash x star clock check undo
+    book-open download send pencil text-search scan-text file-text trash x star clock check undo
   ]
   raise ArgumentError, "Unknown icon: #{name.inspect}" unless icon_names.include?(name)
 %>
@@ -47,6 +47,11 @@
     <line x1="7" y1="9" x2="17" y2="9"/>
     <line x1="7" y1="12.5" x2="17" y2="12.5"/>
     <line x1="7" y1="16" x2="13" y2="16"/>
+  <% when "file-text" %>
+    <path d="M13.5 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8L13.5 2.5z"/>
+    <polyline points="13.5 2.5 13.5 8 19 8"/>
+    <line x1="8.5" y1="12.5" x2="15.5" y2="12.5"/>
+    <line x1="8.5" y1="16" x2="15.5" y2="16"/>
   <% when "trash" %>
     <line x1="4" y1="7" x2="20" y2="7"/>
     <path d="M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3"/>

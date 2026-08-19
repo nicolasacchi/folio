@@ -25,6 +25,7 @@ RSpec.describe User, type: :model do
       expect(prefs["theme"]).to eq("dark")
       expect(prefs["fontFamily"]).to eq("publisher")
       expect(prefs["hyphenate"]).to eq(true)
+      expect(prefs["keepScreenOn"]).to eq(true)
     end
 
     it "whitelists keys, clamps numbers, and ignores junk without raising" do
@@ -37,6 +38,7 @@ RSpec.describe User, type: :model do
         "fontFamily" => "literata",
         "justify" => true,
         "hyphenate" => "false",
+        "keepScreenOn" => "0",
         "evil" => "drop me",
         "fontSize_hack" => 1
       )
@@ -49,6 +51,7 @@ RSpec.describe User, type: :model do
       expect(result["fontFamily"]).to eq("literata")
       expect(result["justify"]).to eq(true)
       expect(result["hyphenate"]).to eq(false)
+      expect(result["keepScreenOn"]).to eq(false)
       expect(result).not_to have_key("evil")
     end
 

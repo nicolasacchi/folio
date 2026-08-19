@@ -45,6 +45,17 @@ class OcrBookJob < ApplicationJob
     # onto :ocr or :conversion here is the anti-pattern that once starved
     # 8k indexing jobs behind heavy conversion work.
     IndexBookJob.perform_later(book.id)
+    # A text companion (see Library::TextCompanion, TextCompanionJob) that
+    # existed before this run was extracted from the *old* OCR text — the
+    # ocr_sha256 update above just staled it (#text_fresh? compares
+    # against #text_source_content_sha256, which now points at this new
+    # OCR pass). Refresh it so the reader/Kindle text variant carries the
+    # re-OCR forward instead of silently going stale. Reload first: `source`
+    # was loaded once at the top of this (often long-running) job, so a
+    # TextCompanionJob that wrote text_path concurrently wouldn't otherwise
+    # be visible on this in-memory copy.
+    source.reload
+    book.queue_text_companion! if source.text_path.present? && !source.text_fresh?
   rescue Library::Ocr::Error => error
     conversion.mark_failed!(error.message)
   rescue StandardError => error

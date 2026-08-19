@@ -26,6 +26,7 @@ RSpec.describe "Reader preferences", type: :request do
           fontFamily: "bitter",
           justify: true,
           hyphenate: false,
+          keepScreenOn: false,
           unknown: "nope"
         }
       }, as: :json
@@ -40,6 +41,7 @@ RSpec.describe "Reader preferences", type: :request do
       expect(body["fontFamily"]).to eq("bitter")
       expect(body["justify"]).to eq(true)
       expect(body["hyphenate"]).to eq(false)
+      expect(body["keepScreenOn"]).to eq(false)
       expect(body).not_to have_key("unknown")
 
       prefs = user.reload.reader_preferences
