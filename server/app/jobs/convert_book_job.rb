@@ -3,6 +3,17 @@
 class ConvertBookJob < ApplicationJob
   queue_as :conversion
 
+  # ebook-convert can exit 0 while writing a near-empty (or missing) file —
+  # e.g. it can't read an ocrmypdf text layer, so "converting" an OCR'd scan
+  # silently produces 0 bytes. Book 39589's Convert-to-TXT (Conversion #7941)
+  # did exactly this: the 0-byte txt still got ingested and, because both
+  # Book::READABLE_FORMATS and KINDLE_FORMATS rank txt above pdf, became the
+  # book's readable_file AND kindle_file — blank reader, broken book page. No
+  # legitimately converted book of any target format is ever this small, so
+  # anything below the floor is treated as a silent tool failure rather than
+  # ingested.
+  MIN_OUTPUT_SIZE = 128
+
   def perform(conversion_id)
     conversion = Conversion.find_by(id: conversion_id)
     return unless conversion&.pending?
@@ -24,6 +35,15 @@ class ConvertBookJob < ApplicationJob
       # text layer into the derived epub/txt/etc. instead of starting from
       # the original scan's bare images.
       Calibre.convert(source.read_source_path, target, options: options)
+
+      output_size = File.exist?(target) ? File.size(target) : 0
+      if output_size < MIN_OUTPUT_SIZE
+        conversion.mark_failed!(
+          "ebook-convert produced only #{output_size} bytes — treating as a failed conversion instead of ingesting it"
+        )
+        return
+      end
+
       Library::Ingest.call(
         target,
         original_filename: File.basename(target),

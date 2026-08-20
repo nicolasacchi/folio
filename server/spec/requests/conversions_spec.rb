@@ -41,6 +41,22 @@ RSpec.describe "Conversions", type: :request do
       follow_redirect!
       expect(response.body).to include("Unsupported target format")
     end
+
+    # txt stays in Conversion::TARGET_FORMATS (existing rows/validations
+    # still work) but is no longer an offered "Convert to" target — see
+    # Conversion::OFFERED_TARGET_FORMATS. ebook-convert can't reliably
+    # reflow a scanned/OCR'd pdf to txt (see ConvertBookJob::MIN_OUTPUT_SIZE
+    # and the book 39589 / Conversion #7941 incident); the supported reflow
+    # path is Library::TextCompanion (BooksController#build_text).
+    it "rejects a user-submitted txt target the same way it rejects other un-offered targets" do
+      expect {
+        post "/books/#{book.id}/conversions", params: { target_format: "txt" }
+      }.not_to change(Conversion, :count)
+
+      expect(response).to redirect_to(book_path(book))
+      follow_redirect!
+      expect(response.body).to include("Unsupported target format")
+    end
   end
 
   describe "POST /books/:book_id/conversions with kind=ocr" do

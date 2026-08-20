@@ -541,6 +541,25 @@ RSpec.describe "Book detail page", type: :request do
     end
   end
 
+  describe "Convert to buttons" do
+    let!(:book) { create(:book) }
+    let!(:pdf_file) { create(:book_file, book: book, format: "pdf") }
+
+    # txt stays in Conversion::TARGET_FORMATS (existing conversion rows keep
+    # validating) but is no longer offered as a "Convert to" button — see
+    # Conversion::OFFERED_TARGET_FORMATS. ebook-convert can't reliably
+    # reflow a scanned/OCR'd pdf to txt (see ConvertBookJob::MIN_OUTPUT_SIZE
+    # and the book 39589 / Conversion #7941 incident); Library::TextCompanion
+    # (BooksController#build_text, the "Build text version" button) is the
+    # supported replacement.
+    it "does not offer a TXT conversion button for a pdf-only book" do
+      get book_path(book)
+
+      expect(response.body).to include(book_conversions_path(book, target_format: "epub"))
+      expect(response.body).not_to include(book_conversions_path(book, target_format: "txt"))
+    end
+  end
+
   describe "full-text index button" do
     let!(:book) { create(:book) }
 

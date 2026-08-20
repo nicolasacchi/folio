@@ -7,7 +7,7 @@ class ConversionsController < ApplicationController
 
     target = params[:target_format].to_s
 
-    unless Conversion::TARGET_FORMATS.include?(target)
+    unless Conversion::OFFERED_TARGET_FORMATS.include?(target)
       return redirect_to book, alert: "Unsupported target format."
     end
     if book.file_for(target)
