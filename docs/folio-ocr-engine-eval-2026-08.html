@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="kb-category" content="research">
+  <meta name="kb-tags" content="folio, ocr, ocrmypdf, tesseract, franken_ocr, evaluation, text-companion">
+  <title>Folio — OCR engine evaluation for junk-text-layer scans (2026-08)</title>
+  <template id="kb-prompt">Empirical five-way OCR comparison (2026-08-19/20) on two real scanned picture books with junk legacy Internet-Archive text layers, run to decide whether Folio's ocrmypdf --skip-text pipeline should change and whether franken_ocr or raw Tesseract earn a role. Includes the rasterize-first workaround test, full metrics, samples, and the standing verdict.</template>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2, h3 { line-height: 1.25; }
+    code, pre { font-family: ui-monospace, monospace; font-size: .9em; background: #f4f4f2; }
+    pre { padding: .8rem; overflow-x: auto; white-space: pre-wrap; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; border-bottom: 1px solid #ddd; padding: .4rem .5rem; vertical-align: top; }
+    .note { border-left: 3px solid #0b57d0; background: #f0f4ff; padding: .6rem .9rem; }
+    .verdict { border-left: 3px solid #1b7f3b; background: #f0fff4; padding: .6rem .9rem; }
+  </style>
+</head>
+<body>
+<h1 id="overview">OCR engine evaluation for junk-text-layer scans</h1>
+
+<p>Run 2026-08-19/20 against two real books from the live library — both
+32-page scanned picture books ("Book A", id 39589, and
+"Book B", id 39590) whose pdfs carry a junk legacy
+Internet-Archive text layer that Folio's production pipeline
+(<code>ocrmypdf --skip-text</code>) deliberately preserves. The question:
+does any engine or flag change produce cleanly extractable text for the
+text-only reading variant, and do <code>franken_ocr</code> or raw Tesseract
+earn a role?</p>
+
+<p>All variants were measured with one metric so numbers are comparable:
+<b>clean-token ratio</b> — whitespace-split tokens of length ≥3 that are
+purely alphabetic (including accented Italian letters), as a fraction of all
+tokens, over <code>pdftotext -enc UTF-8 -nopgbrk</code> output (or the
+engine's native text output where no pdf is produced).</p>
+
+<h2 id="results">Results</h2>
+
+<table>
+<tr><th>Variant</th><th>39589</th><th>39590</th><th>Wall clock / book</th><th>Notes</th></tr>
+<tr><td><code>--skip-text</code> (production)</td><td>0.4756</td><td>0.4742</td><td>~2m10s / ~46s</td><td>Fresh-OCRs only 13/32 and 6/32 pages; junk legacy layer survives on the rest</td></tr>
+<tr><td><code>--redo-ocr -l ita</code></td><td>0.4675</td><td>0.4239</td><td>~5 min</td><td>Force-OCRs ~everything; ocrmypdf preprocessing degrades quality; new misreads on previously-fine pages</td></tr>
+<tr><td><code>--force-ocr -l ita</code> (plain, no deskew/oversample)</td><td>0.4675</td><td>0.4239</td><td>~8 min</td><td>Identical to redo-ocr to 4 decimals (same shared preprocessing). Output pdf 26–34× larger — the folio image lacks <code>jbig2</code>/<code>pngquant</code> optimizers, which alone explains most of the old "41×" blow-up</td></tr>
+<tr><td>Raw Tesseract, PSM 3, on 300-dpi <code>pdftoppm</code> rasters</td><td><b>0.5003</b></td><td>0.4642</td><td>~4–5 min</td><td>Bypasses ocrmypdf preprocessing entirely; recovers real prose on junk-layer pages; flat .txt only (no pdf text layer). PSM 6 tested: catastrophic (0.157) — never use for this content</td></tr>
+<tr><td><code>franken_ocr</code>, rasterize-first (300-dpi JPEGs)</td><td><b>0.5136</b></td><td><b>0.5069</b></td><td>25–67 min</td><td>Best metric on both books (+7–8% over baseline), mostly from suppressing illustration noise and reflowing paragraphs — but adds its own word errors ("tigrotto"→"rigotto", "Seguite"→"Segnite"); 7.5 GB RSS; one near-blank page burned 24 min and produced zero output</td></tr>
+</table>
+
+<h2 id="key-findings">Key findings</h2>
+
+<ul>
+<li id="finding-engine"><b>The engine was never the problem.</b> ocrmypdf
+<i>is</i> Tesseract underneath; raw Tesseract reproduces its output almost
+word-for-word on pages ocrmypdf fresh-OCRs. The quality differences come
+from (a) whether junk legacy layers are preserved (<code>--skip-text</code>)
+and (b) ocrmypdf's internal rasterization/preprocessing, which measurably
+<i>hurts</i> these illustration-heavy scans — <code>--redo-ocr</code> and
+plain <code>--force-ocr</code> converge on identical, worse numbers.</li>
+<li id="finding-codecs"><b>Codec check re-confirmed:</b> every page of both
+books is JPXDecode (JPEG2000) + JBIG2Decode. franken_ocr has no pure-Rust
+decoder for either and says so in its own error strings — which also
+recommend exactly the rasterize-first workaround tested here.</li>
+<li id="finding-franken"><b>franken_ocr, rasterize-first, works and wins the
+metric</b> (4.17 GB model, int8 CPU kernels, 44/44 selftest) but is
+operationally unattractive as primary OCR: 10–25× slower than Tesseract per
+book on this 8-core CPU-only host, 7.5 GB resident, and an unpredictable
+tail — a near-blank library-stamp page hit franken's internal 10-minute
+forward budget after 24 minutes wall-clock and yielded nothing (clean error,
+no crash). Its win is noise-suppression, not word accuracy: it introduced
+consistent new misreads on real prose.</li>
+<li id="finding-markdown"><b>No Markdown/EPUB niche on this content:</b>
+across all 64 pages franken_ocr emitted zero headings/lists/tables — flat
+prose only. Its hypothesized "nice structure" secondary-pass role doesn't
+apply to illustrated children's prose; untested (and more plausible) for
+textbook-style scans.</li>
+<li id="finding-illustrations"><b>Illustration/title pages are noise under
+every engine</b> — they are pictures. Aggregate metrics under-weight the
+real user-visible win: on junk-layer prose pages (e.g. 39590 p.7), raw
+Tesseract and franken_ocr both recover correct readable Italian where the
+production companion has pure garbage.</li>
+</ul>
+
+<h2 id="samples">Sample — 39590 page 7 (junk-layer page)</h2>
+
+<pre>production companion:  " = a wr &gt; d Ki Si &gt;, À - '3 20 bb L..."
+raw tesseract:         "Il Polo Nord è un vero paradiso, per giocare:
+                        dappertutto ci sono neve e ghiaccio. Eppure,
+                        ultimamente, Piuma si annoia. «Ma che hai?» gli
+                        chiedono il papà e la mamma..."</pre>
+
+<h2 id="verdict">Standing verdict</h2>
+
+<div class="verdict">
+<p><b>Keep <code>ocrmypdf --skip-text</code> as the primary pipeline</b> —
+third eval to reach this conclusion (2026-08-15, 2026-08-19, 2026-08-20).
+Do not adopt <code>--redo-ocr</code>/<code>--force-ocr</code> (measurably
+worse + 26–34× size without jbig2/pngquant) or franken_ocr as primary
+(speed/RAM/tail-latency; new word errors).</p>
+<p><b>The one actionable upgrade identified:</b> a per-book, opt-in
+"deep re-OCR the text version" path that rasterizes at 300 dpi and runs raw
+Tesseract (PSM 3, <code>-l ita</code>) to feed the <i>text companion
+only</i> — the text-only variant needs exactly flat text, sidestepping both
+ocrmypdf's preprocessing degradation and the pdf-size problem, at ~5
+predictable minutes per book on the :conversion queue. Not built as of
+2026-08-20; awaiting user decision.</p>
+<p>franken_ocr remains a plausible <i>manual, offline</i> quality pass for
+individual stubborn scans (with an external per-page kill timeout), not an
+app integration.</p>
+</div>
+
+<p class="note">Method notes: baselines re-reproduced byte-identically
+before each comparison; identical clean-token metric throughout; franken_ocr
+ran both books to full completion (not sampled) in an isolated throwaway
+environment (<code>uv</code>, all caches under <code>/var/tmp</code>,
+removed after). Production DB/storage untouched throughout.</p>
+</body>
+</html>
