@@ -13,6 +13,18 @@ class Conversion < ApplicationRecord
   # Targets Calibre can produce without extra plugins. KFX is input-only.
   TARGET_FORMATS = %w[epub azw3 mobi pdf txt docx].freeze
 
+  # Targets the "Convert to" buttons on the book page offer, and the only
+  # ones ConversionsController#create accepts from a user-submitted request
+  # (see books/show.html.erb and ConversionsController) — TARGET_FORMATS
+  # minus "txt". ebook-convert cannot reliably produce a usable plain-text
+  # reflow (it silently emits a 0-byte file when the source is an OCR'd
+  # scan — see ConvertBookJob::MIN_OUTPUT_SIZE and the book 39589 /
+  # Conversion #7941 incident it guards against); Library::TextCompanion +
+  # TextCompanionJob (BooksController#build_text) is the supported reflow
+  # path now. "txt" stays in TARGET_FORMATS itself so existing conversion
+  # rows and the validation above keep working.
+  OFFERED_TARGET_FORMATS = TARGET_FORMATS - %w[txt]
+
   # Richest formats first: converting from these loses the least. Shared by
   # ConversionsController (explicit user-picked target), ReaderController
   # (auto-queued epub conversion when a book has no browser-readable file),

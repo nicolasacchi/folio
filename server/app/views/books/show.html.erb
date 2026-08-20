@@ -327,7 +327,11 @@
     </div>
   <% end %>
 
-  <% convertible = Conversion::TARGET_FORMATS - @book.formats %>
+  <%# TXT is deliberately excluded (see Conversion::OFFERED_TARGET_FORMATS) —
+      "Build text version" above (Library::TextCompanion) is the supported
+      reflow path; a plain ebook-convert txt target can silently fail on a
+      scanned/OCR'd pdf (see ConvertBookJob::MIN_OUTPUT_SIZE). %>
+  <% convertible = Conversion::OFFERED_TARGET_FORMATS - @book.formats %>
   <% if convertible.any? && @book.book_files.any? %>
     <p class="section-label">Convert to</p>
     <div class="actions">

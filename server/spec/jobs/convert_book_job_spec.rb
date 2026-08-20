@@ -23,6 +23,48 @@ RSpec.describe ConvertBookJob do
     expect(conversion.error).to eq("disk exploded")
   end
 
+  # Production incident: book 39589's Convert-to-TXT (Conversion #7941) ran
+  # ebook-convert on an OCR'd scan, which exited 0 but produced a 0-byte txt.
+  # Library::Ingest then created a real (empty) book_file that outranked the
+  # real pdf in Book::READABLE_FORMATS/KINDLE_FORMATS. See
+  # ConvertBookJob::MIN_OUTPUT_SIZE.
+  describe "when ebook-convert exits 0 but writes a near-empty file" do
+    before do
+      allow(Calibre).to receive(:convert) do |_source, target, **_options|
+        File.write(target, "x" * 10)
+        target
+      end
+      allow(Library::Ingest).to receive(:call)
+    end
+
+    it "fails the conversion instead of ingesting the junk output" do
+      described_class.perform_now(conversion.id)
+
+      expect(conversion.reload).to be_failed
+      expect(conversion.error).to include("10 bytes")
+      expect(Library::Ingest).not_to have_received(:call)
+    end
+
+    it "does not create a book_file" do
+      conversion_id = conversion.id # force conversion (and its source book_file) to exist before sampling the count
+
+      expect { described_class.perform_now(conversion_id) }.not_to change(book.book_files, :count)
+    end
+  end
+
+  describe "when ebook-convert exits 0 but writes nothing at all" do
+    it "fails the conversion instead of ingesting a missing file" do
+      allow(Calibre).to receive(:convert) # no-op: never writes the target
+      allow(Library::Ingest).to receive(:call)
+
+      described_class.perform_now(conversion.id)
+
+      expect(conversion.reload).to be_failed
+      expect(conversion.error).to include("0 bytes")
+      expect(Library::Ingest).not_to have_received(:call)
+    end
+  end
+
   describe "converting a pdf source with a fresh OCR companion" do
     let(:pdf_source) { create(:book_file, :on_disk, book: book, format: "pdf", sha256: "src-sha") }
     let(:ocr_conversion) { create(:conversion, book: book, book_file: pdf_source, target_format: "epub") }
@@ -35,7 +77,10 @@ RSpec.describe ConvertBookJob do
     end
 
     it "converts from the OCR companion, not the raw scan, so the text layer carries over" do
-      allow(Calibre).to receive(:convert)
+      allow(Calibre).to receive(:convert) do |_source, target, **_options|
+        File.write(target, "converted epub bytes " * 10)
+        target
+      end
       allow(Library::Ingest).to receive(:call)
         .and_return(Library::Ingest::Result.new(book, pdf_source, false, false))
 
@@ -47,7 +92,10 @@ RSpec.describe ConvertBookJob do
 
   describe "fulltext reindex follow-up" do
     before do
-      allow(Calibre).to receive(:convert)
+      allow(Calibre).to receive(:convert) do |_source, target, **_options|
+        File.write(target, "converted book bytes " * 10)
+        target
+      end
       allow(Library::Ingest).to receive(:call)
         .and_return(Library::Ingest::Result.new(book, source, false, false))
     end
