@@ -54,8 +54,15 @@ class OcrBookJob < ApplicationJob
     # was loaded once at the top of this (often long-running) job, so a
     # TextCompanionJob that wrote text_path concurrently wouldn't otherwise
     # be visible on this in-memory copy.
+    #
+    # engine: source.text_engine preserves whichever build the book had —
+    # a "deep" companion won't normally be stale here at all (its
+    # #text_source_content_sha256 pins to the raw file's own sha, which
+    # this job never changes), so this pass-through only matters on the
+    # rarer path where the raw file itself was replaced; it still shouldn't
+    # silently downgrade that rebuild back to "layer".
     source.reload
-    book.queue_text_companion! if source.text_path.present? && !source.text_fresh?
+    book.queue_text_companion!(engine: source.text_engine) if source.text_path.present? && !source.text_fresh?
   rescue Library::Ocr::Error => error
     conversion.mark_failed!(error.message)
   rescue StandardError => error

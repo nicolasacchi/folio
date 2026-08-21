@@ -6,6 +6,14 @@
 # would hijack readable_file/kindle_file's format ranking) but a
 # regenerable companion tracked on the source row itself.
 #
+# engine (see BookFile#text_engine, Book#queue_text_companion!,
+# BooksController#build_text) picks which of Library::TextCompanion's two
+# extraction paths #build_text! uses: "layer" (the default — pdftotext off
+# the pdf's own text layer) or "deep" (rasterize the raw scan and re-OCR it
+# directly with tesseract, bypassing ocrmypdf). Defaulted to "layer" so
+# already-enqueued jobs (serialized before this argument existed) keep
+# calling #perform with one positional arg and behave exactly as before.
+#
 # The two halves fail independently: a blank/absurdly short extraction
 # fails the whole conversion outright (nothing worth a companion), but a
 # failed AZW3 build leaves the plain-text companion in place — the web
@@ -14,15 +22,15 @@
 class TextCompanionJob < ApplicationJob
   queue_as :conversion
 
-  # Library::TextCompanion.extract_text can return "" (Calibre's
-  # non-pdf fallback, on total failure) or a near-empty string for pdfs
-  # with nothing real to extract (a cover-only scan, a page OCR that came
-  # back unreadable) — either way there's nothing worth a companion, so
-  # this is the floor below which the conversion fails outright rather
+  # Library::TextCompanion.extract_text/.deep_ocr_text can return "" (the
+  # non-pdf Calibre fallback, on total failure) or a near-empty string for
+  # pdfs with nothing real to extract (a cover-only scan, a page OCR that
+  # came back unreadable) — either way there's nothing worth a companion,
+  # so this is the floor below which the conversion fails outright rather
   # than storing one nobody can read.
   MIN_TEXT_LENGTH = 200
 
-  def perform(conversion_id)
+  def perform(conversion_id, engine = "layer")
     conversion = Conversion.find_by(id: conversion_id)
     return unless conversion&.pending?
 
@@ -33,10 +41,10 @@ class TextCompanionJob < ApplicationJob
     # Captured now (mirrors OcrBookJob's source_sha) so the row this job
     # writes always matches the bytes it actually read, even if a
     # concurrent re-OCR changes #text_source_content_sha256 mid-run.
-    source_content_sha = source.text_source_content_sha256
+    source_content_sha = source.text_source_content_sha256(engine)
 
     FileUtils.mkdir_p(Library::TextCompanion.root)
-    build_text!(source, book, source_content_sha)
+    build_text!(source, book, source_content_sha, engine)
     build_kindle_azw3!(source, book)
 
     conversion.mark_completed!
@@ -57,13 +65,18 @@ class TextCompanionJob < ApplicationJob
 
   private
 
-  def build_text!(source, book, source_content_sha)
-    text = Library::TextCompanion.extract_text(source)
+  def build_text!(source, book, source_content_sha, engine)
+    text = engine == "deep" ? Library::TextCompanion.deep_ocr_text(source) : Library::TextCompanion.extract_text(source)
     if text.strip.length < MIN_TEXT_LENGTH
       raise Library::TextCompanion::Error,
         "extracted text too short (#{text.strip.length} chars) to build a usable text version"
     end
 
+    # Extraction happens (and is length-checked) entirely above, before
+    # anything on disk or on the row changes — a failure here (either
+    # raise) leaves any existing companion + its stamps (including
+    # text_engine) completely untouched, so a bad deep-OCR attempt never
+    # clobbers a good "layer" companion still fresh in its place.
     dest = Library::TextCompanion.text_path(book)
     staging = Library::TextCompanion.root.join("staging-#{book.public_id}.txt")
     begin
@@ -77,7 +90,8 @@ class TextCompanionJob < ApplicationJob
       text_path: dest.relative_path_from(Library.base_root).to_s,
       text_sha256: Library.sha256(dest),
       text_size: File.size(dest),
-      text_source_sha256: source_content_sha
+      text_source_sha256: source_content_sha,
+      text_engine: engine
     )
   end
 

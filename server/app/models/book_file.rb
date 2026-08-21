@@ -182,8 +182,12 @@ class BookFile < ApplicationRecord
   # The plain-text reflow companion (see Library::TextCompanion,
   # TextCompanionJob) is fresh when it was made from the file's current
   # content and still exists on disk — mirrors #ocr_fresh?/#prepared_fresh?.
-  # Only ever true for pdf book_files (the only source TextCompanionJob
-  # builds from).
+  # #text_source_content_sha256's default arg means this always checks
+  # against the engine ("layer"/"deep") the *stored* companion was actually
+  # built with, not whatever engine a caller might build next — so a stale
+  # "layer" companion doesn't read as fresh just because someone's about to
+  # rebuild it "deep", and vice versa. Only ever true for pdf book_files
+  # (the only source TextCompanionJob builds from).
   def text_fresh?
     text_path.present? && text_source_sha256 == text_source_content_sha256 && File.exist?(text_absolute_path)
   end
@@ -193,11 +197,20 @@ class BookFile < ApplicationRecord
   end
 
   # What #text_fresh? (and TextCompanionJob, when stamping a freshly-built
-  # companion) compares text_source_sha256 against: the OCR companion's
-  # sha when it's fresh, else the raw file's — so a re-OCR automatically
-  # stales the text companion, the same way it stales anything else read
-  # off #read_source_path.
-  def text_source_content_sha256
+  # companion) compares text_source_sha256 against — engine-parameterized
+  # (defaulting to this row's own stored #text_engine) because the two
+  # engines read from different bytes: "deep" re-OCRs book_file.absolute_path
+  # directly (see Library::TextCompanion.deep_ocr_text — it deliberately
+  # bypasses the pdf's own text layer), so it only cares about the raw
+  # file's own sha and stays fresh across re-OCRs of the text layer; every
+  # other engine ("layer", the pdftotext-off-the-text-layer default) reads
+  # via #read_source_path, so it compares against the OCR companion's sha
+  # when one is fresh, else the raw file's — a re-OCR automatically stales
+  # that companion, the same way it stales anything else read off
+  # #read_source_path.
+  def text_source_content_sha256(engine = text_engine)
+    return sha256 if engine == "deep"
+
     ocr_fresh? ? ocr_sha256 : sha256
   end
 

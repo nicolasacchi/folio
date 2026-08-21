@@ -41,8 +41,15 @@ class DeliveriesController < ApplicationController
     # variant "text" needs its own build: the AZW3 companion isn't a real
     # book_files row a normal conversion produces (see
     # Book#queue_text_companion!) — a no-op once it's already usable or a
-    # build is already queued.
-    book.queue_text_companion! if delivery.variant == "text"
+    # build is already queued. engine: the source file's own text_engine
+    # (mirrors OcrBookJob's refresh) so an on-demand rebuild here — e.g. a
+    # "switch to text only" click landing right after a "deep" companion's
+    # AZW3 half failed and left it unusable — preserves whichever engine
+    # the book was actually built with instead of silently reverting a
+    # "deep" re-OCR back to the "layer" default.
+    if delivery.variant == "text"
+      book.queue_text_companion!(engine: book.text_companion_source_file&.text_engine || "layer")
+    end
     # A queued book with no Kindle-readable file gets one converted now;
     # one with a file gets its delivery copy built (cover + PDOC identity).
     if book.kindle_file

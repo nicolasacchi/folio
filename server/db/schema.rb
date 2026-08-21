@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_19_120002) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_21_120000) do
   create_table "annotations", force: :cascade do |t|
     t.datetime "added_at"
     t.integer "book_id"
@@ -57,6 +57,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_19_120002) do
     t.string "sha256", null: false
     t.integer "size", null: false
     t.string "source", default: "upload", null: false
+    t.string "text_engine", default: "layer", null: false
     t.string "text_kindle_path"
     t.string "text_kindle_sha256"
     t.integer "text_kindle_size"

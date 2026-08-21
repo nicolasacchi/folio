@@ -202,6 +202,80 @@ RSpec.describe TextCompanionJob do
     end
   end
 
+  describe "engine: 'deep'" do
+    def stub_deep_ocr(text: "y" * 300)
+      allow(Library::TextCompanion).to receive(:deep_ocr_text).and_return(text)
+    end
+
+    before { stub_convert_success }
+
+    it "extracts via Library::TextCompanion.deep_ocr_text (not .extract_text) and stamps text_engine: 'deep'" do
+      stub_deep_ocr
+      expect(Library::TextCompanion).not_to receive(:extract_text)
+
+      described_class.perform_now(conversion.id, "deep")
+
+      expect(conversion.reload).to be_completed
+      source.reload
+      expect(source.text_engine).to eq("deep")
+      expect(File.read(source.text_absolute_path)).to eq("y" * 300)
+    end
+
+    it "captures the raw file's own sha as text_source_sha256, ignoring a fresh OCR companion" do
+      ocr_path = "ocr/#{book.public_id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_path).dirname)
+      File.write(Library.base_root.join(ocr_path), "ocr'd pdf bytes")
+      source.update!(ocr_path: ocr_path, ocr_sha256: "ocr-sha", ocr_source_sha256: source.sha256)
+      stub_deep_ocr
+
+      described_class.perform_now(conversion.id, "deep")
+
+      expect(source.reload.text_source_sha256).to eq("src-sha")
+    end
+
+    it "leaves an existing text companion and its stamps completely untouched when the deep extraction fails" do
+      dest = Library::TextCompanion.text_path(book)
+      FileUtils.mkdir_p(dest.dirname)
+      File.write(dest, "existing layer text")
+      source.update!(
+        text_path: dest.relative_path_from(Library.base_root).to_s,
+        text_sha256: Library.sha256(dest), text_size: File.size(dest),
+        text_source_sha256: source.sha256, text_engine: "layer"
+      )
+
+      allow(Library::TextCompanion).to receive(:deep_ocr_text).and_raise(Library::TextCompanion::Error, "tesseract choked")
+
+      expect { described_class.perform_now(conversion.id, "deep") }.not_to raise_error
+
+      expect(conversion.reload).to be_failed
+      expect(conversion.error).to eq("tesseract choked")
+      source.reload
+      expect(source.text_engine).to eq("layer")
+      expect(source.text_sha256).to eq(Library.sha256(dest))
+      expect(File.read(source.text_absolute_path)).to eq("existing layer text")
+    end
+
+    it "still fails the conversion below MIN_TEXT_LENGTH, same as the layer path" do
+      stub_deep_ocr(text: "too short")
+
+      described_class.perform_now(conversion.id, "deep")
+
+      expect(conversion.reload).to be_failed
+      expect(conversion.error).to include("too short")
+      expect(source.reload.text_path).to be_nil
+    end
+  end
+
+  it "defaults to engine 'layer' when called with only a conversion id (already-enqueued jobs stay compatible)" do
+    stub_extract_text
+    stub_convert_success
+    expect(Library::TextCompanion).not_to receive(:deep_ocr_text)
+
+    described_class.perform_now(conversion.id)
+
+    expect(source.reload.text_engine).to eq("layer")
+  end
+
   it "marks the conversion failed and re-raises an unexpected error so the job can be retried" do
     allow(Library::TextCompanion).to receive(:extract_text).and_raise(StandardError, "disk exploded")
 

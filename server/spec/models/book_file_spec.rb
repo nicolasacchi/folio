@@ -241,6 +241,50 @@ RSpec.describe BookFile, type: :model do
     end
   end
 
+  describe "#text_source_content_sha256 engine awareness" do
+    let!(:pdf) { create(:book_file, :on_disk, book: book, format: "pdf", sha256: "src-sha") }
+
+    it "defaults to the row's own stored text_engine" do
+      pdf.update!(text_engine: "deep")
+      expect(pdf.text_source_content_sha256).to eq("src-sha")
+    end
+
+    it "'deep' always compares against the raw file's own sha, ignoring a fresh OCR companion" do
+      ocr_relative = "ocr/#{book.public_id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_relative).dirname)
+      File.write(Library.base_root.join(ocr_relative), "ocr'd bytes")
+      pdf.update!(ocr_path: ocr_relative, ocr_sha256: "ocr-sha", ocr_source_sha256: "src-sha")
+
+      expect(pdf.text_source_content_sha256("deep")).to eq("src-sha")
+      expect(pdf.text_source_content_sha256("layer")).to eq("ocr-sha")
+    end
+
+    it "a 'deep' companion stays fresh across a re-OCR of the pdf's text layer (raw bytes unchanged)" do
+      pdf.update!(text_engine: "deep", text_path: "text/#{book.public_id}.txt", text_source_sha256: "src-sha")
+      FileUtils.mkdir_p(pdf.text_absolute_path.dirname)
+      File.write(pdf.text_absolute_path, "deep text")
+      expect(pdf).to be_text_fresh
+
+      ocr_relative = "ocr/#{book.public_id}.ocr.pdf"
+      FileUtils.mkdir_p(Library.base_root.join(ocr_relative).dirname)
+      File.write(Library.base_root.join(ocr_relative), "ocr'd bytes")
+      pdf.update!(ocr_path: ocr_relative, ocr_sha256: "new-ocr-sha", ocr_source_sha256: "src-sha")
+
+      expect(pdf.reload).to be_text_fresh
+    end
+
+    it "a 'deep' companion goes stale once the raw file's own sha changes" do
+      pdf.update!(text_engine: "deep", text_path: "text/#{book.public_id}.txt", text_source_sha256: "src-sha")
+      FileUtils.mkdir_p(pdf.text_absolute_path.dirname)
+      File.write(pdf.text_absolute_path, "deep text")
+      expect(pdf).to be_text_fresh
+
+      pdf.update!(sha256: "new-src-sha")
+
+      expect(pdf.reload).not_to be_text_fresh
+    end
+  end
+
   describe "destroying a file with a text companion" do
     let!(:pdf) { create(:book_file, book: book, format: "pdf") }
 

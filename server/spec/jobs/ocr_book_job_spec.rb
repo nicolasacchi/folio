@@ -115,5 +115,14 @@ RSpec.describe OcrBookJob do
 
       expect { described_class.perform_now(conversion.id) }.not_to have_enqueued_job(TextCompanionJob)
     end
+
+    it "preserves the book's engine choice (deep) when refreshing a stale text companion" do
+      write_text_companion!(source_sha: "some-old-ocr-sha")
+      source.update!(text_engine: "deep")
+      stub_ocr
+
+      expect { described_class.perform_now(conversion.id) }
+        .to have_enqueued_job(TextCompanionJob).with { |_id, engine| engine == "deep" }
+    end
   end
 end
