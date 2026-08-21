@@ -79,6 +79,25 @@ every engine</b> — they are pictures. Aggregate metrics under-weight the
 real user-visible win: on junk-layer prose pages (e.g. 39590 p.7), raw
 Tesseract and franken_ocr both recover correct readable Italian where the
 production companion has pure garbage.</li>
+<li id="finding-italian"><b>Why franken_ocr misreads Italian (2026-08-21
+follow-up):</b> its underlying model, Baidu Unlimited-OCR
+(arXiv:2606.23050), is DeepSeek-OCR with swapped decoder attention,
+continued-trained just 4,000 steps on a language-undocumented corpus —
+so its language knowledge is DeepSeek-OCR's, whose paper
+(arXiv:2510.18234) states ~25M of its 30M training pages are
+Chinese+English, with high-quality annotations for CN/EN <i>only</i>;
+Italian sits in a coarse ~5M-page tail shared across ~98 languages.
+No language list, no <code>--lang</code> option anywhere in franken_ocr,
+no per-language benchmarks beyond EN/CN columns. The architecture
+compresses each page to ~100 vision tokens and leans on the decoder's
+<i>language prior</i> to reconstruct text — with a thin Italian prior it
+emits non-words ("rigotto", "Segnite") and drops accents exactly where
+dictionary-tuned Tesseract <code>ita</code> reads the same rasters
+correctly. An Italian continued fine-tune is genuinely feasible (LoRA
+decoder-only, proven five times by the community on this model — never
+yet for Italian): see the dedicated research note
+<a href="/a/research/deepseek-ocr-fine-tune-italiano.html">Un
+DeepSeek-OCR che capisca l'italiano</a>.</li>
 </ul>
 
 <h2 id="samples">Sample — 39590 page 7 (junk-layer page)</h2>
@@ -103,7 +122,13 @@ Tesseract (PSM 3, <code>-l ita</code>) to feed the <i>text companion
 only</i> — the text-only variant needs exactly flat text, sidestepping both
 ocrmypdf's preprocessing degradation and the pdf-size problem, at ~5
 predictable minutes per book on the :conversion queue. Not built as of
-2026-08-20; awaiting user decision.</p>
+2026-08-20; awaiting user decision.
+<b>[SHIPPED 2026-08-21, commit 301121c — <code>book_files.text_engine</code>
+"deep", "Deep re-OCR text" button on the book page; per-book language via
+<code>Library::Ocr.language_for</code>, per-page timeout with partial
+recovery. Verified live on 39590: junk-layer p.7 garbage → correct prose,
+AZW3 rebuilt with PDOC identity; aggregate 0.4642 vs 0.4739 layer, matching
+this eval's raw-Tesseract prediction for that book.]</b></p>
 <p>franken_ocr remains a plausible <i>manual, offline</i> quality pass for
 individual stubborn scans (with an external per-page kill timeout), not an
 app integration.</p>
