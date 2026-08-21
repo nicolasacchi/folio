@@ -225,6 +225,59 @@ RSpec.describe "Book detail page", type: :request do
       end
     end
 
+    describe "the 'Deep re-OCR text' rebuild button" do
+      it "is absent before any text companion exists (first build is always the fast path)" do
+        get book_path(book)
+
+        expect(response.body).not_to include("Deep re-OCR text")
+      end
+
+      it "is absent while a text build is still active" do
+        create(:conversion, :text, book: book, book_file: pdf_file, status: "running")
+
+        get book_path(book)
+
+        expect(response.body).not_to include("Deep re-OCR text")
+      end
+
+      it "appears once the text companion is fresh, posting build_text with engine=deep and a turbo_confirm" do
+        make_text_fresh!
+
+        get book_path(book)
+
+        doc = Nokogiri::HTML5.parse(response.body)
+        form = doc.at_css(%(form[action="#{build_text_book_path(book, engine: "deep")}"]))
+        expect(form).to be_present
+        expect(form.text).to include("Deep re-OCR text")
+        expect(form["data-turbo-confirm"]).to match(/original scan/i)
+      end
+    end
+
+    describe "the 'deep OCR' badge on the Text only button" do
+      # Scoped to span.stamp text (not a plain response.body substring
+      # check) — the always-present "Deep re-OCR text" rebuild button's own
+      # turbo_confirm text also says "deep OCR", which would otherwise
+      # false-positive this on every fresh companion regardless of engine.
+      it "is absent for a fresh companion built with the default 'layer' engine" do
+        make_text_fresh!
+
+        get book_path(book)
+
+        doc = Nokogiri::HTML5.parse(response.body)
+        expect(doc.css("span.stamp").map(&:text)).not_to include("deep OCR")
+      end
+
+      it "appears once the fresh companion was itself built via engine: 'deep'" do
+        make_text_fresh!
+        pdf_file.update!(text_engine: "deep")
+
+        get book_path(book)
+
+        doc = Nokogiri::HTML5.parse(response.body)
+        expect(doc.css("span.stamp").map(&:text)).to include("deep OCR")
+      end
+    end
+
     describe "Files section text-only download link" do
       it "is absent with no fresh text companion" do
         get book_path(book)
@@ -239,6 +292,15 @@ RSpec.describe "Book detail page", type: :request do
 
         expect(response.body).to include(CGI.escapeHTML(download_book_path(book, fmt: "pdf", text: 1)))
         expect(response.body).to include(">text only<")
+      end
+
+      it "labels the stamp 'text only (deep OCR)' when the fresh companion was built via engine: 'deep'" do
+        make_text_fresh!
+        pdf_file.update!(text_engine: "deep")
+
+        get book_path(book)
+
+        expect(response.body).to include(">text only (deep OCR)<")
       end
     end
 

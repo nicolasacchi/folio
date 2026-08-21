@@ -181,22 +181,44 @@ class BooksController < ApplicationController
     redirect_to @book, notice: "Removing from search index…"
   end
 
-  # "Build text version" button (see Book#queue_text_companion!,
-  # TextCompanionJob): queues the plain-text reflow companion + its
-  # Kindle AZW3 build for this book's pdf. Mirrors reindex/unindex's
-  # shape — a plain flag/queue flip, no target_format picker needed.
+  # "Build text version" / "Deep re-OCR text" buttons (see
+  # Book#queue_text_companion!, TextCompanionJob): queues the plain-text
+  # reflow companion + its Kindle AZW3 build for this book's pdf. Mirrors
+  # reindex/unindex's shape — a plain flag/queue flip, no target_format
+  # picker needed. params[:engine] == "deep" opts into the slower
+  # rasterize-and-re-OCR rebuild (see Library::TextCompanion.deep_ocr_text);
+  # anything else (including absent) is the default "layer" path.
   def build_text
     unless @book.text_companion_source_file
       return redirect_to @book, alert: "No scanned PDF to build a text version from."
     end
 
-    # queue_text_companion! returns nil here only when the companion is
-    # already usable (the no-source case was ruled out above) — a
-    # double-click or a stale page shouldn't claim it's (re)building.
-    if @book.queue_text_companion!
-      redirect_to @book, notice: "Building the text-only version…"
+    if params[:engine] == "deep"
+      # Unlike "layer" below, queue_text_companion!(engine: "deep") never
+      # returns nil here (it deliberately skips the already-usable
+      # no-op — that's the point of a rebuild), so the return is always
+      # either a conversion this call just created or one already running.
+      # #previously_new_record? distinguishes the two right after the call
+      # returns, so the flash never claims a build "just started" when it
+      # was actually already in flight. The &. covers the one nil the
+      # deep path can still return: the RecordNotUnique rescue re-finding
+      # nothing because the racing build completed in the same instant —
+      # "already running" is the honest-enough message for that blink.
+      conversion = @book.queue_text_companion!(engine: "deep")
+      if conversion&.previously_new_record?
+        redirect_to @book, notice: "Rebuilding the text version with deep OCR — re-reads every page from the original scan, takes a few minutes."
+      else
+        redirect_to @book, notice: "A text version build is already running."
+      end
     else
-      redirect_to @book, notice: "Text-only version is already built."
+      # queue_text_companion! returns nil here only when the companion is
+      # already usable (the no-source case was ruled out above) — a
+      # double-click or a stale page shouldn't claim it's (re)building.
+      if @book.queue_text_companion!
+        redirect_to @book, notice: "Building the text-only version…"
+      else
+        redirect_to @book, notice: "Text-only version is already built."
+      end
     end
   end
 

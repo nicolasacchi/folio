@@ -76,6 +76,25 @@
                     title: "Open the plain-text reflow version" do %>
                 <%= render "shared/icon", name: "file-text" %>Text only
               <% end %>
+              <%# text_engine tells the reader which extraction actually
+                  built what they're about to open — surfaced here (rather
+                  than only in the Files section stamp below) since this is
+                  the button someone actually reads from. %>
+              <% if text_source.text_engine == "deep" %>
+                <span class="stamp stamp--ready" title="Built by re-OCRing every page from the original scan, rather than reading the pdf's own text layer">deep OCR</span>
+              <% end %>
+              <%# A muted rebuild affordance, only once a companion already
+                  exists — the first build is always the fast "layer" path
+                  (see #build_text); deep re-OCR is a refinement for a
+                  companion someone found wrong (see
+                  Library::TextCompanion.deep_ocr_text for why it can
+                  recover text ocrmypdf's own pass missed), not the default,
+                  so it's never offered before there's something to rebuild. %>
+              <%= button_to build_text_book_path(@book, engine: "deep"), class: "btn btn--quiet",
+                    title: "Rebuild the text version by re-OCRing every page straight from the original scan — slower, but sometimes recovers text the current version got wrong",
+                    form: { data: { turbo_confirm: "Rebuild the text version with deep OCR? This re-reads every page from the original scan and takes a few minutes." } } do %>
+                <%= render "shared/icon", name: "scan-text" %>Deep re-OCR text
+              <% end %>
             <% elsif @book.conversions.active.exists?(kind: "text") %>
               <span class="stamp stamp--pending">building text version…</span>
             <% else %>
@@ -306,7 +325,8 @@
         <span class="stamp stamp--ready" title="<%= ocr_stamp_title %>">text layer</span>
       <% end %>
       <% if file.text_fresh? %>
-        <span class="stamp stamp--ready" title="Plain-text reflow companion present (see Library::TextCompanion)">text only</span>
+        <% deep = file.text_engine == "deep" %>
+        <span class="stamp stamp--ready" title="Plain-text reflow companion present<%= deep ? ", built via deep OCR from the original scan" : "" %> (see Library::TextCompanion)">text only<%= " (deep OCR)" if deep %></span>
       <% end %>
       <span class="grow small muted"><%= format_size(file.size) %> · <%= file.source %></span>
       <% if file.available? %>

@@ -88,9 +88,15 @@ class Book < ApplicationRecord
 
   # Queues Library::TextCompanion's build for this book (see
   # TextCompanionJob), mirroring ConversionsController#create_ocr's
-  # shape/guards: a no-op when there's no eligible pdf, the text variant
-  # is already usable, or a build is already active — returns nil for the
-  # first two, the (existing or freshly queued) Conversion otherwise.
+  # shape/guards: a no-op when there's no eligible pdf or a build is
+  # already active — returns nil for the former, the (existing or freshly
+  # queued) Conversion otherwise. engine: "layer" (the default, fast
+  # pdftotext-off-the-text-layer path) also no-ops once the text variant is
+  # already usable — nothing to do. engine: "deep" deliberately SKIPS that
+  # usable check: it's the point of the deep-OCR rebuild button (see
+  # BooksController#build_text) that it *replaces* an already-usable
+  # companion someone found wrong, not just fills a gap — but every other
+  # guard still applies, including "don't queue a second build" below.
   #
   # The active-conversion guard is scoped by target_format, not kind:
   # index_conversions_on_active_book_target is UNIQUE(book_id,
@@ -100,16 +106,16 @@ class Book < ApplicationRecord
   # kind alone would miss that row and crash create! with
   # ActiveRecord::RecordNotUnique; rescuing it too is defense in depth
   # against the inherent check-then-insert race.
-  def queue_text_companion!
+  def queue_text_companion!(engine: "layer")
     source = text_companion_source_file
     return nil unless source
-    return nil if source.text_kindle_usable?
+    return nil if engine != "deep" && source.text_kindle_usable?
 
     active = conversions.active.find_by(target_format: "txt")
     return active if active
 
     conversion = conversions.create!(book_file: source, target_format: "txt", kind: "text")
-    TextCompanionJob.perform_later(conversion.id)
+    TextCompanionJob.perform_later(conversion.id, engine)
     conversion
   rescue ActiveRecord::RecordNotUnique
     conversions.active.find_by(target_format: "txt")

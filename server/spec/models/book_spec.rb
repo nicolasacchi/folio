@@ -104,6 +104,50 @@ RSpec.describe Book, type: :model do
       expect { expect(book.queue_text_companion!).to be_nil }
         .not_to have_enqueued_job(TextCompanionJob)
     end
+
+    describe "engine: 'deep'" do
+      it "skips the already-usable guard, queueing a rebuild even though the AZW3 is already usable" do
+        pdf = create(:book_file, :on_disk, book: book, format: "pdf")
+        relative = "text/#{book.public_id}.azw3"
+        FileUtils.mkdir_p(Library.base_root.join(relative).dirname)
+        File.write(Library.base_root.join(relative), "azw3 bytes")
+        pdf.update!(
+          text_path: "text/#{book.public_id}.txt", text_source_sha256: pdf.sha256,
+          text_kindle_path: relative
+        )
+        FileUtils.mkdir_p(Library.base_root.join(pdf.text_path).dirname)
+        File.write(Library.base_root.join(pdf.text_path), "text")
+        expect(pdf).to be_text_kindle_usable
+        # The plain (default engine: "layer") call no-ops here — see the
+        # spec right above — engine: "deep" exists specifically to bypass
+        # that no-op.
+        expect(book.queue_text_companion!).to be_nil
+
+        conversion = nil
+        expect {
+          conversion = book.queue_text_companion!(engine: "deep")
+        }.to have_enqueued_job(TextCompanionJob).with { |id, engine| conversion&.id == id && engine == "deep" }
+
+        expect(conversion).to be_a(Conversion)
+        expect(conversion).to be_text
+        expect(conversion).to be_pending
+      end
+
+      it "is still nil (and queues nothing) when there is no pdf source" do
+        create(:book_file, book: book, format: "epub")
+
+        expect { expect(book.queue_text_companion!(engine: "deep")).to be_nil }
+          .not_to have_enqueued_job(TextCompanionJob)
+      end
+
+      it "still returns the existing active conversion instead of queueing a second one" do
+        pdf = create(:book_file, book: book, format: "pdf")
+        existing = create(:conversion, :text, book: book, book_file: pdf, status: "running")
+
+        expect { expect(book.queue_text_companion!(engine: "deep")).to eq(existing) }
+          .not_to have_enqueued_job(TextCompanionJob)
+      end
+    end
   end
 
   describe "#conversion_failed_without_deliverable?" do
