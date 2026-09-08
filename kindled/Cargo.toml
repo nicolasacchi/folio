@@ -10,7 +10,7 @@ license = "AGPL-3.0-only"
 # rustls' ring backend has C/asm parts, so cross-builds need a C
 # cross-toolchain — build-kindle.sh uses the rust-musl-cross docker image.
 [dependencies]
-minreq = { version = "2", features = ["https-rustls"] }
+minreq = { version = "3", features = ["https-rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
