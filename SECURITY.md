@@ -26,7 +26,7 @@ internet are still welcome, but please say so in the report.
 Please report vulnerabilities through **GitHub Private Vulnerability
 Reporting** on the repository:
 
-https://github.com/nicolasacchi/kindle-private-cloud/security/advisories/new
+https://github.com/nicolasacchi/folio/security/advisories/new
 
 Please do not open public issues for security problems. Include a
 description, affected component (`server/`, `kindled/`, `privatecloud/`,
