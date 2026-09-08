@@ -3,7 +3,7 @@ name = "kindled"
 version = "0.2.4"
 edition = "2021"
 description = "Private-cloud sync daemon for jailbroken Kindles"
-license = "MIT"
+license = "AGPL-3.0-only"
 
 # Static armv7-unknown-linux-musleabihf binary. HTTPS comes from rustls
 # (bundled webpki roots, so the Kindle's ancient CA store is irrelevant);

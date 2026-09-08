@@ -40,7 +40,12 @@
   position: relative;
   overflow: hidden;
   overscroll-behavior: none;
-  touch-action: pan-y;
+  /* pan-y for vertical scrolling, pinch-zoom so mobile users can zoom into
+     images/comic pages. Double-tap zoom stays disabled (any touch-action
+     value other than "auto" turns it off), so tap-to-turn-page zones are
+     unaffected. The paginator (foliate-js paginator.js#onTouchMove) detects
+     visualViewport.scale > 1 and stops interpreting pans as page turns. */
+  touch-action: pan-y pinch-zoom;
 }
 
 .reader-root:fullscreen,

@@ -8,6 +8,14 @@ Usage:
   python3 migrate_library_tree.py --phase 1          # main Calibre + book/
   python3 migrate_library_tree.py --phase 2          # personal_book Calibre (dedupe)
   python3 migrate_library_tree.py --phase 1 --dry-run
+
+All paths derive from --library-root (or the LIBRARY_ROOT env var),
+defaulting to ~/library. Expected layout:
+
+  <library-root>/Calibre Library/            phase 1 main Calibre library
+  <library-root>/book/                       phase 1 loose files
+  <library-root>/personal_book/Calibre Library/  phase 2 second Calibre library
+  <library-root>/books/                      migration destination
 """
 from __future__ import annotations
 
@@ -24,6 +32,9 @@ from pathlib import Path
 
 FORMATS = {".epub", ".mobi", ".azw3", ".azw", ".pdf", ".prc", ".txt", ".fb2", ".cbz", ".cbr", ".djvu", ".kfx"}
 SKIP_NAMES = {"cover.jpg", "metadata.opf", "metadata.db", ".DS_Store"}
+
+# Library tree root. Override with --library-root or the LIBRARY_ROOT env var.
+DEFAULT_LIBRARY_ROOT = Path(os.environ.get("LIBRARY_ROOT", Path.home() / "library"))
 
 # --- author → category (normalized key: lower, alnum words sorted for match) ---
 AUTHOR_CAT: dict[str, str] = {}
@@ -479,25 +490,31 @@ def migrate_books(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dest", type=Path, default=Path("/path/to/library/books"))
+    ap.add_argument("--library-root", type=Path, default=DEFAULT_LIBRARY_ROOT,
+                    help="root of the library tree (default: $LIBRARY_ROOT or ~/library)")
+    ap.add_argument("--dest", type=Path, default=None,
+                    help="migration destination (default: <library-root>/books)")
     ap.add_argument("--phase", type=int, choices=[1, 2, 3], required=True)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--sha-cache", type=Path, default=Path("/path/to/library/books/.migrate_sha256.txt"))
+    ap.add_argument("--sha-cache", type=Path, default=None,
+                    help="dedupe hash cache (default: <dest>/.migrate_sha256.txt)")
     args = ap.parse_args()
 
-    dest: Path = args.dest
+    library_root: Path = args.library_root
+    dest: Path = args.dest or library_root / "books"
+    sha_cache: Path = args.sha_cache or dest / ".migrate_sha256.txt"
     seen_sha: set[str] = set()
-    if args.sha_cache.is_file() and args.phase > 1:
-        seen_sha = set(args.sha_cache.read_text().splitlines())
+    if sha_cache.is_file() and args.phase > 1:
+        seen_sha = set(sha_cache.read_text().splitlines())
         print(f"loaded {len(seen_sha)} hashes from cache")
 
     stats: Counter = Counter()
     items: list[dict] = []
 
     if args.phase == 1:
-        main_cal = Path("/path/to/library/Calibre Library")
-        book_dir = Path("/path/to/library/book")
-        loose_root = Path("/path/to/library/Nocedicocco E Il Grande Mago -- Ingo Siegner.pdf")
+        main_cal = library_root / "Calibre Library"
+        book_dir = library_root / "book"
+        loose_root = library_root / "Nocedicocco E Il Grande Mago -- Ingo Siegner.pdf"
         print("loading main Calibre…")
         items.extend(load_calibre_books(main_cal))
         print(f"  calibre books: {len(items)}")
@@ -515,9 +532,9 @@ def main() -> int:
                 }
             )
     elif args.phase == 2:
-        nik_cal = Path("/path/to/library/personal_book/Calibre Library")
+        personal_cal = library_root / "personal_book" / "Calibre Library"
         print("loading personal_book Calibre…")
-        items = load_calibre_books(nik_cal)
+        items = load_calibre_books(personal_cal)
         print(f"  books: {len(items)}")
     elif args.phase == 3:
         print("Phase 3 (dumps) not automated — place wanted files under books/_inbox manually.")
@@ -532,9 +549,9 @@ def main() -> int:
     migrate_books(items, dest, seen_sha, args.dry_run, stats)
 
     if not args.dry_run:
-        args.sha_cache.parent.mkdir(parents=True, exist_ok=True)
-        args.sha_cache.write_text("\n".join(sorted(seen_sha)) + "\n")
-        print(f"wrote sha cache ({len(seen_sha)}) → {args.sha_cache}")
+        sha_cache.parent.mkdir(parents=True, exist_ok=True)
+        sha_cache.write_text("\n".join(sorted(seen_sha)) + "\n")
+        print(f"wrote sha cache ({len(seen_sha)}) → {sha_cache}")
 
     print("\n=== stats ===")
     for k, v in sorted(stats.items(), key=lambda kv: (-kv[1], kv[0])):

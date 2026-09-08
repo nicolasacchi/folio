@@ -30,7 +30,7 @@ runs inside Puma (<code>SOLID_QUEUE_IN_PUMA=1</code>) — one container.</p>
 
 <h2 id="device-access">Device access (SSH tunnel)</h2>
 <p>The Kindle opens a <em>reverse</em> SSH tunnel to this host (logs in
-as <code>nik</code>, binds <code>127.0.0.1:22222</code>). It exists only
+as the host user, binds <code>127.0.0.1:22222</code>). It exists only
 while the device is awake and the tunnel session lives — expect it to
 come and go; re-activate from the device when needed.</p>
 <pre>ssh root@localhost -p 22222 -i ~/.ssh/id_ed25519</pre>

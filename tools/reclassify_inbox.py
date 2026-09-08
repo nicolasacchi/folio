@@ -6,13 +6,15 @@ Parses junk author folders (Unknown, Bluebook, ENTERPRIZE, …) via
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import unicodedata
 from collections import Counter
 from pathlib import Path
 
-BASE = Path("/path/to/library/books")
+# Library root to re-shelf. Override with the LIBRARY_BOOKS env var.
+BASE = Path(os.environ.get("LIBRARY_BOOKS", Path.home() / "library" / "books"))
 INBOX = BASE / "_inbox"
 QUAR = BASE / "_quarantine"
 

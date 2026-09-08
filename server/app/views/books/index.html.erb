@@ -1,5 +1,9 @@
 <% content_for :title, "Folio — library" %>
 
+<%# Live updates: a background-ingested book (Book's after_create_commit
+    broadcast) morphs the freshly-added tile into this page. %>
+<%= turbo_stream_from "books" %>
+
 <%= form_with url: root_path, method: :get, class: "search-bar", role: "search" do %>
   <%= search_field_tag :q, @query, placeholder: "Search titles, authors, full text…",
         autocomplete: "off", "aria-label": "Search the library" %>

@@ -14,7 +14,7 @@ catalog rows alone are not enough because KPP reports `No download entry found`.
 Put supported files in a host directory, then run:
 
 ```sh
-python3 privatecloud/server.py --books /path/to/books --host 0.0.0.0 --port 8765
+python3 privatecloud/server.py --books /path/to/books --host 0.0.0.0 --port 8765 --token-file /path/to/token
 ```
 
 Endpoints:
@@ -22,22 +22,70 @@ Endpoints:
 - `/manifest.json`
 - `/manifest.tsv`
 - `/books/<relative-path>`
-- `/healthz`
+- `/healthz` (unauthenticated liveness probe)
 
 The filename format `Title -- Author.ext` or `Title - Author.ext` is used to
 populate display metadata in the manifest.
 
-## Kindle Agent
+### Authentication
 
-Copy `kindle-agent.sh` to the Kindle, initialize it with the server URL, then
-sync/list/download:
+All endpoints except `/healthz` require a bearer token:
+
+```
+Authorization: Bearer <token>
+```
+
+Generate one with:
 
 ```sh
-sh /mnt/us/privatecloud/kindle-agent.sh init http://HOST_IP:8765
+openssl rand -hex 32
+```
+
+Configure it on the server in one of three ways (first match wins):
+
+1. `--token <token>`
+2. `PRIVATECLOUD_TOKEN` environment variable
+3. `--token-file <path>` (default: `<books>/.privatecloud-token` if that file
+   exists)
+
+The server refuses to start without a token unless `--no-auth` is passed,
+which prints a loud warning and is meant for local development only.
+
+### Network exposure
+
+The server binds to `127.0.0.1` by default. Pass `--host 0.0.0.0` explicitly
+to serve a LAN.
+
+**Warning:** this prototype speaks plain HTTP. The bearer token and all book
+content travel unencrypted, so only expose the server on a trusted LAN or a
+WireGuard segment — never on an untrusted network or the public internet.
+
+### Manifest caching
+
+The manifest (JSON and TSV) is built once and rebuilt only when the library
+changes. Each request re-walks the directory and compares file names, mtimes,
+and sizes; SHA-256 hashing only happens on an actual change or at startup.
+Restart the server if you ever need to force a full rebuild.
+
+## Kindle Agent
+
+Copy `kindle-agent.sh` to the Kindle, initialize it with the server URL (and
+the same bearer token configured on the server), then sync/list/download:
+
+```sh
+sh /mnt/us/privatecloud/kindle-agent.sh init http://HOST_IP:8765 TOKEN
 sh /mnt/us/privatecloud/kindle-agent.sh sync
 sh /mnt/us/privatecloud/kindle-agent.sh list
 sh /mnt/us/privatecloud/kindle-agent.sh download BOOK_ID
 ```
+
+The token can also be set later by adding an `AUTH_TOKEN=<token>` line to
+`/mnt/us/privatecloud/config`, or via the `PRIVATECLOUD_AUTH_TOKEN` environment
+variable (`PRIVATECLOUD_SERVER_URL` overrides the configured URL the same way).
+
+The config file lives on the USB-visible `/mnt/us` partition, so the agent
+parses it as plain `KEY=VALUE` data instead of sourcing it; only `SERVER_URL`
+and `AUTH_TOKEN` are read, and values with unexpected characters are rejected.
 
 Downloaded files go to `/mnt/us/documents/PrivateCloud`. After each download the
 agent calls:
@@ -131,4 +179,6 @@ then restore the backup with:
 sh privatecloud/restore-catalog-test.sh /mnt/us/selfhost-catalog-backups/<stamp>
 ```
 
-Both raw-row deploy scripts require `CONFIRM_REMOTE_ROW_TEST=1` to run.
+Both raw-row deploy scripts require `CONFIRM_REMOTE_ROW_TEST=1` to run. If the
+server has token auth enabled, they also need the `PRIVATECLOUD_TOKEN`
+environment variable set to the same token.

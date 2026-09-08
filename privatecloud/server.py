@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
+import sys
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -53,11 +56,54 @@ def tsv_field(value: object) -> str:
     return str(value).replace("\t", " ").replace("\r", " ").replace("\n", " ")
 
 
+def manifest_json_payload(items: list[dict[str, object]]) -> bytes:
+    payload = {
+        "version": 1,
+        "items": items,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def manifest_tsv_payload(items: list[dict[str, object]]) -> bytes:
+    lines = ["id\ttitle\tauthor\tsize\tsha256\tmime\turl\tfilename"]
+    for item in items:
+        lines.append(
+            "\t".join(
+                tsv_field(item[key])
+                for key in (
+                    "id",
+                    "title",
+                    "author",
+                    "size",
+                    "sha256",
+                    "mime",
+                    "url",
+                    "filename",
+                )
+            )
+        )
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 class Library:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        self._lock = threading.Lock()
+        self._fingerprint: list[tuple[str, int, int]] | None = None
+        self._items: list[dict[str, object]] = []
+        self._json_body = b""
+        self._tsv_body = b""
 
-    def items(self) -> list[dict[str, object]]:
+    def fingerprint(self) -> list[tuple[str, int, int]]:
+        entries: list[tuple[str, int, int]] = []
+        for path in sorted(self.root.rglob("*")):
+            if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            stat = path.stat()
+            entries.append((path.relative_to(self.root).as_posix(), stat.st_mtime_ns, stat.st_size))
+        return entries
+
+    def build_items(self) -> list[dict[str, object]]:
         entries: list[dict[str, object]] = []
         for path in sorted(self.root.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
@@ -79,6 +125,31 @@ class Library:
                 }
             )
         return entries
+
+    def _refresh_locked(self) -> None:
+        fingerprint = self.fingerprint()
+        if fingerprint == self._fingerprint:
+            return
+        self._items = self.build_items()
+        self._json_body = manifest_json_payload(self._items)
+        self._tsv_body = manifest_tsv_payload(self._items)
+        self._fingerprint = fingerprint
+        print("Rebuilt library manifest: %d item(s) hashed" % len(self._items))
+
+    def items(self) -> list[dict[str, object]]:
+        with self._lock:
+            self._refresh_locked()
+            return self._items
+
+    def manifest_json(self) -> bytes:
+        with self._lock:
+            self._refresh_locked()
+            return self._json_body
+
+    def manifest_tsv(self) -> bytes:
+        with self._lock:
+            self._refresh_locked()
+            return self._tsv_body
 
     def resolve_book(self, raw_relative_path: str) -> Path | None:
         relative_path = unquote(raw_relative_path)
@@ -105,39 +176,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def require_auth(self) -> bool:
+        token = self.server.token
+        if token is None:
+            return True
+        header = self.headers.get("Authorization", "")
+        expected = "Bearer " + token
+        if hmac.compare_digest(header.encode("utf-8"), expected.encode("utf-8")):
+            return True
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", "Bearer")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def do_GET(self) -> None:
         if self.path == "/healthz":
             self.send_bytes(HTTPStatus.OK, b"ok\n", "text/plain; charset=utf-8")
             return
 
+        if not self.require_auth():
+            return
+
         if self.path == "/manifest.json":
-            payload = {
-                "version": 1,
-                "items": self.server.library.items(),
-            }
-            body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            body = self.server.library.manifest_json()
             self.send_bytes(HTTPStatus.OK, body, "application/json; charset=utf-8")
             return
 
         if self.path == "/manifest.tsv":
-            lines = ["id\ttitle\tauthor\tsize\tsha256\tmime\turl\tfilename"]
-            for item in self.server.library.items():
-                lines.append(
-                    "\t".join(
-                        tsv_field(item[key])
-                        for key in (
-                            "id",
-                            "title",
-                            "author",
-                            "size",
-                            "sha256",
-                            "mime",
-                            "url",
-                            "filename",
-                        )
-                    )
-                )
-            body = ("\n".join(lines) + "\n").encode("utf-8")
+            body = self.server.library.manifest_tsv()
             self.send_bytes(HTTPStatus.OK, body, "text/tab-separated-values; charset=utf-8")
             return
 
@@ -161,21 +228,55 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class Server(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], library: Library) -> None:
+    def __init__(self, address: tuple[str, int], library: Library, token: str | None) -> None:
         super().__init__(address, Handler)
         self.library = library
+        self.token = token
+
+
+def load_token(args: argparse.Namespace, root: Path) -> str | None:
+    token = args.token or os.environ.get("PRIVATECLOUD_TOKEN")
+    token_file = Path(args.token_file) if args.token_file else root / ".privatecloud-token"
+    if not token and token_file.is_file():
+        token = token_file.read_text(encoding="utf-8").strip()
+    if token:
+        return token
+    if args.no_auth:
+        print(
+            "WARNING: --no-auth is set; anyone who can reach this server can "
+            "list and download your whole library.",
+            file=sys.stderr,
+        )
+        return None
+    print(
+        "No auth token configured. Pass --token, set PRIVATECLOUD_TOKEN, or "
+        "write a token to %s (or use --no-auth to disable auth)." % token_file,
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve a private Kindle library manifest.")
     parser.add_argument("--books", default="books", help="Directory containing book files")
-    parser.add_argument("--host", default="0.0.0.0", help="Bind host")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", default=8765, type=int, help="Bind port")
+    parser.add_argument("--token", help="Bearer token required on all endpoints")
+    parser.add_argument(
+        "--token-file",
+        help="File containing the bearer token (default: <books>/.privatecloud-token if present)",
+    )
+    parser.add_argument(
+        "--no-auth",
+        action="store_true",
+        help="Disable token auth (INSECURE, development only)",
+    )
     args = parser.parse_args()
 
     root = Path(args.books)
     root.mkdir(parents=True, exist_ok=True)
-    server = Server((args.host, args.port), Library(root))
+    token = load_token(args, root)
+    server = Server((args.host, args.port), Library(root), token)
     print("Serving %s on http://%s:%s" % (root.resolve(), args.host, args.port))
     server.serve_forever()
 

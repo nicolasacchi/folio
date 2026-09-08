@@ -3,7 +3,9 @@
   <head>
     <meta charset="utf-8">
     <title><%= content_for(:title) || "#{@book.title} — Folio" %></title>
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+    <%# Pinch-zoom stays enabled so image/comic pages can be zoomed on mobile;
+    double-tap zoom is still off because .reader-root sets touch-action. %>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#f4efe3" media="(prefers-color-scheme: light)">

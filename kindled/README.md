@@ -90,6 +90,20 @@ content can't re-trigger itself.
 
 `PRIVATECLOUD_DIR` overrides the base directory (used by tests/dev).
 
+## Security
+
+The device API speaks plain HTTP: the `X-Api-Token` bearer token goes
+out unencrypted on every request and is sniffable anywhere on the
+network path. Only run kindled against a server on a trusted LAN
+segment; if the path crosses anything untrusted, tunnel it (WireGuard,
+Tailscale, an SSH forward). Downloads are SHA-256-verified against the
+manifest, but the manifest's hashes travel over the same channel — a
+man-in-the-middle on an untrusted network could substitute both content
+and hashes.
+
+The config file holds the device token, so kindled writes it 0600
+regardless of umask and re-tightens it on load if it has loosened.
+
 ## Build & install
 
 ```sh

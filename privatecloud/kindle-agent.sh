@@ -7,15 +7,51 @@ CONFIG_FILE="$PRIVATECLOUD_DIR/config"
 MANIFEST_FILE="$PRIVATECLOUD_DIR/manifest.tsv"
 
 SERVER_URL=${PRIVATECLOUD_SERVER_URL:-}
-if [ -f "$CONFIG_FILE" ]; then
-    # shellcheck disable=SC1090
-    . "$CONFIG_FILE"
-fi
+AUTH_TOKEN=${PRIVATECLOUD_AUTH_TOKEN:-}
+
+# The config file lives on the USB-exposed /mnt/us partition, so it must never
+# be sourced as shell code. Parse only the keys we expect and validate values.
+load_config() {
+    [ -f "$CONFIG_FILE" ] || return 0
+    while IFS='=' read -r key value; do
+        case "$key" in
+            SERVER_URL)
+                case "$value" in
+                    http://*|https://*)
+                        case "$value" in
+                            *[!A-Za-z0-9:/?=._~%-]*)
+                                echo "Ignoring SERVER_URL with unsafe characters in $CONFIG_FILE" >&2
+                                ;;
+                            *)
+                                SERVER_URL=$value
+                                ;;
+                        esac
+                        ;;
+                    *)
+                        echo "Ignoring SERVER_URL without http(s):// scheme in $CONFIG_FILE" >&2
+                        ;;
+                esac
+                ;;
+            AUTH_TOKEN)
+                case "$value" in
+                    ''|*[!A-Za-z0-9._~-]*)
+                        echo "Ignoring invalid AUTH_TOKEN in $CONFIG_FILE" >&2
+                        ;;
+                    *)
+                        AUTH_TOKEN=$value
+                        ;;
+                esac
+                ;;
+        esac
+    done < "$CONFIG_FILE"
+}
+
+load_config
 
 usage() {
     cat <<'EOF'
 Usage:
-  kindle-agent.sh init http://SERVER:8765
+  kindle-agent.sh init http://SERVER:8765 [TOKEN]
   kindle-agent.sh sync
   kindle-agent.sh list
   kindle-agent.sh download BOOK_ID
@@ -33,7 +69,11 @@ require_server() {
 fetch() {
     fetch_url=$1
     fetch_output=$2
-    curl -fsSL "$fetch_url" -o "$fetch_output"
+    if [ -n "${AUTH_TOKEN:-}" ]; then
+        curl -fsSL -H "Authorization: Bearer $AUTH_TOKEN" "$fetch_url" -o "$fetch_output"
+    else
+        curl -fsSL "$fetch_url" -o "$fetch_output"
+    fi
 }
 
 refresh_file() {
@@ -75,6 +115,14 @@ download_book() {
         exit 3
     fi
 
+    # The manifest arrives over plain HTTP, so treat filename as hostile.
+    case "$filename" in
+        ''|.*|*/*)
+            echo "Refusing unsafe filename from manifest: $filename" >&2
+            exit 5
+            ;;
+    esac
+
     mkdir -p "$DOCUMENT_DIR"
     output="$DOCUMENT_DIR/$filename"
     tmp="$output.part"
@@ -98,12 +146,17 @@ cmd=${1:-}
 case "$cmd" in
     init)
         url=${2:-}
+        token=${3:-}
         if [ -z "$url" ]; then
             usage
             exit 2
         fi
         mkdir -p "$PRIVATECLOUD_DIR"
         printf "SERVER_URL=%s\n" "$url" > "$CONFIG_FILE"
+        if [ -n "$token" ]; then
+            printf "AUTH_TOKEN=%s\n" "$token" >> "$CONFIG_FILE"
+        fi
+        chmod 600 "$CONFIG_FILE"
         ;;
     sync)
         sync_manifest

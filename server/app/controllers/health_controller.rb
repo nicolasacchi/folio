@@ -14,6 +14,13 @@ class HealthController < ActionController::Base
   # A worker that hasn't heartbeated within this window is considered gone.
   QUEUE_HEARTBEAT_WINDOW = 5.minutes
 
+  # The DB write probe (below) is a CREATE + INSERT on every hit; cache the
+  # outcome for a few seconds so a burst of monitor scrapes costs one real
+  # probe instead of one write per request. A cached "down" flips back to
+  # "ok" at most this long after recovery — acceptable for a liveness feed.
+  DB_PROBE_CACHE_KEY = "healthz/deep/db_writable"
+  DB_PROBE_TTL = 5.seconds
+
   def deep
     db_ok = database_writable?
     queue_ok = !queue_stale?
@@ -27,8 +34,20 @@ class HealthController < ActionController::Base
 
   # A real write (create + insert), rolled back — proves the DB file is
   # actually writable, not just that a SELECT works (which a read-only
-  # filesystem or a wedged lock would still happily answer).
+  # filesystem or a wedged lock would still happily answer). Probed through
+  # the cache (see DB_PROBE_TTL); both true and false are cached, so a
+  # down-DB burst doesn't turn into a write-attempt storm either.
   def database_writable?
+    Rails.cache.fetch(DB_PROBE_CACHE_KEY, expires_in: DB_PROBE_TTL) { probe_database_write }
+  rescue StandardError => e
+    # The cache backend is Solid Cache — the same SQLite cluster this probe
+    # is checking. If the cache itself is wedged, fall back to probing
+    # directly rather than 500ing (or falsely 503ing) the health endpoint.
+    Rails.logger.error("[health#deep] probe cache failed, probing directly: #{e.class}")
+    probe_database_write
+  end
+
+  def probe_database_write
     ActiveRecord::Base.transaction(requires_new: true) do
       ActiveRecord::Base.connection.execute("CREATE TABLE IF NOT EXISTS health_check_probes (id integer PRIMARY KEY)")
       ActiveRecord::Base.connection.execute("INSERT INTO health_check_probes (id) VALUES (1)")

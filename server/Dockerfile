@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # Production image for Folio, the Kindle private-cloud library server.
-# Built and run via your reverse-proxy compose file (service "folio"):
-#   docker compose build folio && docker compose up -d folio
+#   docker build -t folio .
+# Run with SECRET_KEY_BASE set (and ADMIN_EMAIL / ADMIN_PASSWORD /
+# APP_HOST as needed). Bind-mount storage/ for the SQLite DB and uploads.
 
 ARG RUBY_VERSION=3.3.6
 FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base

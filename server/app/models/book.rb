@@ -41,6 +41,15 @@ class Book < ApplicationRecord
 
   after_destroy :remove_artifacts
 
+  # A newly ingested book (background upload, scan discovery) refreshes any
+  # open library index in place — books/index.html.erb subscribes via
+  # turbo_stream_from "books", and the layout morphs (turbo_refreshes_with
+  # method: :morph), so a background import just appears on the shelf.
+  # Create-only on purpose: a rescan updates thousands of existing rows,
+  # and per-update refreshes would flood Solid Queue with refresh jobs that
+  # change nothing the reader is looking at.
+  after_create_commit { broadcast_refresh_to "books" }
+
   SearchHit = Struct.new(:book, :snippet, :rank)
 
   # FTS5-ranked search. Returns SearchHit structs so views can show the

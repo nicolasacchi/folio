@@ -16,5 +16,6 @@ end
 
 if Device.none?
   device = Device.create!(name: "kindle-1")
-  puts "Created device 'kindle-1' with API token: #{device.token}"
+  abort "Device 'kindle-1' was created but raw_token is blank — no API token to print" if device.raw_token.blank?
+  puts "Created device 'kindle-1' with API token: #{device.raw_token}"
 end

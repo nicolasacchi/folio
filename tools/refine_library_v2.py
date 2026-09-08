@@ -8,7 +8,8 @@ import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
-BASE = Path("/path/to/library/books")
+# Library root to refine. Override with the LIBRARY_BOOKS env var.
+BASE = Path(os.environ.get("LIBRARY_BOOKS", Path.home() / "library" / "books"))
 
 # genre for authors still sitting in general (and anywhere)
 EXTRA: dict[str, str] = {}

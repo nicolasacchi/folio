@@ -14,6 +14,15 @@ module Opds
     REALM = "Folio OPDS"
     PER_PAGE = 48 # matches BooksController::PER_PAGE (the web index)
 
+    # Failed-auth throttle (the strict half of the OPDS rate limiting — see
+    # config/initializers/rack_attack.rb for why it lives here and not in
+    # Rack::Attack): this many wrong-password attempts per ip+username
+    # within the window turns further attempts into 429s. Counting happens
+    # only on actual failures, so a legit client reusing valid credentials
+    # on every request never accrues anything.
+    AUTH_FAILURE_LIMIT = 30
+    AUTH_FAILURE_PERIOD = 5.minutes
+
     before_action :authenticate_opds_user!
 
     private
@@ -26,10 +35,45 @@ module Opds
     # match anything, so a bad email and a bad password fail in the same
     # amount of time — no separate constant-time handling needed here.
     def authenticate_opds_user!
+      if auth_failure_throttled?
+        response.set_header("Retry-After", AUTH_FAILURE_PERIOD.to_i.to_s)
+        render plain: "Too many failed sign-in attempts — try again later.", status: :too_many_requests
+        return
+      end
+
       authenticate_or_request_with_http_basic(REALM) do |email, password|
         @current_opds_user = User.authenticate_by(email_address: email, password: password)
+        record_auth_failure(email) unless @current_opds_user
         @current_opds_user.present?
       end
+    end
+
+    def auth_failure_throttled?
+      username = ActionController::HttpAuthentication::Basic.user_name_and_password(request)&.first
+      auth_failure_count(auth_failure_key(username)) >= AUTH_FAILURE_LIMIT
+    end
+
+    def record_auth_failure(email)
+      key = auth_failure_key(email)
+      Rails.cache.write(key, auth_failure_count(key) + 1, expires_in: AUTH_FAILURE_PERIOD)
+    rescue StandardError => e
+      # A broken cache backend must never lock legit users out of OPDS.
+      Rails.logger.error("[opds] auth-failure throttle write failed: #{e.class}")
+    end
+
+    def auth_failure_count(key)
+      Rails.cache.read(key).to_i
+    rescue StandardError => e
+      Rails.logger.error("[opds] auth-failure throttle read failed: #{e.class}")
+      0
+    end
+
+    # Keyed by the Basic-auth username (strip+downcase — User.email_address
+    # normalizes the same way, see app/models/user.rb) plus IP, so
+    # one targeted account locks out only that ip+username pair and other
+    # users behind the same NAT keep working.
+    def auth_failure_key(username)
+      "opds/auth_failures/#{request.remote_ip}/#{username.to_s.strip.downcase}"
     end
 
     # Books with at least one currently-deliverable file. BookFile#available

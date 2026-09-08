@@ -13,6 +13,22 @@ if [ -z "$BACKUP_DIR" ]; then
     exit 2
 fi
 
+# BACKUP_DIR may come from a marker file on /mnt/us, which any PC the Kindle
+# is plugged into can write. It is interpolated into a remote root shell, so
+# only accept the expected backup layout with a safe character set.
+case "$BACKUP_DIR" in
+    ''|*..*|*[!A-Za-z0-9._/-]*)
+        echo "Unsafe BACKUP_DIR: $BACKUP_DIR" >&2
+        exit 2
+        ;;
+    /mnt/us/selfhost-catalog-backups/*)
+        ;;
+    *)
+        echo "BACKUP_DIR must be under /mnt/us/selfhost-catalog-backups/: $BACKUP_DIR" >&2
+        exit 2
+        ;;
+esac
+
 ssh -F /dev/null "$KINDLE_HOST" "set -e
 test -f '$BACKUP_DIR/cc.before-private.db'
 stop kppmainapp 2>/dev/null || true

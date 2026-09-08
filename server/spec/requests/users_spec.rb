@@ -29,15 +29,21 @@ RSpec.describe "User management", type: :request do
     it "adds a user with a given password" do
       post users_path, params: { user: { email_address: "new@example.com", password: "s3cretpass" } }
 
+      expect(response).to redirect_to(users_path)
       expect(User.find_by(email_address: "new@example.com")).to be_present
       expect(User.find_by(email_address: "new@example.com").admin).to be(false)
     end
 
     it "generates a password when blank and shows it once" do
-      post users_path, params: { user: { email_address: "gen@example.com", password: "" } }
-      follow_redirect!
+      generated = "OnceShown9ab"
+      allow(SecureRandom).to receive(:base58).with(12).and_return(generated)
 
+      post users_path, params: { user: { email_address: "gen@example.com", password: "" } }
+
+      expect(response).to have_http_status(:ok)
       expect(response.body).to include("Password:")
+      expect(response.body).to include(generated)
+      expect(response.body).to include("gen@example.com")
       expect(User.find_by(email_address: "gen@example.com")).to be_present
     end
 

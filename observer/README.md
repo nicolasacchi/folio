@@ -2,11 +2,11 @@
 
 Small read-only helpers for mapping a jailbroken Kindle over SSH.
 
-The default target is the KOReader Dropbear server on `root@kindle`.
-Override it with:
+The default target is the KOReader Dropbear server on `root@kindle`
+(set a `kindle` host alias in `~/.ssh/config`, or override it directly):
 
 ```sh
-KINDLE_HOST=root@kindle KINDLE_SSH_OPTS="-F /dev/null" observer/scripts/collect.sh
+KINDLE_HOST=root@KINDLE_IP KINDLE_SSH_OPTS="-F /dev/null" observer/scripts/collect.sh
 ```
 
 The capture output goes under `observer/captures/`.

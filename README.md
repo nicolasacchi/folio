@@ -53,14 +53,26 @@ through `.sdr` sidecar bundles on the private server, not WhisperSync.
   intentionally unsupported (tapping such rows crashes KPP — see the
   research notes).
 
+## Prerequisites
+
+- Ruby 3.3.6, Bundler
+- Calibre CLI (`ebook-convert`, `ebook-meta`)
+- libvips
+- SQLite
+- Docker or rustup (to build kindled)
+- A jailbroken Kindle with SSH and KUAL
+
+See `server/README.md` and `kindled/README.md` for component-specific
+setup.
+
 ## Quick start
 
 ```sh
-# Server (on your LAN box)
+# Server (listens on localhost)
 cd server
 bundle install
 bin/rails db:prepare db:schema:load:queue db:seed   # prints login + device token
-bin/rails server -b 0.0.0.0
+bin/rails server
 
 # Kindle daemon
 cd kindled
@@ -69,6 +81,9 @@ scp target/armv7-unknown-linux-musleabihf/release/kindled root@KINDLE:/mnt/us/pr
 ssh root@KINDLE /mnt/us/privatecloud/kindled init http://SERVER_IP:3000 DEVICE_TOKEN
 ssh root@KINDLE /mnt/us/privatecloud/kindled sync
 ```
+
+Pass `-b 0.0.0.0` to `bin/rails server` only on a trusted LAN so other
+devices on that network can reach it.
 
 Add books from your phone at `http://SERVER_IP:3000` (installable PWA).
 
@@ -87,6 +102,30 @@ Raw captures, temporary Kindle databases, copied certificates, and copied
 Kindle binaries are ignored. They may contain account/device information
 or proprietary Amazon material and should stay local unless they are
 manually redacted first.
+
+## Security
+
+The trust model is a private network, not the public internet. The
+kindled↔server device API and the legacy `privatecloud/` prototype speak
+plain HTTP with bearer tokens, so deploy them only on a trusted LAN or
+over WireGuard/Tailscale — never exposed to the internet. The web UI
+itself should be served over HTTPS (Rails `force_ssl` is on in
+production; put a TLS-terminating reverse proxy in front of it). Note
+that `privatecloud/` is a set of legacy prototypes kept for reference,
+not a supported deployment path. See `SECURITY.md` for how to report
+vulnerabilities.
+
+## License
+
+AGPLv3 — see `LICENSE`. The server component is network software, so the
+Affero clause applies: if you run a modified Folio instance for others,
+you must offer them its source.
+
+### Third-party
+
+The in-browser reader vendors foliate-js (MIT), pdf.js (Apache-2.0),
+and reader fonts (SIL OFL). Copies of those licenses live under
+`server/public/reader/`; this file does not restate them.
 
 ## Safe Direction
 

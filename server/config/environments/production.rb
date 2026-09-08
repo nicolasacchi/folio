@@ -84,8 +84,8 @@ Rails.application.configure do
       # Verify the peer certificate by default — with verification off, a
       # MITM'd or spoofed relay could silently intercept password-reset
       # emails (account takeover). "peer" is the safe default for any real
-      # remote MTA. This deploy talks to a local SMTP relay; if it's reached
-      # over localhost/a private network with a self-signed cert, override
+      # remote MTA. If the relay is a local SMTP bridge on localhost or a
+      # private network with a self-signed cert, override
       # via SMTP_OPENSSL_VERIFY_MODE=none for that connection specifically
       # rather than weakening the default here.
       openssl_verify_mode: ENV.fetch("SMTP_OPENSSL_VERIFY_MODE", "peer")
@@ -103,7 +103,7 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Enable DNS rebinding protection and other `Host` header attacks.
-  # APP_HOST is the public hostname (e.g. YOUR_HOST); localhost keeps
+  # APP_HOST is the public hostname (e.g. library.example.com); localhost keeps
   # in-container smoke checks working.
   config.hosts = [ ENV.fetch("APP_HOST", "localhost"), "localhost" ]
 

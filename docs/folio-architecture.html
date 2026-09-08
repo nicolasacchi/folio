@@ -22,7 +22,7 @@
 
 <p>A privacy-preserving, self-hosted library for jailbroken Kindles.
 Live at <code>YOUR_HOST</code>; source in
-<code>the repo</code>. The design deliberately does
+the repo. The design deliberately does
 <em>not</em> impersonate Amazon's backend: a private server publishes a
 per-device manifest and book files; a device-side daemon downloads them
 into <code>/mnt/us/documents/PrivateCloud</code>, where the stock scanner
@@ -120,7 +120,7 @@ survives as history.</p>
 </ul>
 
 <h2 id="deploy">Deployment</h2>
-<p>Docker via the traefik stack (<code>your reverse-proxy compose file</code>,
+<p>Docker via the traefik stack (your reverse-proxy compose file,
 service <code>folio</code>, build context <code>server/</code>). Solid Queue
 runs inside Puma. Storage under <code>/var/lib/folio/storage</code>; the
 Komga library is mounted read-only at <code>/komga</code> and referenced in

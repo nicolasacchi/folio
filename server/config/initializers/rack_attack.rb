@@ -61,6 +61,32 @@ class Rack::Attack
     end
   end
 
+  # /opds authenticates real User passwords over HTTP Basic on EVERY
+  # request (Opds::BaseController#authenticate_opds_user!), so an
+  # unthrottled OPDS surface is a bcrypt-cost password-guessing oracle.
+  # Two layers:
+  #
+  # 1. The broad per-IP ceiling here, sized for a real OPDS client: one
+  #    feed page turn is the feed itself plus a cover/thumbnail fetch per
+  #    visible entry (PER_PAGE = 48, see Opds::BaseController), so a burst
+  #    is realistically ~100 requests; this sits ~3x above that per minute.
+  #    Do NOT tighten without re-measuring a KOReader/Thorium browsing
+  #    session — covers and book files are served under /opds too.
+  #
+  # 2. The stricter failed-attempt throttle lives in Opds::BaseController,
+  #    not here: Rack::Attack decides in the request phase, before the app
+  #    runs, so it cannot tell a wrong-password request (which runs bcrypt
+  #    and returns 401) from a valid one — every OPDS request carries the
+  #    same Basic credentials, legit browsing included. The controller
+  #    counts actual 401s per ip+username and 429s once
+  #    Opds::BaseController::AUTH_FAILURE_LIMIT is hit.
+  OPDS_LIMIT = 300
+  OPDS_PERIOD = 1.minute
+
+  throttle("opds/ip", limit: OPDS_LIMIT, period: OPDS_PERIOD) do |req|
+    req.ip if req.path == "/opds" || req.path.start_with?("/opds/")
+  end
+
   # Let a throttled client know when to retry instead of hammering
   # immediately (same spirit as the Retry-After the API already sends on a
   # busy-database 503 — see Api::V1::BaseController).

@@ -22,8 +22,8 @@
 <h1 id="overview">OCR engine evaluation for junk-text-layer scans</h1>
 
 <p>Run 2026-08-19/20 against two real books from the live library — both
-32-page scanned picture books ("Book A", id 39589, and
-"Book B", id 39590) whose pdfs carry a junk legacy
+32-page scanned picture books ("Book A", id-a, and
+"Book B", id-b) whose pdfs carry a junk legacy
 Internet-Archive text layer that Folio's production pipeline
 (<code>ocrmypdf --skip-text</code>) deliberately preserves. The question:
 does any engine or flag change produce cleanly extractable text for the
@@ -39,7 +39,7 @@ engine's native text output where no pdf is produced).</p>
 <h2 id="results">Results</h2>
 
 <table>
-<tr><th>Variant</th><th>39589</th><th>39590</th><th>Wall clock / book</th><th>Notes</th></tr>
+<tr><th>Variant</th><th>id-a</th><th>id-b</th><th>Wall clock / book</th><th>Notes</th></tr>
 <tr><td><code>--skip-text</code> (production)</td><td>0.4756</td><td>0.4742</td><td>~2m10s / ~46s</td><td>Fresh-OCRs only 13/32 and 6/32 pages; junk legacy layer survives on the rest</td></tr>
 <tr><td><code>--redo-ocr -l ita</code></td><td>0.4675</td><td>0.4239</td><td>~5 min</td><td>Force-OCRs ~everything; ocrmypdf preprocessing degrades quality; new misreads on previously-fine pages</td></tr>
 <tr><td><code>--force-ocr -l ita</code> (plain, no deskew/oversample)</td><td>0.4675</td><td>0.4239</td><td>~8 min</td><td>Identical to redo-ocr to 4 decimals (same shared preprocessing). Output pdf 26–34× larger — the folio image lacks <code>jbig2</code>/<code>pngquant</code> optimizers, which alone explains most of the old "41×" blow-up</td></tr>
@@ -76,7 +76,7 @@ apply to illustrated children's prose; untested (and more plausible) for
 textbook-style scans.</li>
 <li id="finding-illustrations"><b>Illustration/title pages are noise under
 every engine</b> — they are pictures. Aggregate metrics under-weight the
-real user-visible win: on junk-layer prose pages (e.g. 39590 p.7), raw
+real user-visible win: on junk-layer prose pages (e.g. id-b p.7), raw
 Tesseract and franken_ocr both recover correct readable Italian where the
 production companion has pure garbage.</li>
 <li id="finding-italian"><b>Why franken_ocr misreads Italian (2026-08-21
@@ -100,7 +100,7 @@ yet for Italian): see the dedicated research note
 DeepSeek-OCR che capisca l'italiano</a>.</li>
 </ul>
 
-<h2 id="samples">Sample — 39590 page 7 (junk-layer page)</h2>
+<h2 id="samples">Sample — id-b page 7 (junk-layer page)</h2>
 
 <pre>production companion:  " = a wr &gt; d Ki Si &gt;, À - '3 20 bb L..."
 raw tesseract:         "Il Polo Nord è un vero paradiso, per giocare:
@@ -126,7 +126,7 @@ predictable minutes per book on the :conversion queue. Not built as of
 <b>[SHIPPED 2026-08-21, commit 301121c — <code>book_files.text_engine</code>
 "deep", "Deep re-OCR text" button on the book page; per-book language via
 <code>Library::Ocr.language_for</code>, per-page timeout with partial
-recovery. Verified live on 39590: junk-layer p.7 garbage → correct prose,
+recovery. Verified live on id-b: junk-layer p.7 garbage → correct prose,
 AZW3 rebuilt with PDOC identity; aggregate 0.4642 vs 0.4739 layer, matching
 this eval's raw-Tesseract prediction for that book.]</b></p>
 <p>franken_ocr remains a plausible <i>manual, offline</i> quality pass for

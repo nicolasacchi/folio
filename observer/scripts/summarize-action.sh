@@ -4,7 +4,7 @@ set -eu
 DIR="${1:?usage: observer/scripts/summarize-action.sh observer/captures/action-...}"
 
 echo "== Unique external endpoints =="
-awk '/^tcp/ && $5 !~ /127\.0\.0\.1/ {print $7, $5, $6}' "$DIR/samples.txt" | sort -u
+awk '/^tcp/ && $5 !~ /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/ {print $7, $5, $6}' "$DIR/samples.txt" | sort -u
 
 echo
 echo "== Sync timeline =="

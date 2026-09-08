@@ -18,9 +18,20 @@ class UsersController < ApplicationController
 
     user = User.new(attrs)
     if user.save
-      notice = "#{user.email_address} added."
-      notice += " Password: #{attrs[:password]} — share it now, it is not shown again." if generated
-      redirect_to users_path, notice: notice
+      # A generated password is rendered once, straight into this response
+      # (@generated_password on the index view), never through the session
+      # flash — flash round-trips the secret through the cookie/cache store
+      # and shows it again on every later render until it's consumed.
+      if generated
+        @generated_password = attrs[:password]
+        @created_email = user.email_address
+        @users = User.order(:email_address)
+        @user = User.new
+        flash.now[:notice] = "#{user.email_address} added."
+        render :index
+      else
+        redirect_to users_path, notice: "#{user.email_address} added."
+      end
     else
       redirect_to users_path, alert: user.errors.full_messages.to_sentence
     end

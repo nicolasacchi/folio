@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Re-shelf books/ into taxonomy v2 (finer fiction leaves).
 
-Moves files under /path/to/library/books by author maps + title rules.
+Moves files under the books tree by author maps + title rules.
 Does not invent depth-3 paths. Residual narrative → fiction/general.
 Prestige authors → fiction/literary (kept small).
 """
@@ -13,7 +13,8 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-BASE = Path("/path/to/library/books")
+# Library root to re-shelf. Override with the LIBRARY_BOOKS env var.
+BASE = Path(os.environ.get("LIBRARY_BOOKS", Path.home() / "library" / "books"))
 CAT: dict[str, str] = {}
 
 

@@ -8,6 +8,24 @@
   generated one (shown once).
 </p>
 
+<% if @generated_password.present? %>
+  <p class="section-label">Generated password</p>
+  <div class="device-row" role="status">
+    <span class="grow">
+      <b><%= @created_email %></b>
+      <span class="stamp stamp--pending">shown once</span>
+      <br>
+      <span class="small muted">Password:</span>
+      <span class="token-box" data-controller="clipboard" data-clipboard-text-value="<%= @generated_password %>">
+        <%= @generated_password %>
+        <button type="button" class="top-link" data-action="clipboard#copy" title="Copy password">copy</button>
+      </span>
+      <br>
+      <span class="small muted">Copy it now — it will not be shown again.</span>
+    </span>
+  </div>
+<% end %>
+
 <% @users.each do |user| %>
   <div class="device-row">
     <span class="grow">

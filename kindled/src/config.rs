@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -45,6 +45,7 @@ impl Config {
     }
 
     pub fn load_from(path: &Path) -> io::Result<Config> {
+        tighten_permissions(path);
         let text = fs::read_to_string(path)?;
         let values = parse_key_values(&text);
         let base = Self::base_dir();
@@ -99,10 +100,45 @@ impl Config {
             api_token,
             DEFAULT_DOCUMENT_DIR
         );
-        fs::write(&path, body)?;
+        write_private(&path, body.as_bytes())?;
         Ok(path)
     }
 }
+
+/// The config holds the device API token, so it must never be
+/// world-readable: created 0600 regardless of umask.
+fn write_private(path: &Path, body: &[u8]) -> io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.create(true).truncate(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)?.write_all(body)
+}
+
+/// Fixes up configs left world-readable by the shell prototype or a
+/// manual edit. Best-effort: a read-only filesystem must not block load.
+#[cfg(unix)]
+fn tighten_permissions(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = fs::metadata(path) else {
+        return;
+    };
+    if meta.permissions().mode() & 0o777 == 0o600 {
+        return;
+    }
+    let mut perms = meta.permissions();
+    perms.set_mode(0o600);
+    match fs::set_permissions(path, perms) {
+        Ok(()) => eprintln!("config: tightened {} to 0600", path.display()),
+        Err(error) => eprintln!("config: could not tighten {} to 0600: {error}", path.display()),
+    }
+}
+
+#[cfg(not(unix))]
+fn tighten_permissions(_path: &Path) {}
 
 fn parse_key_values(text: &str) -> HashMap<String, String> {
     let mut values = HashMap::new();
@@ -141,15 +177,49 @@ mod tests {
         let path = dir.join("config");
         fs::write(
             &path,
-            "SERVER_URL=http://SERVER_IP:3000/\nAPI_TOKEN=tok\nAUTO_DOWNLOAD=0\n",
+            "SERVER_URL=http://192.0.2.1:3000/\nAPI_TOKEN=tok\nAUTO_DOWNLOAD=0\n",
         )
         .unwrap();
 
         let config = Config::load_from(&path).unwrap();
-        assert_eq!(config.server_url, "http://SERVER_IP:3000");
+        assert_eq!(config.server_url, "http://192.0.2.1:3000");
         assert_eq!(config.api_token, "tok");
         assert!(!config.auto_download);
         assert_eq!(config.poll_interval_secs, 300);
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_private_creates_file_with_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("kindled-test-mode-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config");
+
+        write_private(&path, b"SERVER_URL=http://h:1\n").unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_from_tightens_loose_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("kindled-test-tighten-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config");
+        fs::write(&path, "SERVER_URL=http://h:1\nAPI_TOKEN=tok\n").unwrap();
+        let mut perms = fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&path, perms).unwrap();
+
+        Config::load_from(&path).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
 
         fs::remove_dir_all(&dir).unwrap();
     }

@@ -23,7 +23,11 @@ if [ "$EXISTING" != "0" ] && [ "${ALLOW_EXISTING_PRIVATE_ROWS:-0}" != "1" ]; the
 fi
 
 echo "Fetching manifest from $SERVER_URL"
-curl -fsS "$SERVER_URL/manifest.tsv" -o "$WORKDIR/manifest.tsv"
+if [ -n "${PRIVATECLOUD_TOKEN:-}" ]; then
+    curl -fsS -H "Authorization: Bearer $PRIVATECLOUD_TOKEN" "$SERVER_URL/manifest.tsv" -o "$WORKDIR/manifest.tsv"
+else
+    curl -fsS "$SERVER_URL/manifest.tsv" -o "$WORKDIR/manifest.tsv"
+fi
 
 echo "Pulling current cc.db"
 scp -F /dev/null "$KINDLE_HOST:/var/local/cc.db" "$WORKDIR/cc.source.db"

@@ -8,6 +8,7 @@ inside Puma, FTS5 powers full-text search, Calibre does the ebook work.
 
 - Ruby 3.3+, Bundler
 - Calibre CLI tools on PATH (`ebook-convert`, `ebook-meta`)
+- libvips
 - SQLite 3 (FTS5 is compiled into the stock library)
 
 ## Setup
@@ -83,12 +84,11 @@ with `LIBRARY_ROOT`).
 ## Deployment
 
 `Dockerfile` builds a production image with Calibre included; Solid Queue
-runs inside Puma (`SOLID_QUEUE_IN_PUMA=1`). See the `folio` service in
-`your reverse-proxy compose file` (serves https://YOUR_HOST): SQLite
-databases + covers + uploads live on a bind-mounted `storage/`, the ebook
-folder is mounted read-only at `/komga` and referenced via
-`SCAN_ROOTS=/komga`. Set `SECRET_KEY_BASE`, `ADMIN_EMAIL`,
-`ADMIN_PASSWORD`, `APP_HOST`; optional SMTP_* enables password-reset
+runs inside Puma (`SOLID_QUEUE_IN_PUMA=1`). A typical compose service
+bind-mounts `storage/` for SQLite databases, covers, and uploads, and
+optionally mounts an existing ebook folder read-only and points
+`SCAN_ROOTS` at it. Set `SECRET_KEY_BASE`, `ADMIN_EMAIL`,
+`ADMIN_PASSWORD`, and `APP_HOST`; optional SMTP_* enables password-reset
 mail. `docker build --build-arg BUNDLE_WITHOUT="" -t folio:dev .` builds
 the dev/test-gem variant used to run the spec suite:
 `docker run --rm -v $PWD:/rails -e RAILS_ENV=test folio:dev bundle exec rspec`.
@@ -96,5 +96,5 @@ the dev/test-gem variant used to run the spec suite:
 ## Tests
 
 ```sh
-bundle exec rspec   # 53 examples
+bundle exec rspec
 ```

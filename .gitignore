@@ -21,8 +21,24 @@ privatecloud/__pycache__/
 *~
 *.swp
 
+# Python bytecode caches anywhere in the tree.
+__pycache__/
+
+# Environment files and key material must never be committed.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
 # Rust build output.
 kindled/target/
 
 # grokclaude offload blackboard (job briefs/reports/scratch — local run records).
 .grokclaude/
+
+# Local agent config (machine-specific permissions).
+.claude/

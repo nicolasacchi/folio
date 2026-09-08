@@ -32,9 +32,18 @@ module Opds
       )
     end
 
+    # The three navigation indexes below each run a DISTINCT ... ORDER BY
+    # lower(...) pluck over the whole books table per request. They get the
+    # same treatment as the web index's library_categories cache
+    # (BooksController#index): TTL-only invalidation at 10 minutes, no
+    # explicit expiry anywhere in the app, so OPDS and web go stale — and
+    # refresh — consistently.
+
     def authors
       @updated = Book.maximum(:updated_at) || Time.current
-      @authors = available_books.where.not(author: [ nil, "" ]).distinct.order(Arel.sql("lower(author)")).pluck(:author)
+      @authors = Rails.cache.fetch("opds_authors", expires_in: 10.minutes) do
+        available_books.where.not(author: [ nil, "" ]).distinct.order(Arel.sql("lower(author)")).pluck(:author)
+      end
       render formats: :atom, content_type: Opds::ContentTypes::NAVIGATION
     end
 
@@ -51,7 +60,9 @@ module Opds
 
     def series_index
       @updated = Book.maximum(:updated_at) || Time.current
-      @series_list = available_books.where.not(series: [ nil, "" ]).distinct.order(Arel.sql("lower(series)")).pluck(:series)
+      @series_list = Rails.cache.fetch("opds_series", expires_in: 10.minutes) do
+        available_books.where.not(series: [ nil, "" ]).distinct.order(Arel.sql("lower(series)")).pluck(:series)
+      end
       render formats: :atom, content_type: Opds::ContentTypes::NAVIGATION
     end
 
@@ -69,7 +80,9 @@ module Opds
 
     def categories
       @updated = Book.maximum(:updated_at) || Time.current
-      @categories = available_books.where.not(category: [ nil, "" ]).distinct.order(:category).pluck(:category)
+      @categories = Rails.cache.fetch("opds_categories", expires_in: 10.minutes) do
+        available_books.where.not(category: [ nil, "" ]).distinct.order(:category).pluck(:category)
+      end
       render formats: :atom, content_type: Opds::ContentTypes::NAVIGATION
     end
 
