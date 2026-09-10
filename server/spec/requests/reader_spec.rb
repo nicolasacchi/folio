@@ -34,6 +34,20 @@ RSpec.describe "In-browser reader", type: :request do
         expect(response.body).to include(CGI.escapeHTML(read_book_file_path(book, raw: 1)))
       end
 
+      it "renders the page-mode toggle and the zoom-mode overlay controls" do
+        sign_in(user)
+        get read_book_path(book)
+
+        expect(response.body).to include('data-reader-target="pageModeRow"')
+        expect(response.body).to include('data-reader-page-mode-param="fit"')
+        expect(response.body).to include('data-reader-page-mode-param="zoom"')
+        expect(response.body).to include('class="reader-fxl-controls"')
+        expect(response.body).to include("click->reader#fxlPrevPage")
+        expect(response.body).to include("click->reader#fxlNextPage")
+        expect(response.body).to include("click->reader#fxlZoomIn")
+        expect(response.body).to include("click->reader#fxlZoomOut")
+      end
+
       it "declares variant 'none' and renders no variant badge without an OCR companion" do
         sign_in(user)
         get read_book_path(book)

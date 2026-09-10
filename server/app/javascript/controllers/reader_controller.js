@@ -31,7 +31,8 @@ const DEFAULT_SETTINGS = {
   fontFamily: "publisher", // publisher | serif | sans | webfont keys
   justify: false,
   hyphenate: true,
-  keepScreenOn: true
+  keepScreenOn: true,
+  pageMode: "fit" // fit | zoom — fixed-layout books only (PDF/CBZ/fxl EPUB)
 }
 
 const PREFS_SAVE_DEBOUNCE_MS = 1000
@@ -174,6 +175,7 @@ export default class extends Controller {
     "settingsPanel", "fontSizeReadout", "lineHeightSlider", "lineHeightReadout",
     "marginSlider", "marginReadout", "themeButton", "flowButton",
     "fontButton", "justifyButton", "hyphenateButton",
+    "pageModeRow", "pageModeButton", "fxlControls",
     "keepScreenOnRow", "keepScreenOnButton",
     "fullscreenButton",
     "selectionMenu",
@@ -254,6 +256,11 @@ export default class extends Controller {
     // Screen Wake Lock state — see the "-- Wake lock --" section below.
     this.wakeLock = null
 
+    // Fixed-layout page mode state — see the "-- Fixed-layout page mode --"
+    // section below.
+    this.zoomFactor = 1
+    this.fxlPageSize = null
+
     this.onKeydown = this.onKeydown.bind(this)
     document.addEventListener("keydown", this.onKeydown)
     this.onFullscreenChange = this.onFullscreenChange.bind(this)
@@ -272,6 +279,9 @@ export default class extends Controller {
     // save actually complete after the page starts going away.
     this.onPageHide = () => this.flushPosition()
     window.addEventListener("pagehide", this.onPageHide)
+    this.onWindowResize = this.onWindowResize.bind(this)
+    window.addEventListener("resize", this.onWindowResize)
+    this.onFxlWheel = this.onFxlWheel.bind(this)
 
     if (this.hasFullscreenButtonTarget) {
       this.fullscreenButtonTarget.hidden = !(document.fullscreenEnabled && this.element.requestFullscreen)
@@ -293,6 +303,8 @@ export default class extends Controller {
     document.removeEventListener("pointerdown", this.onDocumentPointerDown)
     document.removeEventListener("visibilitychange", this.onVisibilityChange)
     window.removeEventListener("pagehide", this.onPageHide)
+    window.removeEventListener("resize", this.onWindowResize)
+    this.unbindFxlWheel()
     this.clearAutoHide()
     this.clearLivePoll()
     if (this.saveTimer) clearTimeout(this.saveTimer)
@@ -332,11 +344,13 @@ export default class extends Controller {
         this.docIndex.set(doc, index)
         this.bindDocTapZone(doc)
         this.bindDocSelection(doc)
+        this.captureFxlPageSize(doc)
       })
 
       await this.view.open(file)
       this.applyFlow()
       this.applyContentStyles()
+      this.applyPageMode()
       this.view.addEventListener("relocate", (event) => this.onRelocate(event))
       this.view.addEventListener("draw-annotation", (event) => this.onDrawAnnotation(event))
       this.view.addEventListener("show-annotation", (event) => this.onShowAnnotation(event))
@@ -1983,6 +1997,7 @@ export default class extends Controller {
     this.saveSettings()
     if (key === "theme") this.applyChromeTheme()
     if (key === "flow") this.applyFlow()
+    if (key === "pageMode") this.applyPageMode()
     if (key === "keepScreenOn") this.applyWakeLockSetting() // applies immediately, not just on next open()/visibility flip
     this.applyContentStyles()
     this.renderSettingsUI()
@@ -2010,6 +2025,10 @@ export default class extends Controller {
 
   setFlow(event) {
     this.updateSetting("flow", event.params.flow)
+  }
+
+  setPageMode(event) {
+    this.updateSetting("pageMode", event.params.pageMode)
   }
 
   setFontFamily(event) {
@@ -2049,6 +2068,8 @@ export default class extends Controller {
       btn.classList.toggle("is-active", btn.dataset.readerHyphenateParam === String(this.settings.hyphenate)))
     this.keepScreenOnButtonTargets.forEach((btn) =>
       btn.classList.toggle("is-active", btn.dataset.readerKeepScreenOnParam === String(this.settings.keepScreenOn)))
+    this.pageModeButtonTargets.forEach((btn) =>
+      btn.classList.toggle("is-active", btn.dataset.readerPageModeParam === this.settings.pageMode))
   }
 
   // Chrome (our own page) can use CSS custom properties; the book's
@@ -2059,6 +2080,131 @@ export default class extends Controller {
 
   applyFlow() {
     this.view?.renderer?.setAttribute("flow", this.settings.flow === "scrolled" ? "scrolled" : "paginated")
+  }
+
+  // -- Fixed-layout page mode --------------------------------------------
+  // Two display modes for fixed-layout books (PDF/CBZ/fxl EPUB), driven by
+  // the renderer's native `zoom` attribute (foliate fixed-layout.js):
+  // "fit"  — zoom="fit-page", the whole page always fits the screen;
+  // "zoom" — numeric zoom (fit scale × this.zoomFactor) with panning via the
+  //          renderer's overflow:auto, plus an always-visible semi-transparent
+  //          overlay (.reader-fxl-controls) for page turns and zoom steps.
+  // Reflowable books have no meaningful zoom (font size covers it), so the
+  // settings row is hidden for them and everything below is a no-op.
+
+  applyPageMode() {
+    const fixed = Boolean(this.view?.isFixedLayout)
+    if (this.hasPageModeRowTarget) this.pageModeRowTarget.hidden = !fixed
+    if (!fixed) return
+    const zoomMode = this.settings.pageMode === "zoom"
+    if (this.hasFxlControlsTarget) this.fxlControlsTarget.hidden = !zoomMode
+    // Reflected on the root as state hooks for CSS and e2e tests — the
+    // renderer itself lives in foliate's closed shadow root and its `zoom`
+    // attribute is unreachable from the outside.
+    this.element.dataset.pageMode = zoomMode ? "zoom" : "fit"
+    // The root stylesheet pins touch-action to pan-y; zoom mode needs
+    // horizontal panning too. Inline style beats the stylesheet rule.
+    this.element.style.touchAction = zoomMode ? "pan-x pan-y pinch-zoom" : ""
+    if (!zoomMode) {
+      this.zoomFactor = 1
+      this.unbindFxlWheel()
+      this.view.renderer.setAttribute("zoom", "fit-page")
+    } else {
+      this.bindFxlWheel()
+      this.applyFxlZoom()
+    }
+    this.element.dataset.zoomFactor = String(this.zoomFactor)
+  }
+
+  // Remember the natural page size from each section's load event (same
+  // sources as foliate's getViewport: viewport meta, then the bare img) so
+  // computeFitScale() can express zoom steps relative to the fit scale —
+  // foliate keeps that scale private inside the renderer.
+  captureFxlPageSize(doc) {
+    if (!this.view?.isFixedLayout || !doc) return
+    let width = null, height = null
+    const meta = doc.querySelector('meta[name="viewport"]')?.getAttribute("content")
+    if (meta) {
+      const entries = Object.fromEntries(meta.split(/[,;\s]/).filter(Boolean).map((x) => x.split("=").map((s) => s.trim())))
+      width = parseFloat(entries.width)
+      height = parseFloat(entries.height)
+    }
+    if (!(width > 0) || !(height > 0)) {
+      const img = doc.querySelector("img")
+      if (img) { width = img.naturalWidth; height = img.naturalHeight }
+    }
+    if (!(width > 0) || !(height > 0)) return
+    this.fxlPageSize = { width, height }
+    // A page turn in zoom mode can load a page of a different size — re-apply
+    // so the zoom stays a consistent multiple of the new page's fit scale.
+    if (this.settings.pageMode === "zoom") this.applyFxlZoom()
+  }
+
+  computeFitScale() {
+    const size = this.fxlPageSize
+    const renderer = this.view?.renderer
+    if (!size || !renderer) return null
+    const { width, height } = renderer.getBoundingClientRect()
+    if (!(width > 0) || !(height > 0)) return null
+    return Math.min(width / size.width, height / size.height)
+  }
+
+  applyFxlZoom() {
+    const renderer = this.view?.renderer
+    const fit = this.computeFitScale()
+    if (!renderer || !fit) return // size unknown yet; captureFxlPageSize re-applies
+    renderer.setAttribute("zoom", String(fit * this.zoomFactor))
+  }
+
+  setFxlZoomFactor(factor) {
+    this.zoomFactor = Math.min(5, Math.max(1, factor))
+    this.element.dataset.zoomFactor = String(this.zoomFactor)
+    this.applyFxlZoom()
+  }
+
+  fxlZoomIn(event) {
+    event?.stopPropagation()
+    this.setFxlZoomFactor(this.zoomFactor * 1.4)
+  }
+
+  fxlZoomOut(event) {
+    event?.stopPropagation()
+    this.setFxlZoomFactor(this.zoomFactor / 1.4)
+  }
+
+  // The overlay buttons sit above the book iframes; stopPropagation keeps a
+  // tap on them from also reaching any host-level tap/click listener.
+  fxlPrevPage(event) {
+    event?.stopPropagation()
+    this.prevPage()
+  }
+
+  fxlNextPage(event) {
+    event?.stopPropagation()
+    this.nextPage()
+  }
+
+  // Ctrl+wheel is also what desktop trackpads emit for pinch gestures.
+  onFxlWheel(event) {
+    if (!event.ctrlKey) return
+    event.preventDefault()
+    this.setFxlZoomFactor(this.zoomFactor * (event.deltaY < 0 ? 1.15 : 1 / 1.15))
+  }
+
+  bindFxlWheel() {
+    this.viewportTarget.addEventListener("wheel", this.onFxlWheel, { passive: false })
+  }
+
+  unbindFxlWheel() {
+    // disconnect() can run while targets are already gone — removing a
+    // listener that was never added is harmless, a missing target is not.
+    if (this.hasViewportTarget) this.viewportTarget.removeEventListener("wheel", this.onFxlWheel)
+  }
+
+  onWindowResize() {
+    // The fit scale depends on the renderer's box; keep the numeric zoom a
+    // constant multiple of it across rotations/resizes.
+    if (this.view?.isFixedLayout && this.settings.pageMode === "zoom") this.applyFxlZoom()
   }
 
   applyContentStyles() {

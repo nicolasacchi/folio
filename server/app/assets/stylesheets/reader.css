@@ -307,6 +307,92 @@
   display: none;
 }
 
+/* ---------- Zoom-mode overlay (fixed-layout books) ----------
+   Always-visible, semi-transparent page-turn + zoom buttons shown only in
+   "zoom" page mode (applyPageMode toggles [hidden]). Unlike the desktop
+   arrows above they are NOT gated on hover/pointer: they are the primary
+   affordance while zoomed, so they stay pinned to the screen edges even
+   when the page underneath is scaled and panned. z-index 16: above the
+   viewport and the desktop arrows (15), below backdrop/drawers (24+). */
+
+.reader-fxl-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 16;
+  pointer-events: none; /* children re-enable; taps between buttons reach the book */
+}
+
+.reader-fxl-controls[hidden] {
+  display: none; /* any display rule below would beat the UA [hidden] rule */
+}
+
+.reader-fxl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper-raised) 55%, transparent);
+  color: var(--ink-soft);
+  opacity: .5;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  transition: opacity .15s ease, color .15s ease, background-color .15s ease;
+}
+
+.reader-fxl-btn:hover,
+.reader-fxl-btn:focus-visible,
+.reader-fxl-btn:active {
+  opacity: .95;
+  color: var(--accent);
+}
+
+.reader-fxl-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.reader-fxl-btn--prev {
+  top: 50%;
+  left: max(8px, env(safe-area-inset-left));
+  transform: translateY(-50%);
+}
+
+.reader-fxl-btn--next {
+  top: 50%;
+  right: max(8px, env(safe-area-inset-right));
+  transform: translateY(-50%);
+}
+
+.reader-fxl-zoom {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(96px, calc(env(safe-area-inset-bottom) + 84px)); /* clear the bottom bar */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.reader-fxl-zoom .reader-fxl-btn {
+  position: static;
+}
+
+@media (pointer: coarse) {
+  .reader-fxl-btn { width: 56px; height: 56px; }
+}
+
+/* Hidden while the book is still loading — same sibling trick as the
+   desktop arrows above. */
+.reader-loading:not([hidden]) ~ .reader-fxl-controls {
+  display: none;
+}
+
 .reader-progress {
   flex: 1;
   min-width: 8rem;

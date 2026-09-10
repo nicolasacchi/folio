@@ -38,6 +38,27 @@
         <%= render "reader/icon", name: "chevron-right" %>
       </button>
 
+      <%# Zoom-mode overlay for fixed-layout books (PDF/CBZ/fxl EPUB): semi-
+          transparent page-turn + zoom buttons pinned to the screen edges, so
+          they stay visible and reachable while the page is zoomed/panned.
+          Shown by JS (applyPageMode) only in zoom mode; hidden otherwise. %>
+      <div class="reader-fxl-controls" data-reader-target="fxlControls" hidden>
+        <button type="button" class="reader-fxl-btn reader-fxl-btn--prev" data-action="click->reader#fxlPrevPage" aria-label="Previous page">
+          <%= render "reader/icon", name: "chevron-left" %>
+        </button>
+        <button type="button" class="reader-fxl-btn reader-fxl-btn--next" data-action="click->reader#fxlNextPage" aria-label="Next page">
+          <%= render "reader/icon", name: "chevron-right" %>
+        </button>
+        <div class="reader-fxl-zoom">
+          <button type="button" class="reader-fxl-btn" data-action="click->reader#fxlZoomIn" aria-label="Zoom in">
+            <%= render "reader/icon", name: "plus" %>
+          </button>
+          <button type="button" class="reader-fxl-btn" data-action="click->reader#fxlZoomOut" aria-label="Zoom out">
+            <%= render "reader/icon", name: "minus" %>
+          </button>
+        </div>
+      </div>
+
       <div class="reader-bar reader-bar--top" data-reader-target="topBar">
         <div class="reader-bar-nav">
           <%= link_to book_path(@book), class: "reader-icon-btn", data: { turbo: false },
@@ -232,6 +253,18 @@
                     data-action="reader#setFlow" data-reader-flow-param="paginated">Paginated</button>
             <button type="button" class="reader-toggle" data-reader-target="flowButton"
                     data-action="reader#setFlow" data-reader-flow-param="scrolled">Scrolled</button>
+          </div>
+        </div>
+
+        <%# Only meaningful for fixed-layout books (PDF/CBZ/fxl EPUB); JS hides
+            this row for reflowable books once the format is known. %>
+        <div class="reader-settings-row" data-reader-target="pageModeRow">
+          <label>Page mode</label>
+          <div class="reader-toggle-group">
+            <button type="button" class="reader-toggle" data-reader-target="pageModeButton"
+                    data-action="reader#setPageMode" data-reader-page-mode-param="fit">Fit screen</button>
+            <button type="button" class="reader-toggle" data-reader-target="pageModeButton"
+                    data-action="reader#setPageMode" data-reader-page-mode-param="zoom">Zoom</button>
           </div>
         </div>
       </div>

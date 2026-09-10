@@ -20,12 +20,14 @@ class User < ApplicationRecord
     "fontFamily" => "publisher",
     "justify" => false,
     "hyphenate" => true,
-    "keepScreenOn" => true
+    "keepScreenOn" => true,
+    "pageMode" => "fit"
   }.freeze
 
   FONT_FAMILIES = %w[publisher serif sans literata bitter garamond atkinson opendyslexic].freeze
   THEMES = %w[light sepia dark].freeze
   FLOWS = %w[paginated scrolled].freeze
+  PAGE_MODES = %w[fit zoom].freeze
 
   validate :preferred_device_must_be_physical, if: -> { preferred_device_id.present? }
 
@@ -83,6 +85,9 @@ class User < ApplicationRecord
       when "flow"
         s = value.to_s
         out[key] = s if FLOWS.include?(s)
+      when "pageMode"
+        s = value.to_s
+        out[key] = s if PAGE_MODES.include?(s)
       when "fontFamily"
         s = value.to_s
         out[key] = s if FONT_FAMILIES.include?(s)

@@ -4,7 +4,7 @@
     color live in reader.css). %>
 <%
   reader_icon_names = %w[
-    arrow-left library list sticky-note search maximize minimize x chevron-left chevron-right
+    arrow-left library list sticky-note search maximize minimize x chevron-left chevron-right plus minus
   ]
   raise ArgumentError, "Unknown reader icon: #{name.inspect}" unless reader_icon_names.include?(name)
 %>
@@ -52,5 +52,10 @@
     <polyline points="15 18 9 12 15 6"/>
   <% when "chevron-right" %>
     <polyline points="9 18 15 12 9 6"/>
+  <% when "plus" %>
+    <line x1="12" y1="5" x2="12" y2="19"/>
+    <line x1="5" y1="12" x2="19" y2="12"/>
+  <% when "minus" %>
+    <line x1="5" y1="12" x2="19" y2="12"/>
   <% end %>
 </svg>

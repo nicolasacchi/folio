@@ -27,6 +27,7 @@ RSpec.describe "Reader preferences", type: :request do
           justify: true,
           hyphenate: false,
           keepScreenOn: false,
+          pageMode: "zoom",
           unknown: "nope"
         }
       }, as: :json
@@ -42,11 +43,24 @@ RSpec.describe "Reader preferences", type: :request do
       expect(body["justify"]).to eq(true)
       expect(body["hyphenate"]).to eq(false)
       expect(body["keepScreenOn"]).to eq(false)
+      expect(body["pageMode"]).to eq("zoom")
       expect(body).not_to have_key("unknown")
 
       prefs = user.reload.reader_preferences
       expect(prefs["fontFamily"]).to eq("bitter")
       expect(prefs["fontSize"]).to eq(200)
+      expect(prefs["pageMode"]).to eq("zoom")
+    end
+
+    it "defaults pageMode to fit and rejects values outside the allowlist" do
+      expect(user.reader_preferences["pageMode"]).to eq("fit")
+
+      sign_in(user)
+      put reader_preferences_path, params: { preferences: { pageMode: "banana" } }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["pageMode"]).to eq("fit")
+      expect(user.reload.reader_preferences["pageMode"]).to eq("fit")
     end
 
     it "exposes merged prefs on the reader page" do
