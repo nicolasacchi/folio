@@ -1,0 +1,11 @@
+{
+  "name": "folio-reader-e2e",
+  "private": true,
+  "description": "Playwright e2e suite for the folio web reader (boots the Rails app via boot.sh)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
