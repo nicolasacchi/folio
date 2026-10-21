@@ -13,7 +13,7 @@ license = "AGPL-3.0-only"
 minreq = { version = "2", features = ["https-rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 tar = "0.4"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 libc = "0.2" # statvfs for the free-space report
